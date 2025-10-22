@@ -11,6 +11,7 @@ const KEYS = {
   FAVORITES: 'favorites',
   CUSTOM_FOODS: 'custom_foods',
   HEALTH_SYNC: 'health_sync_enabled',
+  THEME_MODE: 'theme_mode',  // 'light', 'dark', 'auto'
 };
 
 // デフォルトのユーザープロフィール
@@ -269,6 +270,31 @@ export const saveHealthSyncEnabled = async (enabled) => {
     return true;
   } catch (error) {
     console.error('Error saving health sync setting:', error);
+    return false;
+  }
+};
+
+// 🌙 テーマモードの取得
+export const getThemeMode = async () => {
+  try {
+    const data = await AsyncStorage.getItem(KEYS.THEME_MODE);
+    if (data) {
+      return JSON.parse(data);  // 'light', 'dark', 'auto'
+    }
+    return 'auto';  // デフォルトは自動（システム設定に従う）
+  } catch (error) {
+    console.error('Error getting theme mode:', error);
+    return 'auto';
+  }
+};
+
+// 🌙 テーマモードの保存
+export const saveThemeMode = async (mode) => {
+  try {
+    await AsyncStorage.setItem(KEYS.THEME_MODE, JSON.stringify(mode));
+    return true;
+  } catch (error) {
+    console.error('Error saving theme mode:', error);
     return false;
   }
 };

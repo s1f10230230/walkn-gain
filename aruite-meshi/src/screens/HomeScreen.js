@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,12 @@ import {
   ScrollView,
   Dimensions,
   TouchableOpacity,
+  AppState,
+  useColorScheme,
 } from 'react-native';
 import { Pedometer } from 'expo-sensors';
 import * as Progress from 'react-native-progress';
+import { getTheme, getShadowStyle } from '../utils/theme';
 import {
   calculateCalories,
   calculateDistance,
@@ -24,6 +27,11 @@ import {
   getFavorites,
   getHealthSyncEnabled,
 } from '../utils/storage';
+import {
+  getCachedTodayData,
+  cacheTodayData,
+  getLatestCachedData,
+} from '../utils/cache';
 import { getFoodById, calculateFoodAmount } from '../data/foodDatabase';
 import {
   initializeHealthKit,
@@ -50,12 +58,97 @@ export default function HomeScreen({ navigation }) {
   const [favorites, setFavorites] = useState(['ramen', 'onigiri', 'beer']);
   const [profile, setProfile] = useState({ height: 170, weight: 65, stride: 72 });
   const [isPedometerAvailable, setIsPedometerAvailable] = useState('checking');
+  const [isLoading, setIsLoading] = useState(true);
+  const appState = useRef(AppState.currentState);
+
+  // 🌙 ダークモード対応
+  const systemColorScheme = useColorScheme();
+  const theme = getTheme(systemColorScheme);
 
   useEffect(() => {
+    // 🚀 起動1秒表示: キャッシュから即座に読み込み
+    loadCachedData();
+
+    // バックグラウンドで最新データを取得
     loadData();
     setupPedometer();
     initializeApp();
+
+    // ⚡ リアルタイム自動更新: アプリがフォアグラウンドに戻った時に更新
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      subscription?.remove();
+    };
   }, []);
+
+  // アプリの状態が変わった時の処理
+  const handleAppStateChange = async (nextAppState) => {
+    if (
+      appState.current.match(/inactive|background/) &&
+      nextAppState === 'active'
+    ) {
+      console.log('⚡ アプリがフォアグラウンドに復帰 - データを自動更新');
+      await refreshData();
+    }
+    appState.current = nextAppState;
+  };
+
+  // データを強制的に更新（フォアグラウンド復帰時）
+  const refreshData = async () => {
+    const healthSyncEnabled = await getHealthSyncEnabled();
+
+    if (healthSyncEnabled) {
+      // ヘルスケアから最新データを取得
+      try {
+        const today = new Date();
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const healthSteps = await getTodaySteps();
+        const healthCalories = await getCalories(startOfDay, today);
+        const healthDistance = await getDistance(startOfDay, today);
+
+        if (healthSteps > 0) {
+          updateHealthData(healthSteps, healthCalories, healthDistance / 1000);
+        }
+      } catch (error) {
+        console.error('データ更新に失敗:', error);
+      }
+    } else {
+      // Pedometerから最新データを取得
+      try {
+        const end = new Date();
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+
+        const pastStepCountResult = await Pedometer.getStepCountAsync(start, end);
+        if (pastStepCountResult) {
+          updateSteps(pastStepCountResult.steps);
+        }
+      } catch (error) {
+        console.error('歩数データ更新に失敗:', error);
+      }
+    }
+  };
+
+  // キャッシュから即座にデータを表示（0.1秒以内）
+  const loadCachedData = async () => {
+    try {
+      const cached = await getCachedTodayData();
+      if (cached) {
+        setSteps(cached.steps);
+        setCalories(cached.calories);
+        setDistance(cached.distance);
+        setProgress(calculateGoalProgress(cached.steps, cached.goal || 10000) / 100);
+        console.log('✅ キャッシュからデータを表示しました');
+      }
+    } catch (error) {
+      console.error('キャッシュの読み込みに失敗:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const initializeApp = async () => {
     // 通知の権限をリクエスト
@@ -70,22 +163,31 @@ export default function HomeScreen({ navigation }) {
     // ヘルスケア連携の初期化
     const healthSyncEnabled = await getHealthSyncEnabled();
     if (healthSyncEnabled) {
-      const initialized = await initializeHealthKit();
-      if (initialized) {
-        console.log('ヘルスケア連携が有効化されました');
+      try {
+        const initialized = await initializeHealthKit();
+        if (initialized) {
+          console.log('ヘルスケア連携が有効化されました');
 
-        // ヘルスケアから歩数、カロリー、距離を取得
-        const today = new Date();
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
+          // ヘルスケアから歩数、カロリー、距離を取得
+          const today = new Date();
+          const startOfDay = new Date();
+          startOfDay.setHours(0, 0, 0, 0);
 
-        const healthSteps = await getTodaySteps();
-        const healthCalories = await getCalories(startOfDay, today);
-        const healthDistance = await getDistance(startOfDay, today);
+          const healthSteps = await getTodaySteps();
+          const healthCalories = await getCalories(startOfDay, today);
+          const healthDistance = await getDistance(startOfDay, today);
 
-        if (healthSteps > 0) {
-          // ヘルスケアのデータを優先して使用
-          updateHealthData(healthSteps, healthCalories, healthDistance / 1000); // メートルをkmに変換
+          if (healthSteps > 0) {
+            // ヘルスケアのデータを優先して使用
+            updateHealthData(healthSteps, healthCalories, healthDistance / 1000); // メートルをkmに変換
+          }
+        }
+      } catch (error) {
+        console.error('ヘルスケアデータの取得に失敗:', error);
+        // 🌍 オフライン対応: エラー時はキャッシュデータを使用（既に表示済み）
+        const latestCache = await getLatestCachedData();
+        if (latestCache) {
+          console.log('📦 オフラインモード: キャッシュデータを使用');
         }
       }
     }
@@ -116,26 +218,32 @@ export default function HomeScreen({ navigation }) {
   };
 
   const setupPedometer = async () => {
-    const isAvailable = await Pedometer.isAvailableAsync();
-    setIsPedometerAvailable(String(isAvailable));
+    try {
+      const isAvailable = await Pedometer.isAvailableAsync();
+      setIsPedometerAvailable(String(isAvailable));
 
-    if (isAvailable) {
-      // Get today's step count
-      const end = new Date();
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
+      if (isAvailable) {
+        // Get today's step count
+        const end = new Date();
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
 
-      const pastStepCountResult = await Pedometer.getStepCountAsync(start, end);
-      if (pastStepCountResult) {
-        updateSteps(pastStepCountResult.steps);
+        const pastStepCountResult = await Pedometer.getStepCountAsync(start, end);
+        if (pastStepCountResult) {
+          updateSteps(pastStepCountResult.steps);
+        }
+
+        // Subscribe to real-time updates
+        const subscription = Pedometer.watchStepCount(result => {
+          updateSteps(result.steps);
+        });
+
+        return () => subscription && subscription.remove();
       }
-
-      // Subscribe to real-time updates
-      const subscription = Pedometer.watchStepCount(result => {
-        updateSteps(result.steps);
-      });
-
-      return () => subscription && subscription.remove();
+    } catch (error) {
+      console.error('歩数計のセットアップに失敗:', error);
+      // 🌍 オフライン対応: エラー時はキャッシュデータを使用（既に表示済み）
+      setIsPedometerAvailable('error');
     }
   };
 
@@ -149,15 +257,20 @@ export default function HomeScreen({ navigation }) {
     const prog = calculateGoalProgress(newSteps, goal);
     setProgress(prog / 100);
 
-    // Save to storage
-    await saveTodayData({
+    const data = {
       date: getTodayDateString(),
       steps: newSteps,
       calories: healthCalories,
       distance: healthDistance,
       hourlySteps: [],
       goal: goal,
-    });
+    };
+
+    // Save to storage
+    await saveTodayData(data);
+
+    // 🚀 キャッシュにも保存（起動高速化）
+    await cacheTodayData(data);
 
     // 通知の送信
     const settings = await getSettings();
@@ -181,15 +294,20 @@ export default function HomeScreen({ navigation }) {
     setDistance(dist);
     setProgress(prog / 100);
 
-    // Save to storage
-    await saveTodayData({
+    const data = {
       date: getTodayDateString(),
       steps: newSteps,
       calories: cal,
       distance: dist,
       hourlySteps: [],
       goal: goal,
-    });
+    };
+
+    // Save to storage
+    await saveTodayData(data);
+
+    // 🚀 キャッシュにも保存（起動高速化）
+    await cacheTodayData(data);
 
     // 通知の送信
     const settings = await getSettings();
@@ -214,41 +332,48 @@ export default function HomeScreen({ navigation }) {
     const amount = calculateFoodAmount(calories, foodId);
 
     return (
-      <TouchableOpacity key={foodId} style={styles.foodCard}>
+      <TouchableOpacity
+        key={foodId}
+        style={[
+          styles.foodCard,
+          { backgroundColor: theme.card, borderColor: theme.border },
+          getShadowStyle(theme.isDark)
+        ]}
+      >
         <Text style={styles.foodEmoji}>{food.emoji}</Text>
-        <Text style={styles.foodAmount}>{amount}</Text>
-        <Text style={styles.foodUnit}>{food.unit}</Text>
+        <Text style={[styles.foodAmount, { color: theme.primary }]}>{amount}</Text>
+        <Text style={[styles.foodUnit, { color: theme.textSecondary }]}>{food.unit}</Text>
       </TouchableOpacity>
     );
   };
 
   const isGoalAchieved = progress >= 1.0;
-  const progressColor = isGoalAchieved ? '#00C853' : '#FF7043';
+  const progressColor = isGoalAchieved ? theme.success : theme.primary;
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
       {/* フローティング日付カード */}
       <View style={styles.header}>
-        <View style={styles.dateCard}>
-          <Text style={styles.dateText}>{formatDate(getTodayDateString())}</Text>
+        <View style={[styles.dateCard, { backgroundColor: theme.card }, getShadowStyle(theme.isDark)]}>
+          <Text style={[styles.dateText, { color: theme.text }]}>{formatDate(getTodayDateString())}</Text>
         </View>
       </View>
 
       {/* 歩数サークル（リングデザイン） */}
       <View style={styles.circleContainer}>
-        <View style={styles.circleBackground}>
+        <View style={[styles.circleBackground, { backgroundColor: theme.card }, getShadowStyle(theme.isDark)]}>
           <Progress.Circle
             size={200}
             progress={progress}
             showsText={false}
             color={progressColor}
-            unfilledColor="#F5F5F5"
+            unfilledColor={theme.circleUnfilled}
             borderWidth={0}
             thickness={12}
           />
           <View style={styles.circleCenter}>
-            <Text style={styles.stepsText}>{steps.toLocaleString()}</Text>
-            <Text style={styles.stepsLabel}>歩</Text>
+            <Text style={[styles.stepsText, { color: theme.text }]}>{steps.toLocaleString()}</Text>
+            <Text style={[styles.stepsLabel, { color: theme.textSecondary }]}>歩</Text>
           </View>
         </View>
       </View>
@@ -260,26 +385,26 @@ export default function HomeScreen({ navigation }) {
           width={width - 40}
           height={10}
           color={progressColor}
-          unfilledColor="#E0E0E0"
+          unfilledColor={theme.progressUnfilled}
           borderWidth={0}
           borderRadius={5}
         />
-        <Text style={[styles.progressText, isGoalAchieved && styles.achievedText]}>
+        <Text style={[styles.progressText, { color: theme.textSecondary }, isGoalAchieved && { color: theme.success }]}>
           {Math.round(progress * 100)}%
           {isGoalAchieved && ' 🎉'}
         </Text>
       </View>
 
       {/* カロリー・距離 */}
-      <View style={styles.statsContainer}>
-        <Text style={styles.statsText}>
+      <View style={[styles.statsContainer, { backgroundColor: theme.card }, getShadowStyle(theme.isDark)]}>
+        <Text style={[styles.statsText, { color: theme.text }]}>
           {calories.toFixed(0)} kcal = {distance.toFixed(2)} km
         </Text>
       </View>
 
       {/* 食べ物換算 */}
       <View style={styles.foodSection}>
-        <Text style={styles.sectionTitle}>食べ物換算</Text>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>食べ物換算</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={styles.foodList}>
             {favorites.map(foodId => renderFoodCard(foodId))}
@@ -289,11 +414,11 @@ export default function HomeScreen({ navigation }) {
 
       {/* デバッグ情報 */}
       {isPedometerAvailable !== 'true' && (
-        <View style={styles.debugContainer}>
-          <Text style={styles.debugText}>
+        <View style={[styles.debugContainer, { backgroundColor: theme.isDark ? '#3E2723' : '#FFF3CD' }]}>
+          <Text style={[styles.debugText, { color: theme.isDark ? '#FFAB91' : '#856404' }]}>
             歩数計: {isPedometerAvailable === 'checking' ? '確認中...' : '利用不可'}
           </Text>
-          <Text style={styles.debugText}>
+          <Text style={[styles.debugText, { color: theme.isDark ? '#FFAB91' : '#856404' }]}>
             ※ 実機でテストするか、手動で歩数を追加できます
           </Text>
         </View>
@@ -350,26 +475,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   stepsText: {
-    fontSize: 52,
-    fontWeight: '800',
+    fontSize: 56,
+    fontWeight: '900',  // 🔍 視認性改善: より太く
     color: '#212121',
-    letterSpacing: -1,
+    letterSpacing: -1.5,
   },
   stepsLabel: {
-    fontSize: 18,
-    color: '#616161',
+    fontSize: 20,
+    color: '#757575',  // 🔍 視認性改善: 少し明るく
     marginTop: 4,
-    fontWeight: '600',
+    fontWeight: '700',  // 🔍 視認性改善: より太く
   },
   progressContainer: {
     alignItems: 'center',
     marginVertical: 20,
   },
   progressText: {
-    fontSize: 18,
-    color: '#616161',
+    fontSize: 20,  // 🔍 視認性改善: 大きく
+    color: '#424242',  // 🔍 視認性改善: コントラストアップ
     marginTop: 12,
-    fontWeight: '700',
+    fontWeight: '800',  // 🔍 視認性改善: より太く
   },
   achievedText: {
     color: '#00C853',
@@ -377,26 +502,33 @@ const styles = StyleSheet.create({
   statsContainer: {
     alignItems: 'center',
     marginVertical: 10,
-    paddingVertical: 15,
+    paddingVertical: 18,  // 🔍 視認性改善: パディング増加
     backgroundColor: '#FFF',
     marginHorizontal: 20,
-    borderRadius: 10,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
   },
   statsText: {
-    fontSize: 18,
+    fontSize: 20,  // 🔍 視認性改善: 大きく
     color: '#212121',
-    fontWeight: '500',
+    fontWeight: '700',  // 🔍 視認性改善: より太く
+    letterSpacing: 0.3,
   },
   foodSection: {
     marginTop: 20,
     marginBottom: 30,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 22,  // 🔍 視認性改善: 大きく
+    fontWeight: '800',  // 🔍 視認性改善: より太く
     color: '#212121',
     marginLeft: 20,
     marginBottom: 15,
+    letterSpacing: 0.3,
   },
   foodList: {
     flexDirection: 'row',
@@ -418,18 +550,20 @@ const styles = StyleSheet.create({
     borderColor: '#F5F5F5',
   },
   foodEmoji: {
-    fontSize: 40,
+    fontSize: 44,  // 🔍 視認性改善: 大きく
     marginBottom: 10,
   },
   foodAmount: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#212121',
+    fontSize: 28,  // 🔍 視認性改善: 大きく
+    fontWeight: '800',  // 🔍 視認性改善: より太く
+    color: '#FF7043',  // 🔍 視認性改善: オレンジで強調
+    letterSpacing: -0.5,
   },
   foodUnit: {
-    fontSize: 16,
-    color: '#616161',
+    fontSize: 17,  // 🔍 視認性改善: 少し大きく
+    color: '#757575',  // 🔍 視認性改善: 少し明るく
     marginTop: 5,
+    fontWeight: '600',  // 🔍 視認性改善: より太く
   },
   debugContainer: {
     margin: 20,
