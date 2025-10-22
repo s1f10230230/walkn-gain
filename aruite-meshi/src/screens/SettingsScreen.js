@@ -264,9 +264,10 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>❤️ ヘルスケア連携</Text>
         <View style={styles.card}>
           <View style={styles.switchRow}>
-            <View>
+            <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.inputLabel}>ヘルスケア同期</Text>
               <Text style={styles.helperText}>Apple Health / Google Fit</Text>
+              <Text style={styles.helperText}>⭐ 歩数・カロリー・距離を高精度で取得</Text>
             </View>
             <Switch
               value={healthSync}

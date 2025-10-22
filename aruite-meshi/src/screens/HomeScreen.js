@@ -25,7 +25,13 @@ import {
   getHealthSyncEnabled,
 } from '../utils/storage';
 import { getFoodById, calculateFoodAmount } from '../data/foodDatabase';
-import { initializeHealthKit, getTodaySteps, saveStepsToHealthKit } from '../utils/healthKit';
+import {
+  initializeHealthKit,
+  getTodaySteps,
+  saveStepsToHealthKit,
+  getCalories,
+  getDistance,
+} from '../utils/healthKit';
 import {
   requestNotificationPermissions,
   sendGoalAchievedNotification,
@@ -67,10 +73,19 @@ export default function HomeScreen({ navigation }) {
       const initialized = await initializeHealthKit();
       if (initialized) {
         console.log('ヘルスケア連携が有効化されました');
-        // ヘルスケアから歩数を取得
+
+        // ヘルスケアから歩数、カロリー、距離を取得
+        const today = new Date();
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+
         const healthSteps = await getTodaySteps();
+        const healthCalories = await getCalories(startOfDay, today);
+        const healthDistance = await getDistance(startOfDay, today);
+
         if (healthSteps > 0) {
-          updateSteps(healthSteps);
+          // ヘルスケアのデータを優先して使用
+          updateHealthData(healthSteps, healthCalories, healthDistance / 1000); // メートルをkmに変換
         }
       }
     }
@@ -124,6 +139,37 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
+  // ヘルスケアからのデータを更新（カロリーと距離も含む）
+  const updateHealthData = async (newSteps, healthCalories, healthDistance) => {
+    const oldSteps = steps;
+    setSteps(newSteps);
+    setCalories(healthCalories);
+    setDistance(healthDistance);
+
+    const prog = calculateGoalProgress(newSteps, goal);
+    setProgress(prog / 100);
+
+    // Save to storage
+    await saveTodayData({
+      date: getTodayDateString(),
+      steps: newSteps,
+      calories: healthCalories,
+      distance: healthDistance,
+      hourlySteps: [],
+      goal: goal,
+    });
+
+    // 通知の送信
+    const settings = await getSettings();
+    if (settings.notifications) {
+      if (newSteps >= goal && oldSteps < goal) {
+        await sendGoalAchievedNotification(newSteps, goal);
+      }
+      await sendProgressNotification(newSteps, goal);
+    }
+  };
+
+  // Pedometerからのデータを更新（アプリ内で計算）
   const updateSteps = async (newSteps) => {
     const oldSteps = steps;
     setSteps(newSteps);
@@ -141,19 +187,16 @@ export default function HomeScreen({ navigation }) {
       steps: newSteps,
       calories: cal,
       distance: dist,
-      hourlySteps: [], // TODO: Implement hourly tracking
+      hourlySteps: [],
       goal: goal,
     });
 
     // 通知の送信
     const settings = await getSettings();
     if (settings.notifications) {
-      // 目標達成時の通知
       if (newSteps >= goal && oldSteps < goal) {
         await sendGoalAchievedNotification(newSteps, goal);
       }
-
-      // 進捗通知（50%、80%）
       await sendProgressNotification(newSteps, goal);
     }
 
