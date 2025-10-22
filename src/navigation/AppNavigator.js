@@ -1,0 +1,84 @@
+import React from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import HomeScreen from '../screens/HomeScreen';
+import HistoryScreen from '../screens/HistoryScreen';
+import SettingsScreen from '../screens/SettingsScreen';
+
+const Tab = createBottomTabNavigator();
+
+export default function AppNavigator() {
+  return (
+    <NavigationContainer>
+      <Tab.Navigator
+        screenOptions={{
+          tabBarActiveTintColor: '#4CAF50',
+          tabBarInactiveTintColor: '#999',
+          tabBarStyle: {
+            height: 60,
+            paddingBottom: 8,
+            paddingTop: 8,
+          },
+          tabBarLabelStyle: {
+            fontSize: 12,
+            fontWeight: '600',
+          },
+          headerStyle: {
+            backgroundColor: '#4CAF50',
+          },
+          headerTintColor: '#FFF',
+          headerTitleStyle: {
+            fontWeight: 'bold',
+            fontSize: 20,
+          },
+        }}
+      >
+        <Tab.Screen
+          name="Home"
+          component={HomeScreen}
+          options={{
+            tabBarLabel: 'ホーム',
+            title: '歩いてメシ',
+            tabBarIcon: ({ color, size }) => (
+              <TabIcon emoji="🏠" size={size} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="History"
+          component={HistoryScreen}
+          options={{
+            tabBarLabel: '履歴',
+            title: '履歴',
+            tabBarIcon: ({ color, size }) => (
+              <TabIcon emoji="📊" size={size} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="Settings"
+          component={SettingsScreen}
+          options={{
+            tabBarLabel: '設定',
+            title: '設定',
+            tabBarIcon: ({ color, size }) => (
+              <TabIcon emoji="⚙️" size={size} />
+            ),
+          }}
+        />
+      </Tab.Navigator>
+    </NavigationContainer>
+  );
+}
+
+// シンプルな絵文字アイコンコンポーネント
+const TabIcon = ({ emoji, size }) => {
+  return (
+    <Text style={{ fontSize: size }}>
+      {emoji}
+    </Text>
+  );
+};
+
+// react-nativeのTextコンポーネントをインポート
+import { Text } from 'react-native';
