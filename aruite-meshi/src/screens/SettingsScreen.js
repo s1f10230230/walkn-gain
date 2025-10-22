@@ -310,6 +310,46 @@ export default function SettingsScreen() {
         </View>
       </View>
 
+      {/* 🔍 計算式の透明化 */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>🔬 計算式</Text>
+        <View style={styles.card}>
+          <View style={styles.formulaSection}>
+            <Text style={styles.formulaTitle}>消費カロリー</Text>
+            <Text style={styles.formulaText}>歩数 × 0.05 kcal</Text>
+            <Text style={styles.formulaDescription}>
+              ※ 体重65kgの平均値。より正確な計算は「ヘルスケア同期」をONにしてください。
+            </Text>
+          </View>
+
+          <View style={styles.menuDivider} />
+
+          <View style={styles.formulaSection}>
+            <Text style={styles.formulaTitle}>歩行距離</Text>
+            <Text style={styles.formulaText}>歩数 × 歩幅（cm）÷ 100,000 = km</Text>
+            <Text style={styles.formulaDescription}>
+              ※ 歩幅はプロフィールから変更可能。
+            </Text>
+          </View>
+
+          <View style={styles.menuDivider} />
+
+          <View style={styles.formulaSection}>
+            <Text style={styles.formulaTitle}>歩幅の推定</Text>
+            <Text style={styles.formulaText}>身長（cm）× 0.45 = 歩幅（cm）</Text>
+            <Text style={styles.formulaDescription}>
+              ※ 一般的な推定式。実際の歩幅と異なる場合は手動で調整してください。
+            </Text>
+          </View>
+
+          <View style={styles.formulaNote}>
+            <Text style={styles.formulaNoteText}>
+              💡 これらの計算式は一般的な推定値です。より高精度なデータが必要な場合は、ヘルスケア同期を有効にすることをお勧めします。
+            </Text>
+          </View>
+        </View>
+      </View>
+
       {/* アプリについて */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>ℹ️ アプリについて</Text>
@@ -457,5 +497,43 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
     marginTop: 2,
+  },
+  // 🔍 計算式セクションのスタイル
+  formulaSection: {
+    paddingVertical: 15,
+  },
+  formulaTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#212121',
+    marginBottom: 8,
+  },
+  formulaText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FF7043',
+    fontFamily: 'monospace',
+    marginBottom: 8,
+    backgroundColor: '#FFF3E0',
+    padding: 10,
+    borderRadius: 8,
+  },
+  formulaDescription: {
+    fontSize: 13,
+    color: '#757575',
+    lineHeight: 18,
+  },
+  formulaNote: {
+    marginTop: 15,
+    padding: 15,
+    backgroundColor: '#E3F2FD',
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2196F3',
+  },
+  formulaNoteText: {
+    fontSize: 13,
+    color: '#1976D2',
+    lineHeight: 20,
   },
 });
