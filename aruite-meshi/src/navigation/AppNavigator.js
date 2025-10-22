@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import HomeScreen from '../screens/HomeScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import FoodListScreen from '../screens/FoodListScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -52,6 +53,17 @@ export default function AppNavigator() {
             title: '履歴',
             tabBarIcon: ({ color, size }) => (
               <TabIcon emoji="📊" size={size} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="FoodList"
+          component={FoodListScreen}
+          options={{
+            tabBarLabel: '食べ物',
+            title: '食べ物一覧',
+            tabBarIcon: ({ color, size }) => (
+              <TabIcon emoji="🍜" size={size} />
             ),
           }}
         />

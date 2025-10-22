@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "aruite-meshi",
+    "name": "歩いてメシ",
     "slug": "aruite-meshi",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,18 +12,48 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#4CAF50",
+          "sounds": ["./assets/notification-sound.wav"]
+        }
+      ]
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.aruitemeshi",
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "歩数データを読み取り、アプリ内で表示します。",
+        "NSHealthUpdateUsageDescription": "歩数データをヘルスケアに保存します。",
+        "NSMotionUsageDescription": "歩数を計測するために、モーションセンサーにアクセスします。"
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true,
+        "com.apple.developer.healthkit.access": ["health-records"]
+      }
     },
     "android": {
+      "package": "com.yourcompany.aruitemeshi",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "permissions": [
+        "ACTIVITY_RECOGNITION",
+        "ACCESS_FINE_LOCATION",
+        "POST_NOTIFICATIONS"
+      ],
       "edgeToEdgeEnabled": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#4CAF50"
     }
   }
 }

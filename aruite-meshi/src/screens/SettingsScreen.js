@@ -16,8 +16,12 @@ import {
   saveSettings,
   exportDataAsCSV,
   clearAllData,
+  getHealthSyncEnabled,
+  saveHealthSyncEnabled,
 } from '../utils/storage';
 import { estimateStrideLength, getMonthDates } from '../utils/calculations';
+import { initializeHealthKit } from '../utils/healthKit';
+import { scheduleReminderNotification, cancelReminderNotifications } from '../utils/notifications';
 
 export default function SettingsScreen() {
   const [profile, setProfile] = useState({
@@ -31,6 +35,7 @@ export default function SettingsScreen() {
     notifications: true,
     unit: 'kcal',
   });
+  const [healthSync, setHealthSync] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -39,6 +44,7 @@ export default function SettingsScreen() {
   const loadSettings = async () => {
     const userProfile = await getUserProfile();
     const userSettings = await getSettings();
+    const healthSyncEnabled = await getHealthSyncEnabled();
 
     setProfile({
       height: String(userProfile.height),
@@ -52,6 +58,8 @@ export default function SettingsScreen() {
       notifications: userSettings.notifications,
       unit: userSettings.unit,
     });
+
+    setHealthSync(healthSyncEnabled);
   };
 
   const handleSaveProfile = async () => {
@@ -128,6 +136,34 @@ export default function SettingsScreen() {
         },
       ]
     );
+  };
+
+  const handleHealthSyncToggle = async (value) => {
+    if (value) {
+      // ヘルスケアの権限をリクエスト
+      const initialized = await initializeHealthKit();
+      if (initialized) {
+        setHealthSync(true);
+        await saveHealthSyncEnabled(true);
+        Alert.alert('成功', 'ヘルスケア連携を有効にしました');
+      } else {
+        Alert.alert('エラー', 'ヘルスケアの権限が取得できませんでした');
+      }
+    } else {
+      setHealthSync(false);
+      await saveHealthSyncEnabled(false);
+      Alert.alert('無効化', 'ヘルスケア連携を無効にしました');
+    }
+  };
+
+  const handleNotificationReminderToggle = async (value) => {
+    if (value) {
+      await scheduleReminderNotification(20, 0); // 20:00にリマインダー
+      Alert.alert('設定完了', '毎日20:00にリマインダー通知を送信します');
+    } else {
+      await cancelReminderNotifications();
+      Alert.alert('無効化', 'リマインダー通知を無効にしました');
+    }
   };
 
   return (
@@ -220,6 +256,38 @@ export default function SettingsScreen() {
           <TouchableOpacity style={styles.saveButton} onPress={handleSaveSettings}>
             <Text style={styles.saveButtonText}>保存</Text>
           </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ヘルスケア連携 */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>❤️ ヘルスケア連携</Text>
+        <View style={styles.card}>
+          <View style={styles.switchRow}>
+            <View>
+              <Text style={styles.inputLabel}>ヘルスケア同期</Text>
+              <Text style={styles.helperText}>Apple Health / Google Fit</Text>
+            </View>
+            <Switch
+              value={healthSync}
+              onValueChange={handleHealthSyncToggle}
+              trackColor={{ false: '#ccc', true: '#4CAF50' }}
+            />
+          </View>
+
+          <View style={styles.menuDivider} />
+
+          <View style={styles.switchRow}>
+            <View>
+              <Text style={styles.inputLabel}>リマインダー通知</Text>
+              <Text style={styles.helperText}>毎日20:00に通知</Text>
+            </View>
+            <Switch
+              value={settings.notifications}
+              onValueChange={handleNotificationReminderToggle}
+              trackColor={{ false: '#ccc', true: '#4CAF50' }}
+            />
+          </View>
         </View>
       </View>
 
@@ -381,5 +449,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
     fontWeight: '500',
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 2,
   },
 });

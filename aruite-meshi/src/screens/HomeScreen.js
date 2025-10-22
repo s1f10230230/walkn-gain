@@ -22,8 +22,16 @@ import {
   getUserProfile,
   getSettings,
   getFavorites,
+  getHealthSyncEnabled,
 } from '../utils/storage';
 import { getFoodById, calculateFoodAmount } from '../data/foodDatabase';
+import { initializeHealthKit, getTodaySteps, saveStepsToHealthKit } from '../utils/healthKit';
+import {
+  requestNotificationPermissions,
+  sendGoalAchievedNotification,
+  sendProgressNotification,
+  setupNotificationListeners,
+} from '../utils/notifications';
 
 const { width } = Dimensions.get('window');
 
@@ -40,7 +48,39 @@ export default function HomeScreen({ navigation }) {
   useEffect(() => {
     loadData();
     setupPedometer();
+    initializeApp();
   }, []);
+
+  const initializeApp = async () => {
+    // 通知の権限をリクエスト
+    await requestNotificationPermissions();
+
+    // 通知リスナーを設定
+    const subscription = setupNotificationListeners((data) => {
+      console.log('通知がタップされました:', data);
+      // 必要に応じて画面遷移などの処理を追加
+    });
+
+    // ヘルスケア連携の初期化
+    const healthSyncEnabled = await getHealthSyncEnabled();
+    if (healthSyncEnabled) {
+      const initialized = await initializeHealthKit();
+      if (initialized) {
+        console.log('ヘルスケア連携が有効化されました');
+        // ヘルスケアから歩数を取得
+        const healthSteps = await getTodaySteps();
+        if (healthSteps > 0) {
+          updateSteps(healthSteps);
+        }
+      }
+    }
+
+    return () => {
+      if (subscription) {
+        subscription.remove();
+      }
+    };
+  };
 
   const loadData = async () => {
     const todayData = await getTodayData();
@@ -85,6 +125,7 @@ export default function HomeScreen({ navigation }) {
   };
 
   const updateSteps = async (newSteps) => {
+    const oldSteps = steps;
     setSteps(newSteps);
     const cal = calculateCalories(newSteps);
     const dist = calculateDistance(newSteps, profile.stride);
@@ -103,6 +144,24 @@ export default function HomeScreen({ navigation }) {
       hourlySteps: [], // TODO: Implement hourly tracking
       goal: goal,
     });
+
+    // 通知の送信
+    const settings = await getSettings();
+    if (settings.notifications) {
+      // 目標達成時の通知
+      if (newSteps >= goal && oldSteps < goal) {
+        await sendGoalAchievedNotification(newSteps, goal);
+      }
+
+      // 進捗通知（50%、80%）
+      await sendProgressNotification(newSteps, goal);
+    }
+
+    // ヘルスケアへの同期
+    const healthSyncEnabled = await getHealthSyncEnabled();
+    if (healthSyncEnabled) {
+      await saveStepsToHealthKit(newSteps);
+    }
   };
 
   const renderFoodCard = (foodId) => {
