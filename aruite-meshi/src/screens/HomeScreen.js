@@ -191,7 +191,7 @@ export default function HomeScreen({ navigation }) {
           size={200}
           progress={progress}
           showsText={false}
-          color="#4CAF50"
+          color="#FF8C42"
           unfilledColor="#E0E0E0"
           borderWidth={0}
           thickness={15}
@@ -208,7 +208,7 @@ export default function HomeScreen({ navigation }) {
           progress={progress}
           width={width - 40}
           height={8}
-          color="#4CAF50"
+          color="#FF8C42"
           unfilledColor="#E0E0E0"
           borderWidth={0}
         />

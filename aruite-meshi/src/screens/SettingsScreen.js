@@ -249,7 +249,7 @@ export default function SettingsScreen() {
               onValueChange={(value) =>
                 setSettings({ ...settings, notifications: value })
               }
-              trackColor={{ false: '#ccc', true: '#4CAF50' }}
+              trackColor={{ false: '#ccc', true: '#FF8C42' }}
             />
           </View>
 
@@ -271,7 +271,7 @@ export default function SettingsScreen() {
             <Switch
               value={healthSync}
               onValueChange={handleHealthSyncToggle}
-              trackColor={{ false: '#ccc', true: '#4CAF50' }}
+              trackColor={{ false: '#ccc', true: '#FF8C42' }}
             />
           </View>
 
@@ -285,7 +285,7 @@ export default function SettingsScreen() {
             <Switch
               value={settings.notifications}
               onValueChange={handleNotificationReminderToggle}
-              trackColor={{ false: '#ccc', true: '#4CAF50' }}
+              trackColor={{ false: '#ccc', true: '#FF8C42' }}
             />
           </View>
         </View>
@@ -403,7 +403,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   saveButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#FF8C42',
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',

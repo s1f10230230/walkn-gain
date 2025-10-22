@@ -80,7 +80,7 @@ export default function HistoryScreen() {
       propsForDots: {
         r: '4',
         strokeWidth: '2',
-        stroke: '#4CAF50',
+        stroke: '#FF8C42',
       },
     };
 
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0F0F0',
   },
   activeTab: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#FF8C42',
   },
   tabText: {
     fontSize: 16,
@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
   },
   foodSummaryText: {
     fontSize: 18,
-    color: '#4CAF50',
+    color: '#FF8C42',
     fontWeight: '600',
   },
   chartContainer: {
@@ -345,7 +345,7 @@ const styles = StyleSheet.create({
   },
   progressBar: {
     height: '100%',
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#FF8C42',
     borderRadius: 4,
   },
 });
