@@ -68,19 +68,25 @@ export default function HistoryScreen() {
     };
 
     const chartConfig = {
-      backgroundColor: '#FFF',
-      backgroundGradientFrom: '#FFF',
-      backgroundGradientTo: '#FFF',
+      backgroundColor: '#FFFFFF',
+      backgroundGradientFrom: '#FFFFFF',
+      backgroundGradientTo: '#FFFFFF',
       decimalPlaces: 0,
-      color: (opacity = 1) => `rgba(76, 175, 80, ${opacity})`,
-      labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+      color: (opacity = 1) => `rgba(255, 112, 67, ${opacity})`, // #FF7043
+      labelColor: (opacity = 1) => `rgba(97, 97, 97, ${opacity})`, // #616161
       style: {
         borderRadius: 16,
       },
       propsForDots: {
-        r: '4',
-        strokeWidth: '2',
-        stroke: '#FF8C42',
+        r: '6',
+        strokeWidth: '3',
+        stroke: '#FFFFFF',
+        fill: '#FF7043',
+      },
+      propsForBackgroundLines: {
+        strokeWidth: 1,
+        stroke: '#E0E0E0',
+        strokeDasharray: '0',
       },
     };
 
@@ -208,11 +214,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0F0F0',
   },
   activeTab: {
-    backgroundColor: '#FF8C42',
+    backgroundColor: '#FF7043',
   },
   tabText: {
     fontSize: 16,
-    color: '#666',
+    color: '#616161',
     fontWeight: '600',
   },
   activeTabText: {
@@ -235,7 +241,7 @@ const styles = StyleSheet.create({
   summaryTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#212121',
     marginBottom: 15,
   },
   summaryRow: {
@@ -249,17 +255,17 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 14,
-    color: '#666',
+    color: '#616161',
     marginBottom: 5,
   },
   summaryValue: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#212121',
   },
   summaryUnit: {
     fontSize: 14,
-    color: '#666',
+    color: '#616161',
     marginTop: 5,
   },
   divider: {
@@ -276,7 +282,7 @@ const styles = StyleSheet.create({
   },
   foodSummaryText: {
     fontSize: 18,
-    color: '#FF8C42',
+    color: '#FF7043',
     fontWeight: '600',
   },
   chartContainer: {
@@ -294,7 +300,7 @@ const styles = StyleSheet.create({
   chartTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#212121',
     marginBottom: 10,
   },
   chart: {
@@ -316,7 +322,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#212121',
     marginBottom: 15,
   },
   dayItem: {
@@ -330,12 +336,12 @@ const styles = StyleSheet.create({
   },
   dayDate: {
     fontSize: 14,
-    color: '#666',
+    color: '#616161',
   },
   daySteps: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: '#212121',
   },
   progressBarContainer: {
     height: 8,
@@ -345,7 +351,7 @@ const styles = StyleSheet.create({
   },
   progressBar: {
     height: '100%',
-    backgroundColor: '#FF8C42',
+    backgroundColor: '#FF7043',
     borderRadius: 4,
   },
 });

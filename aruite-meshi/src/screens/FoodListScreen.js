@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   addButton: {
-    backgroundColor: '#FF8C42',
+    backgroundColor: '#FF7043',
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
@@ -296,7 +296,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#212121',
     marginBottom: 10,
   },
   foodItem: {
@@ -320,12 +320,12 @@ const styles = StyleSheet.create({
   },
   foodName: {
     fontSize: 16,
-    color: '#333',
+    color: '#212121',
     fontWeight: '500',
   },
   foodCalories: {
     fontSize: 14,
-    color: '#666',
+    color: '#616161',
     marginTop: 2,
   },
   favoriteIcon: {
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#212121',
     marginBottom: 20,
     textAlign: 'center',
   },
@@ -388,12 +388,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#E0E0E0',
   },
   cancelButtonText: {
-    color: '#666',
+    color: '#616161',
     fontSize: 16,
     fontWeight: '600',
   },
   saveButton: {
-    backgroundColor: '#FF8C42',
+    backgroundColor: '#FF7043',
   },
   saveButtonText: {
     color: '#FFF',

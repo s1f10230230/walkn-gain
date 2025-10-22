@@ -36,7 +36,7 @@ export const requestNotificationPermissions = async () => {
         name: 'default',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FF8C42',
+        lightColor: '#FF7043',
       });
     }
 

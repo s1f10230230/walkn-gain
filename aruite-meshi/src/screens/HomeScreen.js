@@ -179,40 +179,52 @@ export default function HomeScreen({ navigation }) {
     );
   };
 
+  const isGoalAchieved = progress >= 1.0;
+  const progressColor = isGoalAchieved ? '#00C853' : '#FF7043';
+
   return (
     <ScrollView style={styles.container}>
+      {/* フローティング日付カード */}
       <View style={styles.header}>
-        <Text style={styles.dateText}>{formatDate(getTodayDateString())}</Text>
-      </View>
-
-      {/* 歩数サークル */}
-      <View style={styles.circleContainer}>
-        <Progress.Circle
-          size={200}
-          progress={progress}
-          showsText={false}
-          color="#FF8C42"
-          unfilledColor="#E0E0E0"
-          borderWidth={0}
-          thickness={15}
-        />
-        <View style={styles.circleCenter}>
-          <Text style={styles.stepsText}>{steps.toLocaleString()}</Text>
-          <Text style={styles.stepsLabel}>歩</Text>
+        <View style={styles.dateCard}>
+          <Text style={styles.dateText}>{formatDate(getTodayDateString())}</Text>
         </View>
       </View>
 
-      {/* 進捗バー */}
+      {/* 歩数サークル（リングデザイン） */}
+      <View style={styles.circleContainer}>
+        <View style={styles.circleBackground}>
+          <Progress.Circle
+            size={200}
+            progress={progress}
+            showsText={false}
+            color={progressColor}
+            unfilledColor="#F5F5F5"
+            borderWidth={0}
+            thickness={12}
+          />
+          <View style={styles.circleCenter}>
+            <Text style={styles.stepsText}>{steps.toLocaleString()}</Text>
+            <Text style={styles.stepsLabel}>歩</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* 進捗バー（達成時はグリーン） */}
       <View style={styles.progressContainer}>
         <Progress.Bar
           progress={progress}
           width={width - 40}
-          height={8}
-          color="#FF8C42"
+          height={10}
+          color={progressColor}
           unfilledColor="#E0E0E0"
           borderWidth={0}
+          borderRadius={5}
         />
-        <Text style={styles.progressText}>{Math.round(progress * 100)}%</Text>
+        <Text style={[styles.progressText, isGoalAchieved && styles.achievedText]}>
+          {Math.round(progress * 100)}%
+          {isGoalAchieved && ' 🎉'}
+        </Text>
       </View>
 
       {/* カロリー・距離 */}
@@ -256,10 +268,22 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: 'center',
   },
+  dateCard: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+  },
   dateText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#212121',
+    letterSpacing: 0.5,
   },
   circleContainer: {
     alignItems: 'center',
@@ -267,29 +291,45 @@ const styles = StyleSheet.create({
     marginVertical: 20,
     position: 'relative',
   },
+  circleBackground: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 120,
+    padding: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 8,
+  },
   circleCenter: {
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepsText: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: 52,
+    fontWeight: '800',
+    color: '#212121',
+    letterSpacing: -1,
   },
   stepsLabel: {
-    fontSize: 20,
-    color: '#666',
-    marginTop: 5,
+    fontSize: 18,
+    color: '#616161',
+    marginTop: 4,
+    fontWeight: '600',
   },
   progressContainer: {
     alignItems: 'center',
     marginVertical: 20,
   },
   progressText: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 10,
+    fontSize: 18,
+    color: '#616161',
+    marginTop: 12,
+    fontWeight: '700',
+  },
+  achievedText: {
+    color: '#00C853',
   },
   statsContainer: {
     alignItems: 'center',
@@ -301,7 +341,7 @@ const styles = StyleSheet.create({
   },
   statsText: {
     fontSize: 18,
-    color: '#333',
+    color: '#212121',
     fontWeight: '500',
   },
   foodSection: {
@@ -311,7 +351,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#212121',
     marginLeft: 20,
     marginBottom: 15,
   },
@@ -320,17 +360,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   foodCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 15,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: 20,
-    marginRight: 15,
+    marginRight: 16,
     alignItems: 'center',
     width: 120,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#F5F5F5',
   },
   foodEmoji: {
     fontSize: 40,
@@ -339,11 +381,11 @@ const styles = StyleSheet.create({
   foodAmount: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#212121',
   },
   foodUnit: {
     fontSize: 16,
-    color: '#666',
+    color: '#616161',
     marginTop: 5,
   },
   debugContainer: {

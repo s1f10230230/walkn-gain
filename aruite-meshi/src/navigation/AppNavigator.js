@@ -13,24 +13,33 @@ export default function AppNavigator() {
     <NavigationContainer>
       <Tab.Navigator
         screenOptions={{
-          tabBarActiveTintColor: '#FF8C42',
+          tabBarActiveTintColor: '#FF7043',
           tabBarInactiveTintColor: '#999',
           tabBarStyle: {
             height: 60,
             paddingBottom: 8,
             paddingTop: 8,
+            backgroundColor: '#FFFFFF',
+            borderTopWidth: 1,
+            borderTopColor: '#E0E0E0',
           },
           tabBarLabelStyle: {
             fontSize: 12,
             fontWeight: '600',
           },
           headerStyle: {
-            backgroundColor: '#FF8C42',
+            backgroundColor: '#FFFFFF',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.1,
+            shadowRadius: 3,
+            elevation: 3,
           },
-          headerTintColor: '#FFF',
+          headerTintColor: '#FF7043',
           headerTitleStyle: {
             fontWeight: 'bold',
             fontSize: 20,
+            color: '#FF7043',
           },
         }}
       >

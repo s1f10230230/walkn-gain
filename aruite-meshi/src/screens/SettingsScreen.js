@@ -249,7 +249,7 @@ export default function SettingsScreen() {
               onValueChange={(value) =>
                 setSettings({ ...settings, notifications: value })
               }
-              trackColor={{ false: '#ccc', true: '#FF8C42' }}
+              trackColor={{ false: '#ccc', true: '#FF7043' }}
             />
           </View>
 
@@ -271,7 +271,7 @@ export default function SettingsScreen() {
             <Switch
               value={healthSync}
               onValueChange={handleHealthSyncToggle}
-              trackColor={{ false: '#ccc', true: '#FF8C42' }}
+              trackColor={{ false: '#ccc', true: '#FF7043' }}
             />
           </View>
 
@@ -285,7 +285,7 @@ export default function SettingsScreen() {
             <Switch
               value={settings.notifications}
               onValueChange={handleNotificationReminderToggle}
-              trackColor={{ false: '#ccc', true: '#FF8C42' }}
+              trackColor={{ false: '#ccc', true: '#FF7043' }}
             />
           </View>
         </View>
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#212121',
     marginBottom: 10,
   },
   card: {
@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     fontSize: 16,
-    color: '#333',
+    color: '#212121',
     fontWeight: '500',
   },
   inputContainer: {
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
   },
   inputUnit: {
     fontSize: 16,
-    color: '#666',
+    color: '#616161',
     marginLeft: 8,
     width: 30,
   },
@@ -390,7 +390,9 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   autoButton: {
-    backgroundColor: '#E3F2FD',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#FF7043',
     paddingVertical: 10,
     paddingHorizontal: 15,
     borderRadius: 8,
@@ -398,12 +400,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   autoButtonText: {
-    color: '#1976D2',
+    color: '#FF7043',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   saveButton: {
-    backgroundColor: '#FF8C42',
+    backgroundColor: '#FF7043',
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
@@ -422,7 +424,7 @@ const styles = StyleSheet.create({
   },
   menuText: {
     fontSize: 16,
-    color: '#333',
+    color: '#212121',
   },
   dangerText: {
     color: '#F44336',
@@ -443,11 +445,11 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: 16,
-    color: '#666',
+    color: '#616161',
   },
   infoValue: {
     fontSize: 16,
-    color: '#333',
+    color: '#212121',
     fontWeight: '500',
   },
   helperText: {
