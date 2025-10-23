@@ -9,6 +9,9 @@ const KEYS = {
   USER_PROFILE: 'user_profile',
   USER_SETTINGS: 'user_settings',
   FAVORITES: 'favorites',
+  CUSTOM_FOODS: 'custom_foods',
+  HEALTH_SYNC: 'health_sync_enabled',
+  THEME_MODE: 'theme_mode',  // 'light', 'dark', 'auto'
 };
 
 // デフォルトのユーザープロフィール
@@ -187,5 +190,111 @@ export const exportDataAsCSV = async (dateStrings) => {
   } catch (error) {
     console.error('Error exporting data:', error);
     return null;
+  }
+};
+
+// カスタム食べ物の取得
+export const getCustomFoods = async () => {
+  try {
+    const data = await AsyncStorage.getItem(KEYS.CUSTOM_FOODS);
+    if (data) {
+      return JSON.parse(data);
+    }
+    return [];
+  } catch (error) {
+    console.error('Error getting custom foods:', error);
+    return [];
+  }
+};
+
+// カスタム食べ物の保存
+export const saveCustomFoods = async (customFoods) => {
+  try {
+    await AsyncStorage.setItem(KEYS.CUSTOM_FOODS, JSON.stringify(customFoods));
+    return true;
+  } catch (error) {
+    console.error('Error saving custom foods:', error);
+    return false;
+  }
+};
+
+// カスタム食べ物を追加
+export const addCustomFood = async (food) => {
+  try {
+    const customFoods = await getCustomFoods();
+    const newFood = {
+      ...food,
+      id: `custom_${Date.now()}`,
+      isCustom: true,
+    };
+    customFoods.push(newFood);
+    await saveCustomFoods(customFoods);
+    return newFood;
+  } catch (error) {
+    console.error('Error adding custom food:', error);
+    return null;
+  }
+};
+
+// カスタム食べ物を削除
+export const deleteCustomFood = async (foodId) => {
+  try {
+    const customFoods = await getCustomFoods();
+    const filtered = customFoods.filter(f => f.id !== foodId);
+    await saveCustomFoods(filtered);
+    return true;
+  } catch (error) {
+    console.error('Error deleting custom food:', error);
+    return false;
+  }
+};
+
+// ヘルスケア同期設定の取得
+export const getHealthSyncEnabled = async () => {
+  try {
+    const data = await AsyncStorage.getItem(KEYS.HEALTH_SYNC);
+    if (data) {
+      return JSON.parse(data);
+    }
+    return false;
+  } catch (error) {
+    console.error('Error getting health sync setting:', error);
+    return false;
+  }
+};
+
+// ヘルスケア同期設定の保存
+export const saveHealthSyncEnabled = async (enabled) => {
+  try {
+    await AsyncStorage.setItem(KEYS.HEALTH_SYNC, JSON.stringify(enabled));
+    return true;
+  } catch (error) {
+    console.error('Error saving health sync setting:', error);
+    return false;
+  }
+};
+
+// 🌙 テーマモードの取得
+export const getThemeMode = async () => {
+  try {
+    const data = await AsyncStorage.getItem(KEYS.THEME_MODE);
+    if (data) {
+      return JSON.parse(data);  // 'light', 'dark', 'auto'
+    }
+    return 'auto';  // デフォルトは自動（システム設定に従う）
+  } catch (error) {
+    console.error('Error getting theme mode:', error);
+    return 'auto';
+  }
+};
+
+// 🌙 テーマモードの保存
+export const saveThemeMode = async (mode) => {
+  try {
+    await AsyncStorage.setItem(KEYS.THEME_MODE, JSON.stringify(mode));
+    return true;
+  } catch (error) {
+    console.error('Error saving theme mode:', error);
+    return false;
   }
 };

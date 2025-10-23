@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Dimensions,
 } from 'react-native';
+import { LineChart } from 'react-native-chart-kit';
 import {
   getWeekDates,
   getMonthDates,
@@ -47,6 +48,61 @@ export default function HistoryScreen() {
     setTotalSteps(calculateTotal(stepsList));
     setAverageSteps(calculateAverage(stepsList));
     setTotalCalories(calculateTotal(caloriesList));
+  };
+
+  const renderChart = () => {
+    if (historyData.length === 0) return null;
+
+    const labels = historyData.map(d => d.date.slice(5, 10)); // MM-DD
+    const data = historyData.map(d => d.steps);
+
+    const chartData = {
+      labels: activeTab === 'week' ? labels : labels.filter((_, i) => i % 5 === 0),
+      datasets: [
+        {
+          data: data.length > 0 ? data : [0],
+          color: (opacity = 1) => `rgba(76, 175, 80, ${opacity})`,
+          strokeWidth: 2,
+        },
+      ],
+    };
+
+    const chartConfig = {
+      backgroundColor: '#FFFFFF',
+      backgroundGradientFrom: '#FFFFFF',
+      backgroundGradientTo: '#FFFFFF',
+      decimalPlaces: 0,
+      color: (opacity = 1) => `rgba(255, 112, 67, ${opacity})`, // #FF7043
+      labelColor: (opacity = 1) => `rgba(97, 97, 97, ${opacity})`, // #616161
+      style: {
+        borderRadius: 16,
+      },
+      propsForDots: {
+        r: '6',
+        strokeWidth: '3',
+        stroke: '#FFFFFF',
+        fill: '#FF7043',
+      },
+      propsForBackgroundLines: {
+        strokeWidth: 1,
+        stroke: '#E0E0E0',
+        strokeDasharray: '0',
+      },
+    };
+
+    return (
+      <View style={styles.chartContainer}>
+        <Text style={styles.chartTitle}>歩数推移</Text>
+        <LineChart
+          data={chartData}
+          width={width - 40}
+          height={220}
+          chartConfig={chartConfig}
+          bezier
+          style={styles.chart}
+        />
+      </View>
+    );
   };
 
   const renderDayItem = (dayData, index) => {
@@ -125,6 +181,9 @@ export default function HistoryScreen() {
           </View>
         </View>
 
+        {/* グラフ */}
+        {renderChart()}
+
         {/* 日別データ */}
         <View style={styles.dailyDataContainer}>
           <Text style={styles.sectionTitle}>日別データ</Text>
@@ -155,11 +214,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0F0F0',
   },
   activeTab: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#FF7043',
   },
   tabText: {
     fontSize: 16,
-    color: '#666',
+    color: '#616161',
     fontWeight: '600',
   },
   activeTabText: {
@@ -182,7 +241,7 @@ const styles = StyleSheet.create({
   summaryTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#212121',
     marginBottom: 15,
   },
   summaryRow: {
@@ -196,17 +255,17 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 14,
-    color: '#666',
+    color: '#616161',
     marginBottom: 5,
   },
   summaryValue: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#212121',
   },
   summaryUnit: {
     fontSize: 14,
-    color: '#666',
+    color: '#616161',
     marginTop: 5,
   },
   divider: {
@@ -223,8 +282,30 @@ const styles = StyleSheet.create({
   },
   foodSummaryText: {
     fontSize: 18,
-    color: '#4CAF50',
+    color: '#FF7043',
     fontWeight: '600',
+  },
+  chartContainer: {
+    backgroundColor: '#FFF',
+    marginHorizontal: 20,
+    marginVertical: 15,
+    padding: 15,
+    borderRadius: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  chartTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#212121',
+    marginBottom: 10,
+  },
+  chart: {
+    marginVertical: 8,
+    borderRadius: 16,
   },
   dailyDataContainer: {
     backgroundColor: '#FFF',
@@ -241,7 +322,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#212121',
     marginBottom: 15,
   },
   dayItem: {
@@ -255,12 +336,12 @@ const styles = StyleSheet.create({
   },
   dayDate: {
     fontSize: 14,
-    color: '#666',
+    color: '#616161',
   },
   daySteps: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: '#212121',
   },
   progressBarContainer: {
     height: 8,
@@ -270,7 +351,7 @@ const styles = StyleSheet.create({
   },
   progressBar: {
     height: '100%',
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#FF7043',
     borderRadius: 4,
   },
 });

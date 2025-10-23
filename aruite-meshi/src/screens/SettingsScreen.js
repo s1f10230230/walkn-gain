@@ -16,8 +16,12 @@ import {
   saveSettings,
   exportDataAsCSV,
   clearAllData,
+  getHealthSyncEnabled,
+  saveHealthSyncEnabled,
 } from '../utils/storage';
 import { estimateStrideLength, getMonthDates } from '../utils/calculations';
+import { initializeHealthKit } from '../utils/healthKit';
+import { scheduleReminderNotification, cancelReminderNotifications } from '../utils/notifications';
 
 export default function SettingsScreen() {
   const [profile, setProfile] = useState({
@@ -31,6 +35,7 @@ export default function SettingsScreen() {
     notifications: true,
     unit: 'kcal',
   });
+  const [healthSync, setHealthSync] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -39,6 +44,7 @@ export default function SettingsScreen() {
   const loadSettings = async () => {
     const userProfile = await getUserProfile();
     const userSettings = await getSettings();
+    const healthSyncEnabled = await getHealthSyncEnabled();
 
     setProfile({
       height: String(userProfile.height),
@@ -52,6 +58,8 @@ export default function SettingsScreen() {
       notifications: userSettings.notifications,
       unit: userSettings.unit,
     });
+
+    setHealthSync(healthSyncEnabled);
   };
 
   const handleSaveProfile = async () => {
@@ -128,6 +136,34 @@ export default function SettingsScreen() {
         },
       ]
     );
+  };
+
+  const handleHealthSyncToggle = async (value) => {
+    if (value) {
+      // ヘルスケアの権限をリクエスト
+      const initialized = await initializeHealthKit();
+      if (initialized) {
+        setHealthSync(true);
+        await saveHealthSyncEnabled(true);
+        Alert.alert('成功', 'ヘルスケア連携を有効にしました');
+      } else {
+        Alert.alert('エラー', 'ヘルスケアの権限が取得できませんでした');
+      }
+    } else {
+      setHealthSync(false);
+      await saveHealthSyncEnabled(false);
+      Alert.alert('無効化', 'ヘルスケア連携を無効にしました');
+    }
+  };
+
+  const handleNotificationReminderToggle = async (value) => {
+    if (value) {
+      await scheduleReminderNotification(20, 0); // 20:00にリマインダー
+      Alert.alert('設定完了', '毎日20:00にリマインダー通知を送信します');
+    } else {
+      await cancelReminderNotifications();
+      Alert.alert('無効化', 'リマインダー通知を無効にしました');
+    }
   };
 
   return (
@@ -213,13 +249,46 @@ export default function SettingsScreen() {
               onValueChange={(value) =>
                 setSettings({ ...settings, notifications: value })
               }
-              trackColor={{ false: '#ccc', true: '#4CAF50' }}
+              trackColor={{ false: '#ccc', true: '#FF7043' }}
             />
           </View>
 
           <TouchableOpacity style={styles.saveButton} onPress={handleSaveSettings}>
             <Text style={styles.saveButtonText}>保存</Text>
           </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ヘルスケア連携 */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>❤️ ヘルスケア連携</Text>
+        <View style={styles.card}>
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={styles.inputLabel}>ヘルスケア同期</Text>
+              <Text style={styles.helperText}>Apple Health / Google Fit</Text>
+              <Text style={styles.helperText}>⭐ 歩数・カロリー・距離を高精度で取得</Text>
+            </View>
+            <Switch
+              value={healthSync}
+              onValueChange={handleHealthSyncToggle}
+              trackColor={{ false: '#ccc', true: '#FF7043' }}
+            />
+          </View>
+
+          <View style={styles.menuDivider} />
+
+          <View style={styles.switchRow}>
+            <View>
+              <Text style={styles.inputLabel}>リマインダー通知</Text>
+              <Text style={styles.helperText}>毎日20:00に通知</Text>
+            </View>
+            <Switch
+              value={settings.notifications}
+              onValueChange={handleNotificationReminderToggle}
+              trackColor={{ false: '#ccc', true: '#FF7043' }}
+            />
+          </View>
         </View>
       </View>
 
@@ -238,6 +307,46 @@ export default function SettingsScreen() {
             <Text style={[styles.menuText, styles.dangerText]}>データ削除</Text>
             <Text style={styles.menuArrow}>›</Text>
           </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* 🔍 計算式の透明化 */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>🔬 計算式</Text>
+        <View style={styles.card}>
+          <View style={styles.formulaSection}>
+            <Text style={styles.formulaTitle}>消費カロリー</Text>
+            <Text style={styles.formulaText}>歩数 × 0.05 kcal</Text>
+            <Text style={styles.formulaDescription}>
+              ※ 体重65kgの平均値。より正確な計算は「ヘルスケア同期」をONにしてください。
+            </Text>
+          </View>
+
+          <View style={styles.menuDivider} />
+
+          <View style={styles.formulaSection}>
+            <Text style={styles.formulaTitle}>歩行距離</Text>
+            <Text style={styles.formulaText}>歩数 × 歩幅（cm）÷ 100,000 = km</Text>
+            <Text style={styles.formulaDescription}>
+              ※ 歩幅はプロフィールから変更可能。
+            </Text>
+          </View>
+
+          <View style={styles.menuDivider} />
+
+          <View style={styles.formulaSection}>
+            <Text style={styles.formulaTitle}>歩幅の推定</Text>
+            <Text style={styles.formulaText}>身長（cm）× 0.45 = 歩幅（cm）</Text>
+            <Text style={styles.formulaDescription}>
+              ※ 一般的な推定式。実際の歩幅と異なる場合は手動で調整してください。
+            </Text>
+          </View>
+
+          <View style={styles.formulaNote}>
+            <Text style={styles.formulaNoteText}>
+              💡 これらの計算式は一般的な推定値です。より高精度なデータが必要な場合は、ヘルスケア同期を有効にすることをお勧めします。
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -271,7 +380,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#212121',
     marginBottom: 10,
   },
   card: {
@@ -292,7 +401,7 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     fontSize: 16,
-    color: '#333',
+    color: '#212121',
     fontWeight: '500',
   },
   inputContainer: {
@@ -311,7 +420,7 @@ const styles = StyleSheet.create({
   },
   inputUnit: {
     fontSize: 16,
-    color: '#666',
+    color: '#616161',
     marginLeft: 8,
     width: 30,
   },
@@ -322,7 +431,9 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   autoButton: {
-    backgroundColor: '#E3F2FD',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#FF7043',
     paddingVertical: 10,
     paddingHorizontal: 15,
     borderRadius: 8,
@@ -330,12 +441,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   autoButtonText: {
-    color: '#1976D2',
+    color: '#FF7043',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   saveButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#FF7043',
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
@@ -354,7 +465,7 @@ const styles = StyleSheet.create({
   },
   menuText: {
     fontSize: 16,
-    color: '#333',
+    color: '#212121',
   },
   dangerText: {
     color: '#F44336',
@@ -375,11 +486,54 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: 16,
-    color: '#666',
+    color: '#616161',
   },
   infoValue: {
     fontSize: 16,
-    color: '#333',
+    color: '#212121',
     fontWeight: '500',
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 2,
+  },
+  // 🔍 計算式セクションのスタイル
+  formulaSection: {
+    paddingVertical: 15,
+  },
+  formulaTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#212121',
+    marginBottom: 8,
+  },
+  formulaText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FF7043',
+    fontFamily: 'monospace',
+    marginBottom: 8,
+    backgroundColor: '#FFF3E0',
+    padding: 10,
+    borderRadius: 8,
+  },
+  formulaDescription: {
+    fontSize: 13,
+    color: '#757575',
+    lineHeight: 18,
+  },
+  formulaNote: {
+    marginTop: 15,
+    padding: 15,
+    backgroundColor: '#E3F2FD',
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2196F3',
+  },
+  formulaNoteText: {
+    fontSize: 13,
+    color: '#1976D2',
+    lineHeight: 20,
   },
 });
