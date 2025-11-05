@@ -2,7 +2,8 @@
 import { Platform, Alert, AppState, NativeModules } from 'react-native';
 import GoogleFit from 'react-native-google-fit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getSettings } from './storage';
+import { getSettings, getUserProfile, getDailyData, saveDailyData } from './storage';
+import { calculateCalories, calculateDistance } from './calculations';
 import { sendGoalAchievedNotification, sendImmediateNotification, getEncouragementMessage } from './notifications';
 
 // HealthKit Constantsをハードコード（ライブラリのインポートエラーを回避）
@@ -1012,6 +1013,11 @@ export const importHistoricalData = async (daysBack = 30, onProgress = null) => 
     const errors = [];
     let importedCount = 0;
 
+    const settings = await getSettings();
+    const profile = await getUserProfile();
+    const weight = profile?.weight || 65;
+    const stride = profile?.stride || 72;
+
     for (let i = 0; i < historicalSteps.length; i++) {
       const dayData = historicalSteps[i];
 
@@ -1021,39 +1027,30 @@ export const importHistoricalData = async (daysBack = 30, onProgress = null) => 
           onProgress(i + 1, historicalSteps.length);
         }
 
-        // 既存データを確認（上書きしない）
-        const existingData = await AsyncStorage.getItem(`walkingData_${dayData.date}`);
-
-        if (existingData) {
-          const parsed = JSON.parse(existingData);
-          // 既存データがある場合、HealthKitのデータの方が多い場合のみ更新
-          if (parsed.steps && parsed.steps >= dayData.steps) {
-            console.log(`${dayData.date}: 既存データを保持（${parsed.steps} >= ${dayData.steps}）`);
-            continue;
-          }
+        // 既存データを確認（既存の保存形式を使用）
+        const existing = await getDailyData(dayData.date);
+        if (existing && typeof existing.steps === 'number' && existing.steps >= (dayData.steps || 0)) {
+          console.log(`${dayData.date}: 既存データを保持（${existing.steps} >= ${dayData.steps}）`);
+          continue;
         }
 
-        // カロリーと距離を推定（profile情報から）
-        const profile = await getUserProfile();
-        const weight = profile?.weight || 65;
-        const stride = profile?.stride || 72;
+        // 既存形式に合わせて計算（kcal / km）
+        const steps = Number(dayData.steps || 0);
+        const calories = Math.round(calculateCalories(steps, weight));
+        const distance = calculateDistance(steps, stride); // km
 
-        // 簡易計算
-        const calories = Math.round(dayData.steps * weight * 0.0007);
-        const distance = (dayData.steps * stride) / 100; // cm -> m
-
-        // データを保存
         const dataToSave = {
+          ...(existing || {}),
           date: dayData.date,
-          steps: dayData.steps,
-          calories: calories,
-          distance: distance,
-          goal: 10000, // デフォルト目標
+          steps,
+          calories,
+          distance,
+          goal: settings?.dailyGoal || 10000,
           importedFromHealthKit: true,
           importedAt: new Date().toISOString(),
         };
 
-        await AsyncStorage.setItem(`walkingData_${dayData.date}`, JSON.stringify(dataToSave));
+        await saveDailyData(dayData.date, dataToSave);
         importedCount++;
 
         console.log(`${dayData.date}: ${dayData.steps}歩をインポート`);

@@ -62,7 +62,7 @@ import {
 } from '../utils/notifications';
 import { saveReminderEnabled } from '../utils/storage';
 import { logEvent } from '../utils/analytics';
-import { getStepsHybrid, startStepsBackgroundUpdates } from '../utils/healthKit';
+import { getStepsHybrid, startStepsBackgroundUpdates, isHistoricalImportCompleted, importHistoricalData } from '../utils/healthKit';
 import { CalendarIcon } from '../components/SettingsIcons';
 import { getEventsForDate, getEventsSummary } from '../utils/calendar';
 import TodayNote from '../components/TodayNote';
@@ -893,6 +893,17 @@ export default function HomeScreen({ navigation, route }) {
       if (enabled) {
         console.log('🔔 HealthKit背景更新を開始（通知用）');
         await startStepsBackgroundUpdates();
+
+        // まだ一度も取り込んでいなければ、過去30日をインポート（サイレント）
+        try {
+          const done = await isHistoricalImportCompleted();
+          if (!done) {
+            console.log('📥 過去データ（30日）をインポート開始');
+            await importHistoricalData(30);
+          }
+        } catch (e) {
+          console.warn('過去データの自動インポートに失敗（続行）', e);
+        }
       }
     } catch (e) {
       console.warn('背景歩数更新の開始に失敗（オプショナル）', e);

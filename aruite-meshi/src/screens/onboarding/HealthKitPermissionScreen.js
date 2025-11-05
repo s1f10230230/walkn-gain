@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../../i18n/I18nProvider';
-import { initializeHealthKit } from '../../utils/healthKit';
+import { initializeHealthKit, importHistoricalData } from '../../utils/healthKit';
 import { saveHealthSyncEnabled, saveOnboardingComplete } from '../../utils/storage';
 import { useColorScheme } from 'react-native';
 import { getTheme } from '../../utils/theme';
@@ -100,7 +100,14 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
 
       if (success) {
         await saveHealthSyncEnabled(true);
-        Alert.alert('✅ 成功', 'HealthKit連携に成功しました！\n\n' + debugInfo);
+        // 過去30日をインポート（失敗しても続行）
+        try {
+          const result = await importHistoricalData(30);
+          const msg = result?.success
+            ? `過去${result.totalDays ?? 30}日中 ${result.importedDays ?? 0}日をインポートしました。`
+            : '過去データのインポートに失敗しました';
+          Alert.alert('✅ 連携完了', `${msg}`);
+        } catch (_) {}
         navigateToCalorieGoal();
       } else {
         Alert.alert(
