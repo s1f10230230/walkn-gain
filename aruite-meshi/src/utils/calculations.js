@@ -1,15 +1,40 @@
 // 歩数からカロリー、距離などを計算するユーティリティ
 
-// 歩数からカロリーを計算（平均的な計算式）
-export const calculateCalories = (steps) => {
-  // 1歩あたり約0.05kcal（体重65kg前後の平均）
-  return steps * 0.05;
+// 基礎代謝量（BMR）を計算（Mifflin-St Jeor式）
+export const calculateBMR = (weightKg, heightCm, age, gender) => {
+  if (gender === 'male') {
+    // 男性: BMR = 88.36 + (13.4 × 体重) + (4.8 × 身長) - (5.7 × 年齢)
+    return 88.36 + (13.4 * weightKg) + (4.8 * heightCm) - (5.7 * age);
+  } else {
+    // 女性: BMR = 447.6 + (9.25 × 体重) + (3.10 × 身長) - (4.33 × 年齢)
+    return 447.6 + (9.25 * weightKg) + (3.1 * heightCm) - (4.33 * age);
+  }
 };
 
-// 体重を考慮したカロリー計算
+// 歩行による消費カロリーを計算（MET法）
+export const calculateWalkingCalories = (steps, weightKg) => {
+  // 平均歩行速度: 約80歩/分
+  const stepsPerMinute = 80;
+  const timeInHours = steps / (stepsPerMinute * 60);
+
+  // 普通の歩行: 3.3 METs
+  const MET = 3.3;
+
+  // 消費カロリー = MET × 体重[kg] × 時間[h] × 1.05
+  const calories = MET * weightKg * timeInHours * 1.05;
+
+  return calories;
+};
+
+// 歩数からカロリーを計算（簡易版・体重考慮）
+export const calculateCalories = (steps, weightKg = 65) => {
+  // MET法を簡略化: 体重[kg] × 歩数 × 0.00055
+  return steps * weightKg * 0.00055;
+};
+
+// 体重を考慮したカロリー計算（レガシー・互換性のため残す）
 export const calculateCaloriesWithWeight = (steps, weightKg) => {
-  // 体重1kgあたり約0.0008kcal/歩
-  return steps * 0.0008 * weightKg;
+  return calculateCalories(steps, weightKg);
 };
 
 // 歩幅から距離を計算（km）

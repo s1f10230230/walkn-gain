@@ -7,6 +7,18 @@ import {
   TouchableOpacity,
   Dimensions,
 } from 'react-native';
+import { useColorScheme } from 'react-native';
+
+// Haptics のインポート（利用可能な場合のみ）
+let Haptics;
+try {
+  Haptics = require('expo-haptics');
+} catch (e) {
+  console.log('expo-haptics not available');
+}
+
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pedometer } from 'expo-sensors';
 import { LineChart } from 'react-native-chart-kit';
 import {
   getWeekDates,
@@ -15,84 +27,178 @@ import {
   calculateTotal,
   formatDate,
   getDayOfWeek,
+  calculateCalories,
 } from '../utils/calculations';
-import { getMultipleDaysData, getSettings } from '../utils/storage';
+import { getStepsHybrid } from '../utils/healthKit';
+import { getMultipleDaysData, getSettings, getUserProfile } from '../utils/storage';
 import { calculateFoodAmount, getFoodById } from '../data/foodDatabase';
+import { useI18n } from '../i18n/I18nProvider';
+import { getTheme } from '../utils/theme';
+import { logEvent } from '../utils/analytics';
+import HistoryDayItem from '../components/HistoryDayItem';
 
 const { width } = Dimensions.get('window');
 
-export default function HistoryScreen() {
+export default function HistoryScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
+  const { t, formatNumber, getWeekdayShort } = useI18n();
+  const colorScheme = useColorScheme();
+  const theme = getTheme(colorScheme);
   const [activeTab, setActiveTab] = useState('week'); // 'week' or 'month'
   const [historyData, setHistoryData] = useState([]);
   const [totalSteps, setTotalSteps] = useState(0);
   const [averageSteps, setAverageSteps] = useState(0);
   const [totalCalories, setTotalCalories] = useState(0);
   const [defaultFood, setDefaultFood] = useState('ramen');
+  const [pointTip, setPointTip] = useState({ visible: false, x: 0, y: 0, value: 0 });
+  const tipTimerRef = React.useRef(null);
+
+  const changeTab = (newTab) => {
+    if (Haptics?.impactAsync) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    }
+    setActiveTab(newTab);
+  };
 
   useEffect(() => {
     loadHistoryData();
+    // analytics: range viewed
+    try {
+      logEvent('history_viewed', { range: activeTab === 'week' ? '7d' : '30d' });
+    } catch (_) {}
   }, [activeTab]);
 
   const loadHistoryData = async () => {
     const settings = await getSettings();
+    const userProfile = await getUserProfile();
     setDefaultFood(settings.defaultFood);
 
     const dates = activeTab === 'week' ? getWeekDates() : getMonthDates();
-    const data = await getMultipleDaysData(dates);
 
-    setHistoryData(data);
+    // HealthKitから実際のデータを取得（30日以上対応）
+    try {
+      const data = [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-    const stepsList = data.map(d => d.steps);
-    const caloriesList = data.map(d => d.calories);
+      for (const dateStr of dates) {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const date = new Date(year, month - 1, day);
 
-    setTotalSteps(calculateTotal(stepsList));
-    setAverageSteps(calculateAverage(stepsList));
-    setTotalCalories(calculateTotal(caloriesList));
+        // 未来の日付はスキップ
+        if (date > today) {
+          continue;
+        }
+
+        // その日の開始と終了時刻
+        const start = new Date(date);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(date);
+        end.setHours(23, 59, 59, 999);
+
+        // 今日の場合は現在時刻まで
+        if (date.toDateString() === today.toDateString()) {
+          end.setTime(Date.now());
+        }
+
+        try {
+          // HealthKitを優先、失敗時はPedometerにフォールバック（30日以上対応）
+          const result = await getStepsHybrid(start, end);
+          const steps = result.steps || 0;
+          const calories = calculateCalories(steps, userProfile.weight);
+
+          data.push({
+            date: dateStr,
+            steps: steps,
+            calories: calories,
+            distance: 0,
+            goal: settings.dailyGoal,
+          });
+        } catch (error) {
+          console.error(`Failed to get steps for ${dateStr}:`, error);
+          // エラー時は0データを追加
+          data.push({
+            date: dateStr,
+            steps: 0,
+            calories: 0,
+            distance: 0,
+            goal: settings.dailyGoal,
+          });
+        }
+      }
+
+      setHistoryData(data);
+
+      const stepsList = data.map(d => d.steps);
+      const caloriesList = data.map(d => d.calories);
+
+      setTotalSteps(calculateTotal(stepsList));
+      setAverageSteps(calculateAverage(stepsList));
+      setTotalCalories(calculateTotal(caloriesList));
+    } catch (error) {
+      console.error('Error loading history data:', error);
+      // エラー時はストレージからデータを取得
+      const data = await getMultipleDaysData(dates);
+      setHistoryData(data);
+      const stepsList = data.map(d => d.steps);
+      const caloriesList = data.map(d => d.calories);
+      setTotalSteps(calculateTotal(stepsList));
+      setAverageSteps(calculateAverage(stepsList));
+      setTotalCalories(calculateTotal(caloriesList));
+    }
   };
 
   const renderChart = () => {
     if (historyData.length === 0) return null;
 
-    const labels = historyData.map(d => d.date.slice(5, 10)); // MM-DD
+    const labels = historyData.map(d => d.date.slice(5)); // MM-DD
     const data = historyData.map(d => d.steps);
 
+    // 月表示の場合は、表示するラベルを間引く（グラフはすべてのデータポイントを保持）
+    const displayLabels = activeTab === 'week'
+      ? labels
+      : labels.map((label, i) => i % 5 === 0 ? label : '');
+
     const chartData = {
-      labels: activeTab === 'week' ? labels : labels.filter((_, i) => i % 5 === 0),
+      labels: displayLabels,
       datasets: [
         {
           data: data.length > 0 ? data : [0],
-          color: (opacity = 1) => `rgba(76, 175, 80, ${opacity})`,
-          strokeWidth: 2,
+          color: (opacity = 1) => `rgba(0, 191, 165, ${opacity})`, // #00BFA5 アクセントカラー
+          strokeWidth: 3, // 線を太く
         },
       ],
     };
 
     const chartConfig = {
-      backgroundColor: '#FFFFFF',
-      backgroundGradientFrom: '#FFFFFF',
-      backgroundGradientTo: '#FFFFFF',
+      backgroundColor: theme.card,
+      backgroundGradientFrom: theme.card,
+      backgroundGradientTo: theme.card,
       decimalPlaces: 0,
-      color: (opacity = 1) => `rgba(255, 112, 67, ${opacity})`, // #FF7043
-      labelColor: (opacity = 1) => `rgba(97, 97, 97, ${opacity})`, // #616161
+      color: (opacity = 1) => `rgba(0, 191, 165, ${opacity})`,
+      labelColor: (opacity = 1) => theme.textSecondary,
       style: {
         borderRadius: 16,
       },
       propsForDots: {
-        r: '6',
-        strokeWidth: '3',
-        stroke: '#FFFFFF',
-        fill: '#FF7043',
+        r: 6,
+        strokeWidth: 3,
+        stroke: theme.card,
+        fill: '#00BFA5',
       },
       propsForBackgroundLines: {
         strokeWidth: 1,
-        stroke: '#E0E0E0',
-        strokeDasharray: '0',
+        stroke: theme.border,
+        strokeDasharray: 0,
+      },
+      propsForLabels: {
+        fontSize: 10,
       },
     };
 
     return (
-      <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>歩数推移</Text>
+      <View style={[styles.chartContainer, { position: 'relative', backgroundColor: theme.card }] }>
+        <Text style={[styles.chartTitle, { color: theme.text }]}>{t('history.chart.stepsTrend')}</Text>
         <LineChart
           data={chartData}
           width={width - 40}
@@ -100,27 +206,55 @@ export default function HistoryScreen() {
           chartConfig={chartConfig}
           bezier
           style={styles.chart}
+          withInnerLines={true}
+          withOuterLines={true}
+          withVerticalLines={false}
+          withHorizontalLines={true}
+          fromZero={true}
+          onDataPointClick={({ value, x, y }) => {
+            try { if (tipTimerRef.current) clearTimeout(tipTimerRef.current); } catch (_) {}
+            setPointTip({ visible: true, x, y, value });
+            tipTimerRef.current = setTimeout(() => setPointTip({ visible: false, x: 0, y: 0, value: 0 }), 1800);
+          }}
         />
+        {pointTip.visible && (
+          <View
+            pointerEvents="none"
+            style={[
+              styles.chartTooltip,
+              {
+                left: Math.max(6, Math.min((width - 40) - 66, pointTip.x - 30)),
+                top: Math.max(6, Math.min(220 - 34, pointTip.y - 30)),
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+              }
+            ]}
+          >
+            <Text style={[styles.chartTooltipText, { color: theme.text }]}>{formatNumber(Math.round(pointTip.value))} {t('units.steps')}</Text>
+          </View>
+        )}
       </View>
     );
   };
 
   const renderDayItem = (dayData, index) => {
-    const progressPercentage = Math.min((dayData.steps / dayData.goal) * 100, 100);
-    const barWidth = (width - 100) * (progressPercentage / 100);
-
     return (
-      <View key={index} style={styles.dayItem}>
-        <View style={styles.dayHeader}>
-          <Text style={styles.dayDate}>
-            {dayData.date.slice(5)} ({getDayOfWeek(dayData.date)})
-          </Text>
-          <Text style={styles.daySteps}>{dayData.steps.toLocaleString()}</Text>
-        </View>
-        <View style={styles.progressBarContainer}>
-          <View style={[styles.progressBar, { width: barWidth }]} />
-        </View>
-      </View>
+      <HistoryDayItem
+        key={index}
+        dayData={dayData}
+        getWeekdayShort={getWeekdayShort}
+        formatNumber={formatNumber}
+        onDatePress={(date) => {
+          // わずかなディレイを入れて、タップ感を提供
+          setTimeout(() => {
+            // HomeStackのHomeMainに遷移し、日付パラメータを渡す
+            navigation.navigate('Home', {
+              screen: 'HomeMain',
+              params: { selectedDate: date },
+            });
+          }, 120);
+        }}
+      />
     );
   };
 
@@ -131,52 +265,71 @@ export default function HistoryScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/* タブ切り替え */}
-      <View style={styles.tabContainer}>
+      <View style={[styles.tabContainer, { paddingTop: insets.top + 10, backgroundColor: theme.background }]}>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'week' && styles.activeTab]}
-          onPress={() => setActiveTab('week')}
+          style={[styles.tab, activeTab === 'week' && styles.activeTab, { backgroundColor: theme.card, borderColor: activeTab === 'week' ? theme.primary : 'transparent' }]}
+          onPress={() => changeTab('week')}
         >
-          <Text style={[styles.tabText, activeTab === 'week' && styles.activeTabText]}>
-            週
+          <Text style={[styles.tabText, { color: activeTab === 'week' ? theme.primary : theme.textSecondary }]}>
+            {t('history.tabs.week')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'month' && styles.activeTab]}
-          onPress={() => setActiveTab('month')}
+          style={[styles.tab, activeTab === 'month' && styles.activeTab, { backgroundColor: theme.card, borderColor: activeTab === 'month' ? theme.accent : 'transparent' }]}
+          onPress={() => changeTab('month')}
         >
-          <Text style={[styles.tabText, activeTab === 'month' && styles.activeTabText]}>
-            月
+          <Text style={[styles.tabText, { color: activeTab === 'month' ? theme.accent : theme.textSecondary }]}>
+            {t('history.tabs.month')}
           </Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollView}>
+      <View style={styles.contentContainer}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
+        >
         {/* サマリー */}
-        <View style={styles.summaryContainer}>
-          <Text style={styles.summaryTitle}>
-            {activeTab === 'week' ? '週間' : '月間'}サマリー
+        <View style={[styles.summaryContainer, { backgroundColor: theme.card }]}>
+          <Text style={[styles.summaryTitle, { color: theme.text }]}>
+            {activeTab === 'week' ? t('history.summary.titleWeek') : t('history.summary.titleMonth')}
           </Text>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>合計</Text>
-              <Text style={styles.summaryValue}>{totalSteps.toLocaleString()}</Text>
-              <Text style={styles.summaryUnit}>歩</Text>
+              <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>{t('history.summary.totalSteps')}</Text>
+              <Text style={[styles.summaryValue, { color: theme.text }]}>{formatNumber(totalSteps)}</Text>
+              <Text style={[styles.summaryUnit, { color: theme.textSecondary }]}>{t('units.steps')}</Text>
             </View>
             <View style={styles.summaryItem}>
               <View style={styles.divider} />
             </View>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>平均</Text>
-              <Text style={styles.summaryValue}>{averageSteps.toLocaleString()}</Text>
-              <Text style={styles.summaryUnit}>歩/日</Text>
+              <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>{t('history.summary.averageSteps')}</Text>
+              <Text style={[styles.summaryValue, { color: theme.text }]}>{formatNumber(averageSteps)}</Text>
+              <Text style={[styles.summaryUnit, { color: theme.textSecondary }]}>{t('history.unit.stepsPerDay')}</Text>
+            </View>
+          </View>
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryItem}>
+              <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>{t('history.summary.totalCalories')}</Text>
+              <Text style={[styles.summaryValue, { color: theme.text }]}>{formatNumber(Math.round(totalCalories))}</Text>
+              <Text style={[styles.summaryUnit, { color: theme.accent, fontWeight: '600' }]}>{t('units.kcal')}</Text>
             </View>
           </View>
           <View style={styles.foodSummary}>
-            <Text style={styles.foodSummaryText}>
-              {getFoodById(defaultFood)?.emoji} {getFoodAmountForPeriod()}{' '}
-              {getFoodById(defaultFood)?.unit}分
+            <Text style={[styles.foodSummaryText, { color: theme.primary }]}>
+              {(() => {
+                const food = getFoodById(defaultFood);
+                if (!food) return '';
+                const unitKey = `food.items.${food.id}.unit`;
+                const tUnit = t(unitKey);
+                const displayUnit = tUnit === unitKey ? food.unit : tUnit;
+                const amount = getFoodAmountForPeriod();
+                const suffix = t('food.amountSuffix') || '分';
+                return `${food.emoji} ${amount} ${displayUnit}${suffix}`;
+              })()}
             </Text>
           </View>
         </View>
@@ -185,11 +338,12 @@ export default function HistoryScreen() {
         {renderChart()}
 
         {/* 日別データ */}
-        <View style={styles.dailyDataContainer}>
-          <Text style={styles.sectionTitle}>日別データ</Text>
+        <View style={[styles.dailyDataContainer, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('history.section.dailyData')}</Text>
           {historyData.map((dayData, index) => renderDayItem(dayData, index))}
         </View>
       </ScrollView>
+      </View>
     </View>
   );
 }
@@ -197,11 +351,11 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: 'transparent',
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#FFF',
+    backgroundColor: 'transparent',
     paddingVertical: 10,
     paddingHorizontal: 20,
     justifyContent: 'center',
@@ -223,6 +377,9 @@ const styles = StyleSheet.create({
   },
   activeTabText: {
     color: '#FFF',
+  },
+  contentContainer: {
+    flex: 1,
   },
   scrollView: {
     flex: 1,
@@ -307,6 +464,20 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     borderRadius: 16,
   },
+  chartTooltip: {
+    position: 'absolute',
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  chartTooltipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#212121',
+  },
   dailyDataContainer: {
     backgroundColor: '#FFF',
     marginHorizontal: 20,
@@ -324,34 +495,5 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#212121',
     marginBottom: 15,
-  },
-  dayItem: {
-    marginBottom: 15,
-  },
-  dayHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  dayDate: {
-    fontSize: 14,
-    color: '#616161',
-  },
-  daySteps: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#212121',
-  },
-  progressBarContainer: {
-    height: 8,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: '#FF7043',
-    borderRadius: 4,
   },
 });

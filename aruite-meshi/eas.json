@@ -1,14 +1,17 @@
 {
   "cli": {
-    "version": ">= 5.9.0"
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "channel": "development"
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "ios": {
         "simulator": true
       },
@@ -17,20 +20,22 @@
       }
     },
     "production": {
+      "distribution": "store",
+      "channel": "production",
+      "prebuildCommand": "npx expo prebuild --clean --platform ios",
       "ios": {
-        "buildType": "archive"
+        "autoIncrement": "buildNumber"
       },
       "android": {
-        "buildType": "aab"
+        "buildType": "app-bundle"
       }
     }
   },
   "submit": {
     "production": {
       "ios": {
-        "appleId": "your-apple-id@example.com",
-        "ascAppId": "1234567890",
-        "appleTeamId": "ABCDE12345"
+        "ascAppId": "6754546680",
+        "appleTeamId": "2SC58Q33M4"
       },
       "android": {
         "serviceAccountKeyPath": "./google-service-account.json",

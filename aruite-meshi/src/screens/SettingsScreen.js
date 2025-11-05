@@ -8,22 +8,44 @@ import {
   Switch,
   TouchableOpacity,
   Alert,
+  Modal,
 } from 'react-native';
+import { useColorScheme } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CommonActions } from '@react-navigation/native';
+import { useI18n } from '../i18n/I18nProvider';
 import {
   getUserProfile,
   saveUserProfile,
   getSettings,
   saveSettings,
-  exportDataAsCSV,
   clearAllData,
   getHealthSyncEnabled,
   saveHealthSyncEnabled,
+  saveOnboardingComplete,
+  getReminderEnabled,
+  saveReminderEnabled,
 } from '../utils/storage';
-import { estimateStrideLength, getMonthDates } from '../utils/calculations';
-import { initializeHealthKit } from '../utils/healthKit';
+import { estimateStrideLength } from '../utils/calculations';
+import { initializeHealthKit, startStepsBackgroundUpdates, stopStepsBackgroundUpdates, checkHealthKitPermissions, diagnoseHealthKit } from '../utils/healthKit';
 import { scheduleReminderNotification, cancelReminderNotifications } from '../utils/notifications';
+import { UserIcon, TargetIcon, HeartIcon, BoxIcon, PenIcon, InfoIcon } from '../components/SettingsIcons';
+import { logEvent } from '../utils/analytics';
+import { getTheme } from '../utils/theme';
 
-export default function SettingsScreen() {
+export default function SettingsScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
+  const { t, setLocale } = useI18n();
+  const colorScheme = useColorScheme();
+  const theme = getTheme(colorScheme);
+
+  // "true" / "false" などの文字列も正しい boolean に正規化
+  const toBoolean = (v) => {
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'string') return v.toLowerCase() === 'true';
+    return !!v;
+  };
+
   const [profile, setProfile] = useState({
     height: '170',
     weight: '65',
@@ -34,8 +56,12 @@ export default function SettingsScreen() {
     defaultFood: 'ramen',
     notifications: true,
     unit: 'kcal',
+    goalCalories: '500',
+    language: 'auto',
   });
   const [healthSync, setHealthSync] = useState(false);
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  // 位置情報・都市選択はオプトイン外に（非表示）
 
   useEffect(() => {
     loadSettings();
@@ -45,6 +71,7 @@ export default function SettingsScreen() {
     const userProfile = await getUserProfile();
     const userSettings = await getSettings();
     const healthSyncEnabled = await getHealthSyncEnabled();
+    const reminder = await getReminderEnabled();
 
     setProfile({
       height: String(userProfile.height),
@@ -55,11 +82,15 @@ export default function SettingsScreen() {
     setSettings({
       dailyGoal: String(userSettings.dailyGoal),
       defaultFood: userSettings.defaultFood,
-      notifications: userSettings.notifications,
+      notifications: toBoolean(userSettings.notifications),
       unit: userSettings.unit,
+      goalCalories: String(userSettings.goalCalories ?? '500'),
+      language: userSettings.language ?? 'auto',
     });
 
-    setHealthSync(healthSyncEnabled);
+    setHealthSync(toBoolean(healthSyncEnabled));
+    setReminderEnabled(toBoolean(reminder));
+    // 位置情報関連は読み込まない（非表示）
   };
 
   const handleSaveProfile = async () => {
@@ -71,9 +102,9 @@ export default function SettingsScreen() {
 
     const success = await saveUserProfile(profileData);
     if (success) {
-      Alert.alert('保存完了', 'プロフィールを保存しました');
+      Alert.alert(t('common.success'), t('settings.alerts.profileSaved'));
     } else {
-      Alert.alert('エラー', '保存に失敗しました');
+      Alert.alert(t('common.error'), t('settings.alerts.saveError'));
     }
   };
 
@@ -83,54 +114,82 @@ export default function SettingsScreen() {
       defaultFood: settings.defaultFood,
       notifications: settings.notifications,
       unit: settings.unit,
+      goalCalories: parseInt(settings.goalCalories) || 500,
+      language: settings.language || 'auto',
     };
 
     const success = await saveSettings(settingsData);
     if (success) {
-      Alert.alert('保存完了', '設定を保存しました');
+      Alert.alert(t('common.success'), t('settings.alerts.settingsSaved'));
+      try { logEvent('settings_changed', { field: 'daily_goal' }); } catch (_) {}
     } else {
-      Alert.alert('エラー', '保存に失敗しました');
+      Alert.alert(t('common.error'), t('settings.alerts.saveError'));
     }
+  };
+
+  const handleChangeLanguage = async (lang) => {
+    const next = { ...settings, language: lang };
+    setSettings(next);
+    const payload = {
+      dailyGoal: parseInt(next.dailyGoal) || 10000,
+      defaultFood: next.defaultFood,
+      notifications: !!next.notifications,
+      unit: next.unit,
+      goalCalories: parseInt(next.goalCalories) || 500,
+      language: lang,
+    };
+    const ok = await saveSettings(payload);
+    if (ok) {
+      setLocale(lang);
+      try { logEvent('settings_changed', { field: 'language' }); } catch (_) {}
+    } else {
+      Alert.alert(t('common.error'), t('settings.alerts.languageSaveError'));
+    }
+  };
+
+  // 通知トグルを自動保存に統一
+  const handleAppNotificationsToggle = async (value) => {
+    const next = { ...settings, notifications: value };
+    setSettings(next);
+    const payload = {
+      dailyGoal: parseInt(next.dailyGoal) || 10000,
+      defaultFood: next.defaultFood,
+      notifications: value,
+      unit: next.unit,
+      goalCalories: parseInt(next.goalCalories) || 500,
+    };
+    const ok = await saveSettings(payload);
+    if (!ok) {
+      Alert.alert(t('common.error'), t('settings.alerts.notificationsSaveError'));
+    }
+    try { logEvent('settings_changed', { field: 'notifications' }); } catch (_) {}
   };
 
   const handleAutoCalculateStride = () => {
     const height = parseInt(profile.height) || 170;
     const calculatedStride = Math.round(estimateStrideLength(height));
     setProfile({ ...profile, stride: String(calculatedStride) });
-    Alert.alert('自動計算', `歩幅を${calculatedStride}cmに設定しました`);
+    Alert.alert(t('settings.alerts.autoStrideTitle'), t('settings.alerts.autoStrideMessage', { stride: calculatedStride }));
   };
 
-  const handleExportData = async () => {
-    const dates = getMonthDates();
-    const csv = await exportDataAsCSV(dates);
-
-    if (csv) {
-      Alert.alert(
-        'データエクスポート',
-        '過去30日分のデータ:\n\n' + csv.substring(0, 200) + '...',
-        [{ text: 'OK' }]
-      );
-    } else {
-      Alert.alert('エラー', 'データのエクスポートに失敗しました');
-    }
-  };
+  // CSVエクスポートは削除
 
   const handleClearData = () => {
     Alert.alert(
-      'データ削除',
-      'すべてのデータを削除しますか？この操作は取り消せません。',
+      t('settings.alerts.clearTitle'),
+      t('settings.alerts.clearConfirm'),
       [
-        { text: 'キャンセル', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: '削除',
+          text: t('settings.data.clear'),
           style: 'destructive',
           onPress: async () => {
             const success = await clearAllData();
             if (success) {
-              Alert.alert('完了', 'すべてのデータを削除しました');
+              Alert.alert(t('settings.alerts.clearDoneTitle'), t('settings.alerts.clearDoneMessage'));
               loadSettings();
             } else {
-              Alert.alert('エラー', '削除に失敗しました');
+              Alert.alert(t('common.error'), t('settings.alerts.clearFail'));
             }
           },
         },
@@ -140,230 +199,350 @@ export default function SettingsScreen() {
 
   const handleHealthSyncToggle = async (value) => {
     if (value) {
+      console.log('🔵 [SettingsScreen] HealthKit連携トグルON');
       // ヘルスケアの権限をリクエスト
+      console.log('🔵 [SettingsScreen] initializeHealthKit() を呼び出します...');
       const initialized = await initializeHealthKit();
+      console.log('🔵 [SettingsScreen] initializeHealthKit() の結果:', initialized);
       if (initialized) {
         setHealthSync(true);
         await saveHealthSyncEnabled(true);
-        Alert.alert('成功', 'ヘルスケア連携を有効にしました');
+        // 背景更新を開始
+        await startStepsBackgroundUpdates();
+        console.log('✅ [SettingsScreen] HealthKit連携成功');
+        Alert.alert(t('settings.alerts.healthEnabledTitle'), t('settings.alerts.healthEnabledMessage'));
       } else {
-        Alert.alert('エラー', 'ヘルスケアの権限が取得できませんでした');
+        console.log('❌ [SettingsScreen] HealthKit連携失敗');
+        Alert.alert(t('common.error'), t('settings.alerts.healthPermissionFail'));
       }
     } else {
+      console.log('🔵 [SettingsScreen] HealthKit連携トグルOFF');
       setHealthSync(false);
       await saveHealthSyncEnabled(false);
-      Alert.alert('無効化', 'ヘルスケア連携を無効にしました');
+      // 背景更新を停止
+      await stopStepsBackgroundUpdates();
+      Alert.alert(t('settings.alerts.healthDisabledTitle'), t('settings.alerts.healthDisabledMessage'));
     }
+    try { logEvent('settings_changed', { field: 'health_sync' }); } catch (_) {}
+  };
+
+  const handleResetOnboarding = () => {
+    Alert.alert(
+      t('settings.alerts.obResetTitle'),
+      t('settings.alerts.obResetMessage'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('settings.alerts.obResetConfirm'),
+          style: 'destructive',
+          onPress: async () => {
+            await saveOnboardingComplete(false);
+            const parent = navigation.getParent?.() || navigation;
+            parent.dispatch(
+              CommonActions.reset({ index: 0, routes: [{ name: 'Onboarding' }] })
+            );
+          },
+        },
+      ]
+    );
   };
 
   const handleNotificationReminderToggle = async (value) => {
+    setReminderEnabled(value);
+    await saveReminderEnabled(value);
     if (value) {
-      await scheduleReminderNotification(20, 0); // 20:00にリマインダー
-      Alert.alert('設定完了', '毎日20:00にリマインダー通知を送信します');
+      await scheduleReminderNotification(20, 30);
+      Alert.alert(t('settings.alerts.reminderSetTitle'), t('settings.alerts.reminderSetMessage'));
     } else {
       await cancelReminderNotifications();
-      Alert.alert('無効化', 'リマインダー通知を無効にしました');
+      Alert.alert(t('settings.alerts.reminderDisabledTitle'), t('settings.alerts.reminderDisabledMessage'));
     }
+    try { logEvent('settings_changed', { field: 'reminder' }); } catch (_) {}
   };
 
+  // HealthKit デバッグ：権限状態をチェック
+  const handleCheckHealthKitStatus = () => {
+    checkHealthKitPermissions();
+    Alert.alert(
+      'HealthKit 権限状態確認',
+      'コンソールログを確認してください。\n\n0 = Not Determined（未決定）\n1 = Sharing Denied（拒否）\n2 = Sharing Authorized（許可済み）'
+    );
+  };
+
+  // 提出用: HealthKit診断機能は非表示
+
+  // 都市選択ハンドラは削除
+
+  // 位置情報トグルは削除
+
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: theme.background }]}
+      contentContainerStyle={{ paddingTop: insets.top + 20, paddingBottom: 100 + insets.bottom }}
+    >
       {/* 基本情報 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>👤 基本情報</Text>
-        <View style={styles.card}>
+        <View style={styles.sectionTitleContainer}>
+          <UserIcon size={20} color={theme.accent} />
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settings.sections.basicInfo')}</Text>
+        </View>
+        <View style={[styles.card, { backgroundColor: theme.card }] }>
           <View style={styles.inputRow}>
-            <Text style={styles.inputLabel}>身長</Text>
+            <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.fields.height')}</Text>
             <View style={styles.inputContainer}>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { borderColor: theme.border, color: theme.text }]}
                 value={profile.height}
                 onChangeText={(text) => setProfile({ ...profile, height: text })}
                 keyboardType="numeric"
                 placeholder="170"
               />
-              <Text style={styles.inputUnit}>cm</Text>
+              <Text style={[styles.inputUnit, { color: theme.textSecondary }]}>{t('units.cm')}</Text>
             </View>
           </View>
 
           <View style={styles.inputRow}>
-            <Text style={styles.inputLabel}>体重</Text>
+            <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.fields.weight')}</Text>
             <View style={styles.inputContainer}>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { borderColor: theme.border, color: theme.text }]}
                 value={profile.weight}
                 onChangeText={(text) => setProfile({ ...profile, weight: text })}
                 keyboardType="numeric"
                 placeholder="65"
               />
-              <Text style={styles.inputUnit}>kg</Text>
+              <Text style={[styles.inputUnit, { color: theme.textSecondary }]}>{t('units.kg')}</Text>
             </View>
           </View>
 
           <View style={styles.inputRow}>
-            <Text style={styles.inputLabel}>歩幅</Text>
+            <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.fields.stride')}</Text>
             <View style={styles.inputContainer}>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { borderColor: theme.border, color: theme.text }]}
                 value={profile.stride}
                 onChangeText={(text) => setProfile({ ...profile, stride: text })}
                 keyboardType="numeric"
                 placeholder="72"
               />
-              <Text style={styles.inputUnit}>cm</Text>
+              <Text style={styles.inputUnit}>{t('units.cm')}</Text>
             </View>
           </View>
 
           <TouchableOpacity style={styles.autoButton} onPress={handleAutoCalculateStride}>
-            <Text style={styles.autoButtonText}>身長から自動計算</Text>
+            <Text style={styles.autoButtonText}>{t('settings.buttons.autoCalcStride')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.saveButton} onPress={handleSaveProfile}>
-            <Text style={styles.saveButtonText}>保存</Text>
+            <Text style={styles.saveButtonText}>{t('settings.buttons.save')}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {/* 目標設定 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>🎯 目標設定</Text>
-        <View style={styles.card}>
+        <View style={styles.sectionTitleContainer}>
+          <TargetIcon size={20} color={theme.accent} />
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settings.sections.goal')}</Text>
+        </View>
+        <View style={[styles.card, { backgroundColor: theme.card }] }>
           <View style={styles.inputRow}>
-            <Text style={styles.inputLabel}>1日の目標</Text>
+            <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.fields.dailyGoal')}</Text>
             <View style={styles.inputContainer}>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { borderColor: theme.border, color: theme.text }]}
                 value={settings.dailyGoal}
                 onChangeText={(text) => setSettings({ ...settings, dailyGoal: text })}
                 keyboardType="numeric"
                 placeholder="10000"
               />
-              <Text style={styles.inputUnit}>歩</Text>
+              <Text style={[styles.inputUnit, { color: theme.textSecondary }]}>{t('units.steps')}</Text>
+            </View>
+          </View>
+
+          <View style={styles.inputRow}>
+            <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.fields.goalCalories')}</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={[styles.input, { borderColor: theme.border, color: theme.text }]}
+                value={settings.goalCalories}
+                onChangeText={(text) => setSettings({ ...settings, goalCalories: text })}
+                keyboardType="numeric"
+                placeholder="500"
+              />
+              <Text style={[styles.inputUnit, { color: theme.textSecondary }]}>{t('units.kcal')}</Text>
             </View>
           </View>
 
           <View style={styles.switchRow}>
-            <Text style={styles.inputLabel}>通知</Text>
+            <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.fields.notifications')}</Text>
             <Switch
-              value={settings.notifications}
-              onValueChange={(value) =>
-                setSettings({ ...settings, notifications: value })
-              }
-              trackColor={{ false: '#ccc', true: '#FF7043' }}
+              value={toBoolean(settings.notifications)}
+              onValueChange={handleAppNotificationsToggle}
+              trackColor={{ false: '#ccc', true: theme.accent }}
             />
           </View>
 
           <TouchableOpacity style={styles.saveButton} onPress={handleSaveSettings}>
-            <Text style={styles.saveButtonText}>保存</Text>
+            <Text style={styles.saveButtonText}>{t('settings.buttons.save')}</Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* 言語設定 */}
+      <View style={styles.section}>
+        <View style={styles.sectionTitleContainer}>
+          <PenIcon size={20} />
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settings.language')}</Text>
+        </View>
+        <View style={[styles.card, { backgroundColor: theme.card }] }>
+          <View style={styles.languageRow}>
+            <TouchableOpacity
+              style={[styles.langButton, settings.language === 'auto' && styles.langActive]}
+              onPress={() => handleChangeLanguage('auto')}
+            >
+              <Text style={[styles.langText, settings.language === 'auto' && styles.langActiveText]}>
+                {t('settings.languageAuto')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.langButton, settings.language === 'ja' && styles.langActive]}
+              onPress={() => handleChangeLanguage('ja')}
+            >
+              <Text style={[styles.langText, settings.language === 'ja' && styles.langActiveText]}>
+                {t('settings.languageJa')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.langButton, settings.language === 'en' && styles.langActive]}
+              onPress={() => handleChangeLanguage('en')}
+            >
+              <Text style={[styles.langText, settings.language === 'en' && styles.langActiveText]}>
+                {t('settings.languageEn')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.langButton, settings.language === 'zh-Hans' && styles.langActive]}
+              onPress={() => handleChangeLanguage('zh-Hans')}
+            >
+              <Text style={[styles.langText, settings.language === 'zh-Hans' && styles.langActiveText]}>
+                {t('settings.languageZhHans')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.helperText, { color: theme.textSecondary }] }>
+            {t('settings.helpers.languageHelper')}
+          </Text>
+        </View>
+      </View>
+
+      {/* 位置情報・都市選択は非表示 */}
 
       {/* ヘルスケア連携 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>❤️ ヘルスケア連携</Text>
-        <View style={styles.card}>
+        <View style={styles.sectionTitleContainer}>
+          <HeartIcon size={20} color={theme.accent} />
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settings.sections.health')}</Text>
+        </View>
+        <View style={[styles.card, { backgroundColor: theme.card }] }>
           <View style={styles.switchRow}>
             <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={styles.inputLabel}>ヘルスケア同期</Text>
-              <Text style={styles.helperText}>Apple Health / Google Fit</Text>
-              <Text style={styles.helperText}>⭐ 歩数・カロリー・距離を高精度で取得</Text>
+              <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.fields.healthSync')}</Text>
+              <Text style={[styles.helperText, { color: theme.textSecondary }]}>{t('settings.helpers.healthPlatforms')}</Text>
+              <Text style={[styles.helperText, { color: theme.textSecondary }]}>{t('settings.helpers.healthSyncStar')}</Text>
             </View>
             <Switch
-              value={healthSync}
+              value={toBoolean(healthSync)}
               onValueChange={handleHealthSyncToggle}
-              trackColor={{ false: '#ccc', true: '#FF7043' }}
+              trackColor={{ false: '#ccc', true: theme.accent }}
             />
           </View>
 
-          <View style={styles.menuDivider} />
+          <View style={[styles.menuDivider, { backgroundColor: theme.border }]} />
 
           <View style={styles.switchRow}>
             <View>
-              <Text style={styles.inputLabel}>リマインダー通知</Text>
-              <Text style={styles.helperText}>毎日20:00に通知</Text>
+              <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.fields.reminder')}</Text>
+              <Text style={[styles.helperText, { color: theme.textSecondary }]}>{t('settings.helpers.reminderDaily')}</Text>
             </View>
             <Switch
-              value={settings.notifications}
+              value={toBoolean(reminderEnabled)}
               onValueChange={handleNotificationReminderToggle}
-              trackColor={{ false: '#ccc', true: '#FF7043' }}
+              trackColor={{ false: '#ccc', true: theme.accent }}
             />
           </View>
+
+          {/* 提出用: デバッグボタンは非表示 */}
         </View>
       </View>
 
-      {/* その他 */}
+      {/* 提出用: データ削除・オンボーディングリセットは非表示 */}
+
+      {/* 計算式の透明化 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>💡 その他</Text>
-        <View style={styles.card}>
-          <TouchableOpacity style={styles.menuItem} onPress={handleExportData}>
-            <Text style={styles.menuText}>データ書き出し</Text>
-            <Text style={styles.menuArrow}>›</Text>
-          </TouchableOpacity>
-
-          <View style={styles.menuDivider} />
-
-          <TouchableOpacity style={styles.menuItem} onPress={handleClearData}>
-            <Text style={[styles.menuText, styles.dangerText]}>データ削除</Text>
-            <Text style={styles.menuArrow}>›</Text>
-          </TouchableOpacity>
+        <View style={styles.sectionTitleContainer}>
+          <PenIcon size={20} color={theme.accent} />
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settings.sections.formulas')}</Text>
         </View>
-      </View>
-
-      {/* 🔍 計算式の透明化 */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>🔬 計算式</Text>
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: theme.card }] }>
           <View style={styles.formulaSection}>
-            <Text style={styles.formulaTitle}>消費カロリー</Text>
-            <Text style={styles.formulaText}>歩数 × 0.05 kcal</Text>
-            <Text style={styles.formulaDescription}>
-              ※ 体重65kgの平均値。より正確な計算は「ヘルスケア同期」をONにしてください。
+            <Text style={[styles.formulaTitle, { color: theme.text }]}>{t('settings.formulas.walkingCalories.title')}</Text>
+            <Text style={[styles.formulaText, { color: theme.text, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }]}>{t('settings.formulas.walkingCalories.formula')}</Text>
+            <Text style={[styles.formulaDescription, { color: theme.textSecondary }]}>
+              {t('settings.formulas.walkingCalories.desc')}
             </Text>
+          </View>
+
+          <View style={[styles.menuDivider, { backgroundColor: theme.border }]} />
+
+          <View style={styles.formulaSection}>
+            <Text style={[styles.formulaTitle, { color: theme.text }]}>{t('settings.formulas.distance.title')}</Text>
+            <Text style={[styles.formulaText, { color: theme.text, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }]}>{t('settings.formulas.distance.formula')}</Text>
+            <Text style={[styles.formulaDescription, { color: theme.textSecondary }]}>{t('settings.formulas.distance.note')}</Text>
           </View>
 
           <View style={styles.menuDivider} />
 
           <View style={styles.formulaSection}>
-            <Text style={styles.formulaTitle}>歩行距離</Text>
-            <Text style={styles.formulaText}>歩数 × 歩幅（cm）÷ 100,000 = km</Text>
-            <Text style={styles.formulaDescription}>
-              ※ 歩幅はプロフィールから変更可能。
-            </Text>
+            <Text style={[styles.formulaTitle, { color: theme.text }]}>{t('settings.formulas.stride.title')}</Text>
+            <Text style={[styles.formulaText, { color: theme.text, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }]}>{t('settings.formulas.stride.formula')}</Text>
+            <Text style={[styles.formulaDescription, { color: theme.textSecondary }]}>{t('settings.formulas.stride.note')}</Text>
           </View>
 
-          <View style={styles.menuDivider} />
-
-          <View style={styles.formulaSection}>
-            <Text style={styles.formulaTitle}>歩幅の推定</Text>
-            <Text style={styles.formulaText}>身長（cm）× 0.45 = 歩幅（cm）</Text>
-            <Text style={styles.formulaDescription}>
-              ※ 一般的な推定式。実際の歩幅と異なる場合は手動で調整してください。
-            </Text>
-          </View>
-
-          <View style={styles.formulaNote}>
-            <Text style={styles.formulaNoteText}>
-              💡 これらの計算式は一般的な推定値です。より高精度なデータが必要な場合は、ヘルスケア同期を有効にすることをお勧めします。
-            </Text>
+          <View style={[styles.formulaNote, { backgroundColor: theme.card, borderLeftColor: theme.accent }]}>
+            <Text style={[styles.formulaNoteText, { color: theme.textSecondary }]}>{t('settings.formulas.caution')}</Text>
           </View>
         </View>
       </View>
 
       {/* アプリについて */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>ℹ️ アプリについて</Text>
-        <View style={styles.card}>
+        <View style={styles.sectionTitleContainer}>
+          <InfoIcon size={20} color={theme.accent} />
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settings.sections.about')}</Text>
+        </View>
+        <View style={[styles.card, { backgroundColor: theme.card }] }>
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>アプリ名</Text>
-            <Text style={styles.infoValue}>歩いてメシ</Text>
+            <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>{t('settings.about.appNameLabel')}</Text>
+            <Text style={[styles.infoValue, { color: theme.text }]}>Walk'n Gain</Text>
           </View>
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>バージョン</Text>
-            <Text style={styles.infoValue}>1.0.0</Text>
+            <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>{t('settings.about.version')}</Text>
+            <Text style={[styles.infoValue, { color: theme.text }]}>1.0.0</Text>
           </View>
+
+          <View style={[styles.menuDivider, { backgroundColor: theme.border }]} />
+
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => navigation.navigate('PrivacyPolicy')}
+          >
+            <Text style={[styles.menuText, { color: theme.text }]}>{t('settings.privacyPolicy')}</Text>
+            <Text style={[styles.menuArrow, { color: theme.textSecondary }]}>›</Text>
+          </TouchableOpacity>
         </View>
       </View>
+      {/* 都市選択モーダルは非表示 */}
     </ScrollView>
   );
 }
@@ -377,11 +556,16 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginHorizontal: 20,
   },
+  sectionTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#212121',
-    marginBottom: 10,
   },
   card: {
     backgroundColor: '#FFF',
@@ -457,6 +641,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  languageRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  langButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#F0F0F0',
+  },
+  langActive: {
+    backgroundColor: '#FF7043',
+  },
+  langText: {
+    fontSize: 14,
+    color: '#616161',
+    fontWeight: '600',
+  },
+  langActiveText: {
+    color: '#FFFFFF',
+  },
   menuItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -498,6 +705,21 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 2,
   },
+  debugButton: {
+    backgroundColor: '#E3F2FD',
+    borderWidth: 1,
+    borderColor: '#2196F3',
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  debugButtonText: {
+    color: '#1976D2',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   // 🔍 計算式セクションのスタイル
   formulaSection: {
     paddingVertical: 15,
@@ -535,5 +757,66 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#1976D2',
     lineHeight: 20,
+  },
+  // 都市選択スタイル
+  cityButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    marginTop: 8,
+  },
+  cityButtonText: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '600',
+  },
+  cityButtonArrow: {
+    fontSize: 12,
+    color: '#999',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  modalClose: {
+    fontSize: 24,
+    fontWeight: '300',
+  },
+  cityList: {
+    maxHeight: 400,
+  },
+  cityItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  cityItemText: {
+    fontSize: 16,
   },
 });

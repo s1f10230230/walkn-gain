@@ -6,6 +6,11 @@
 
 このリポジトリには「歩いてメシ」という React Native Expo アプリが含まれています。歩数やカロリーを日常的な食べ物に換算して表示することで、運動の成果を直感的に理解できます。
 
+補助資料（MVP仕様・設計案）
+- docs/wireframes.md
+- analytics/events.schema.json
+- design/share_template_spec.md
+
 ## クイックスタート
 
 ```bash
