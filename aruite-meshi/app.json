@@ -23,7 +23,6 @@
         }
       ]
     ],
-    "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.walkngain.app",
       "supportsTablet": true,
