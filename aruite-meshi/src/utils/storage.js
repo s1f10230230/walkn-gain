@@ -12,6 +12,7 @@ const KEYS = {
   FAVORITES: 'favorites',
   CUSTOM_FOODS: 'custom_foods',
   HEALTH_SYNC: 'health_sync_enabled',
+  REMINDER_ENABLED: 'reminder_enabled',
   THEME_MODE: 'theme_mode',  // 'light', 'dark', 'auto'
   ONBOARDING_COMPLETE: 'onboarding_complete',
   USER_CITY: 'user_city',  // ユーザーが選択した都市ID
@@ -247,6 +248,31 @@ export const saveFavorites = async (favorites) => {
     return true;
   } catch (error) {
     console.error('Error saving favorites:', error);
+    return false;
+  }
+};
+
+// リマインダー通知 有効状態の取得
+export const getReminderEnabled = async () => {
+  try {
+    const data = await AsyncStorage.getItem(KEYS.REMINDER_ENABLED);
+    if (data) {
+      return toBoolean(JSON.parse(data));
+    }
+    return false;
+  } catch (error) {
+    console.error('Error getting reminder enabled:', error);
+    return false;
+  }
+};
+
+// リマインダー通知 有効状態の保存
+export const saveReminderEnabled = async (enabled) => {
+  try {
+    await AsyncStorage.setItem(KEYS.REMINDER_ENABLED, JSON.stringify(toBoolean(enabled)));
+    return true;
+  } catch (error) {
+    console.error('Error saving reminder enabled:', error);
     return false;
   }
 };

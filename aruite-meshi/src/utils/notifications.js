@@ -8,6 +8,7 @@ import { getTodayDateString } from './calculations';
 
 // 内部的に使用するストレージキー（機能は変えずに内部の安定性を向上）
 const STORAGE_KEYS = {
+  DAILY_REMINDER_ID: 'notifications_daily_reminder_id',
   PROGRESS_STATE: 'notifications_progress_state', // { date: 'YYYY-MM-DD', count: number, lastTs: number }
 };
 
@@ -195,7 +196,70 @@ export const sendMilestoneNotification = async (steps) => {
   }
 };
 
-// リマインダー通知機能は廃止（進捗通知に一本化）
+/**
+ * リマインダー通知をスケジュール
+ * @param {number} hour 時間（0-23）
+ * @param {number} minute 分（0-59）
+ */
+export const scheduleReminderNotification = async (hour = 20, minute = 30) => {
+  try {
+    // 既存のリマインダーをキャンセル
+    await cancelReminderNotifications();
+
+    // 毎日指定時刻に通知
+    const trigger = {
+      hour,
+      minute,
+      repeats: true,
+    };
+
+    const title = await tAsync('notifications.reminder.title');
+    const body = await tAsync('notifications.reminder.body');
+
+    const identifier = await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data: { type: 'reminder' },
+        sound: true,
+      },
+      trigger,
+    });
+
+    // 後で確実にキャンセルできるようにIDを保存
+    await AsyncStorage.setItem(STORAGE_KEYS.DAILY_REMINDER_ID, identifier);
+
+    console.log(`リマインダー通知を設定しました: ${hour}:${minute}`);
+  } catch (error) {
+    console.error('リマインダー通知の設定エラー:', error);
+  }
+};
+
+/**
+ * リマインダー通知をキャンセル
+ */
+export const cancelReminderNotifications = async () => {
+  try {
+    // まず保存済みのIDがあればそれをキャンセル
+    const savedId = await AsyncStorage.getItem(STORAGE_KEYS.DAILY_REMINDER_ID);
+    if (savedId) {
+      await Notifications.cancelScheduledNotificationAsync(savedId);
+      await AsyncStorage.removeItem(STORAGE_KEYS.DAILY_REMINDER_ID);
+      return;
+    }
+
+    // フォールバック: すべてのスケジュールを確認し、data.type === 'reminder' をキャンセル
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    for (const n of scheduled) {
+      const isReminder = n?.content?.data?.type === 'reminder';
+      if (isReminder && n?.identifier) {
+        await Notifications.cancelScheduledNotificationAsync(n.identifier);
+      }
+    }
+  } catch (error) {
+    console.error('リマインダー通知のキャンセルエラー:', error);
+  }
+};
 
 /**
  * すべての通知をキャンセル
