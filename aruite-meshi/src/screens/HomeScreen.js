@@ -59,9 +59,7 @@ import {
   canSendProgressNotification,
   markProgressNotificationSent,
   updatePersistentWidget,
-  scheduleReminderNotification,
 } from '../utils/notifications';
-import { saveReminderEnabled } from '../utils/storage';
 import { logEvent } from '../utils/analytics';
 import { getStepsHybrid, startStepsBackgroundUpdates, isHistoricalImportCompleted, importHistoricalData } from '../utils/healthKit';
 import { CalendarIcon } from '../components/SettingsIcons';
@@ -894,15 +892,7 @@ export default function HomeScreen({ navigation, route }) {
 
   const initializeApp = async () => {
     // 通知の権限をリクエスト
-    const granted = await requestNotificationPermissions();
-    if (granted) {
-      try {
-        await scheduleReminderNotification(20, 30);
-        await saveReminderEnabled(true);
-      } catch (e) {
-        console.warn('Reminder auto-enable failed:', e);
-      }
-    }
+    await requestNotificationPermissions();
 
     // 通知リスナーを設定
     const subscription = setupNotificationListeners((data) => {

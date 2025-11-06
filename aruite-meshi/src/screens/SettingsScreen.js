@@ -23,12 +23,9 @@ import {
   getHealthSyncEnabled,
   saveHealthSyncEnabled,
   saveOnboardingComplete,
-  getReminderEnabled,
-  saveReminderEnabled,
 } from '../utils/storage';
 import { estimateStrideLength } from '../utils/calculations';
 import { initializeHealthKit, startStepsBackgroundUpdates, stopStepsBackgroundUpdates, checkHealthKitPermissions, diagnoseHealthKit, isHistoricalImportCompleted, importHistoricalData } from '../utils/healthKit';
-import { scheduleReminderNotification, cancelReminderNotifications } from '../utils/notifications';
 import { UserIcon, TargetIcon, HeartIcon, BoxIcon, PenIcon, InfoIcon } from '../components/SettingsIcons';
 import { logEvent } from '../utils/analytics';
 import { getTheme } from '../utils/theme';
@@ -60,7 +57,6 @@ export default function SettingsScreen({ navigation }) {
     language: 'auto',
   });
   const [healthSync, setHealthSync] = useState(false);
-  const [reminderEnabled, setReminderEnabled] = useState(false);
   // 位置情報・都市選択はオプトイン外に（非表示）
 
   useEffect(() => {
@@ -71,7 +67,6 @@ export default function SettingsScreen({ navigation }) {
     const userProfile = await getUserProfile();
     const userSettings = await getSettings();
     const healthSyncEnabled = await getHealthSyncEnabled();
-    const reminder = await getReminderEnabled();
 
     setProfile({
       height: String(userProfile.height),
@@ -89,7 +84,6 @@ export default function SettingsScreen({ navigation }) {
     });
 
     setHealthSync(toBoolean(healthSyncEnabled));
-    setReminderEnabled(toBoolean(reminder));
     // 位置情報関連は読み込まない（非表示）
   };
 
@@ -263,19 +257,6 @@ export default function SettingsScreen({ navigation }) {
         },
       ]
     );
-  };
-
-  const handleNotificationReminderToggle = async (value) => {
-    setReminderEnabled(value);
-    await saveReminderEnabled(value);
-    if (value) {
-      await scheduleReminderNotification(20, 30);
-      Alert.alert(t('settings.alerts.reminderSetTitle'), t('settings.alerts.reminderSetMessage'));
-    } else {
-      await cancelReminderNotifications();
-      Alert.alert(t('settings.alerts.reminderDisabledTitle'), t('settings.alerts.reminderDisabledMessage'));
-    }
-    try { logEvent('settings_changed', { field: 'reminder' }); } catch (_) {}
   };
 
   // HealthKit デバッグ：権限状態をチェック
@@ -472,20 +453,6 @@ export default function SettingsScreen({ navigation }) {
             <Switch
               value={toBoolean(healthSync)}
               onValueChange={handleHealthSyncToggle}
-              trackColor={{ false: '#ccc', true: theme.accent }}
-            />
-          </View>
-
-          <View style={[styles.menuDivider, { backgroundColor: theme.border }]} />
-
-          <View style={styles.switchRow}>
-            <View>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.fields.reminder')}</Text>
-              <Text style={[styles.helperText, { color: theme.textSecondary }]}>{t('settings.helpers.reminderDaily')}</Text>
-            </View>
-            <Switch
-              value={toBoolean(reminderEnabled)}
-              onValueChange={handleNotificationReminderToggle}
               trackColor={{ false: '#ccc', true: theme.accent }}
             />
           </View>
