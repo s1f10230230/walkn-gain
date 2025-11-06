@@ -855,25 +855,57 @@ export const getStepsHybrid = async (startDate = null, endDate = null) => {
   // まずHealthKitを試す
   try {
     if (Platform.OS === 'ios' && AppleHealthKit) {
-      const steps = await new Promise((resolve) => {
-        const options = {
-          date: endDate.toISOString(),
-          includeManuallyAdded: true,
-        };
+      // 同日かどうかをチェック
+      const isSameDay = startDate.toDateString() === endDate.toDateString();
 
-        AppleHealthKit.getStepCount(options, (error, results) => {
-          if (error) {
-            console.log('HealthKit歩数取得失敗、Pedometerにフォールバック:', error);
-            resolve(null);
-            return;
-          }
-          resolve(results?.value || 0);
+      if (isSameDay) {
+        // 同日の場合は getStepCount で高速取得
+        const steps = await new Promise((resolve) => {
+          const options = {
+            date: endDate.toISOString(),
+            includeManuallyAdded: true,
+          };
+
+          AppleHealthKit.getStepCount(options, (error, results) => {
+            if (error) {
+              console.log('HealthKit歩数取得失敗、Pedometerにフォールバック:', error);
+              resolve(null);
+              return;
+            }
+            resolve(results?.value || 0);
+          });
         });
-      });
 
-      if (steps !== null) {
-        console.log('✓ HealthKitから歩数取得:', steps);
-        return { steps, source: 'healthkit' };
+        if (steps !== null) {
+          console.log('✓ HealthKitから歩数取得 (当日):', steps);
+          return { steps, source: 'healthkit' };
+        }
+      } else {
+        // 範囲指定の場合は getDailyStepCountSamples で取得
+        const stepsData = await new Promise((resolve) => {
+          const options = {
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+            period: 1440, // 1日 = 1440分
+            includeManuallyAdded: true,
+          };
+
+          AppleHealthKit.getDailyStepCountSamples(options, (error, results) => {
+            if (error) {
+              console.log('HealthKit期間歩数取得失敗、Pedometerにフォールバック:', error);
+              resolve(null);
+              return;
+            }
+            // 全日の合計を計算
+            const total = results.reduce((sum, day) => sum + (day.value || 0), 0);
+            resolve(total);
+          });
+        });
+
+        if (stepsData !== null) {
+          console.log('✓ HealthKitから歩数取得 (期間):', stepsData);
+          return { steps: stepsData, source: 'healthkit' };
+        }
       }
     } else if (Platform.OS === 'android' && GoogleFit) {
       const s = new Date(startDate);
@@ -893,8 +925,9 @@ export const getStepsHybrid = async (startDate = null, endDate = null) => {
         ) || result[0];
 
         if (src.steps && src.steps.length > 0) {
-          const sTime = s.setHours(0, 0, 0, 0);
-          const eTime = e.setHours(23, 59, 59, 999);
+          // setHours は元のDateオブジェクトを変更するため、新しいDateインスタンスを作成
+          const sTime = new Date(s).setHours(0, 0, 0, 0);
+          const eTime = new Date(e).setHours(23, 59, 59, 999);
           const toTime = (item) => {
             // item.date or item.startDate/endDate depending on library version
             const d = item.date || item.endDate || item.startDate;
