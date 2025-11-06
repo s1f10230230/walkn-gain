@@ -5,8 +5,7 @@ import { AppState, Animated, Image, View, useColorScheme } from 'react-native';
 import RootNavigator from './src/navigation/RootNavigator';
 import { I18nProvider } from './src/i18n/I18nProvider';
 import { initAnalytics, logEvent } from './src/utils/analytics';
-import { initializeHealthKit } from './src/utils/healthKit';
-import { registerBackgroundStepsTask } from './src/tasks/backgroundStepsTask';
+// HealthKitの初期化はオンボーディング/設定で行う
 import { getTheme } from './src/utils/theme';
 
 // React Native Screensを完全に無効化
@@ -35,33 +34,7 @@ export default function App() {
     });
   }, []);
 
-  // 起動時に HealthKit を初期化（オプトインで権限リクエストするため、ここでは初期化のみ）
-  useEffect(() => {
-    console.log('🔵 [App.js] HealthKit初期化を試みます（静的初期化）');
-    initializeHealthKit()
-      .then((success) => {
-        if (success) {
-          console.log('✅ [App.js] HealthKit初期化成功（アプリ起動時）');
-          // HealthKit初期化成功後、バックグラウンドタスクを登録
-          registerBackgroundStepsTask()
-            .then((registered) => {
-              if (registered) {
-                console.log('✅ [App.js] バックグラウンドタスク登録成功');
-              } else {
-                console.log('ℹ️ [App.js] バックグラウンドタスク登録スキップ');
-              }
-            })
-            .catch((error) => {
-              console.log('⚠️ [App.js] バックグラウンドタスク登録エラー:', error);
-            });
-        } else {
-          console.log('ℹ️ [App.js] HealthKit初期化スキップ（権限は後でリクエスト）');
-        }
-      })
-      .catch((error) => {
-        console.log('⚠️ [App.js] HealthKit初期化エラー（非致命的）:', error);
-      });
-  }, []);
+  // HealthKit初期化はオンボーディング/設定で実施し、起動直後の許可ダイアログは出さない
 
   // アプリ復帰（background/inactive -> active）時に短いスプラッシュを表示
   useEffect(() => {

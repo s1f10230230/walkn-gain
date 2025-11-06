@@ -235,6 +235,41 @@ export default function SettingsScreen({ navigation }) {
         } catch (e) {
           console.warn('[SettingsScreen] 過去データの自動インポートでエラー（続行）', e);
         }
+
+        // キャッチアップ取り込み（任意）: 直近14日を再取り込みしてOFF期間を補完
+        try {
+          Alert.alert(
+            t('settings.alerts.catchupTitle') || 'キャッチアップ取り込み',
+            t('settings.alerts.catchupMessage') || '連携OFF中の期間を埋めるため、過去14日を取り込みますか？',
+            [
+              { text: t('common.cancel') || 'キャンセル', style: 'cancel' },
+              {
+                text: t('settings.alerts.catchupConfirm') || '取り込み',
+                onPress: async () => {
+                  try {
+                    const res = await importHistoricalData(14);
+                    if (res?.success) {
+                      Alert.alert(
+                        t('settings.alerts.reimportTitle') || '取り込み完了',
+                        `${res.importedDays ?? 0}/${res.totalDays ?? 14}`
+                      );
+                    } else {
+                      Alert.alert(
+                        t('settings.alerts.reimportTitle') || '取り込み完了',
+                        t('settings.alerts.reimportFail') || '取り込みに失敗しました'
+                      );
+                    }
+                  } catch (e) {
+                    Alert.alert(
+                      t('settings.alerts.reimportTitle') || '取り込み完了',
+                      t('settings.alerts.reimportFail') || '取り込みに失敗しました'
+                    );
+                  }
+                },
+              },
+            ]
+          );
+        } catch (_) {}
       } else {
         console.log('❌ [SettingsScreen] HealthKit連携失敗');
         Alert.alert(t('common.error'), t('settings.alerts.healthPermissionFail'));
@@ -248,6 +283,42 @@ export default function SettingsScreen({ navigation }) {
       Alert.alert(t('settings.alerts.healthDisabledTitle'), t('settings.alerts.healthDisabledMessage'));
     }
     try { logEvent('settings_changed', { field: 'health_sync' }); } catch (_) {}
+  };
+
+  const handleReimport30 = async () => {
+    try {
+      Alert.alert(
+        t('settings.alerts.reimportTitle') || '過去データの再取り込み',
+        t('settings.alerts.reimportConfirm') || '過去30日分の歩数を再取り込みしますか？',
+        [
+          { text: t('common.cancel') || 'キャンセル', style: 'cancel' },
+          {
+            text: t('settings.data.reimport') || '過去30日を再取り込み',
+            onPress: async () => {
+              try {
+                const res = await importHistoricalData(30);
+                if (res?.success) {
+                  Alert.alert(
+                    t('settings.alerts.reimportTitle') || '取り込み完了',
+                    `${res.importedDays ?? 0}/${res.totalDays ?? 30}`
+                  );
+                } else {
+                  Alert.alert(
+                    t('settings.alerts.reimportTitle') || '取り込み完了',
+                    t('settings.alerts.reimportFail') || '取り込みに失敗しました'
+                  );
+                }
+              } catch (e) {
+                Alert.alert(
+                  t('settings.alerts.reimportTitle') || '取り込み完了',
+                  t('settings.alerts.reimportFail') || '取り込みに失敗しました'
+                );
+              }
+            },
+          },
+        ]
+      );
+    } catch (e) {}
   };
 
   const handleResetOnboarding = () => {
@@ -535,6 +606,21 @@ export default function SettingsScreen({ navigation }) {
             onPress={() => navigation.navigate('PrivacyPolicy')}
           >
             <Text style={[styles.menuText, { color: theme.text }]}>{t('settings.privacyPolicy')}</Text>
+            <Text style={[styles.menuArrow, { color: theme.textSecondary }]}>›</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      {/* データ再取り込み（任意） */}
+      <View style={styles.section}>
+        <View style={styles.sectionTitleContainer}>
+          <BoxIcon size={20} color={theme.accent} />
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settings.sections.data')}</Text>
+        </View>
+        <View style={[styles.card, { backgroundColor: theme.card }] }>
+          <TouchableOpacity style={styles.menuItem} onPress={handleReimport30}>
+            <Text style={[styles.menuText, { color: theme.text }]}>
+              {t('settings.data.reimport') || '過去30日を再取り込み'}
+            </Text>
             <Text style={[styles.menuArrow, { color: theme.textSecondary }]}>›</Text>
           </TouchableOpacity>
         </View>

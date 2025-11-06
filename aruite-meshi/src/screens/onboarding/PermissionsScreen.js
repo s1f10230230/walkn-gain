@@ -12,6 +12,8 @@ import { useI18n } from '../../i18n/I18nProvider';
 import { getTheme } from '../../utils/theme';
 import { useColorScheme } from 'react-native';
 import * as Calendar from 'expo-calendar';
+import { requestNotificationPermissions } from '../../utils/notifications';
+import { requestPedometerPermissions } from '../../utils/pedometer';
 
 export default function PermissionsScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
@@ -19,6 +21,8 @@ export default function PermissionsScreen({ navigation, route }) {
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
   const [calendarGranted, setCalendarGranted] = useState(false);
+  const [notificationsGranted, setNotificationsGranted] = useState(false);
+  const [motionGranted, setMotionGranted] = useState(false);
   // 位置情報は使用しないため削除
 
   const requestCalendarPermission = async () => {
@@ -35,6 +39,21 @@ export default function PermissionsScreen({ navigation, route }) {
   // 位置情報は未使用
 
   const handleContinue = () => {
+    // まだ許可していない場合は、ここでまとめて促す
+    (async () => {
+      try {
+        if (!notificationsGranted) {
+          const ok = await requestNotificationPermissions();
+          setNotificationsGranted(!!ok);
+        }
+      } catch (_) {}
+      try {
+        if (!motionGranted) {
+          const ok = await requestPedometerPermissions();
+          setMotionGranted(!!ok);
+        }
+      } catch (_) {}
+    })();
     // 次の画面に遷移（既存のフローに合わせる）
     navigation.navigate('HealthKitPermission', route.params);
   };
@@ -81,6 +100,60 @@ export default function PermissionsScreen({ navigation, route }) {
                 {calendarGranted
                   ? (t('onboarding.permissions.granted') || '✓ 許可済み')
                   : (t('onboarding.permissions.allow') || '許可する')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Notifications Permission */}
+        <View style={[styles.permissionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View style={styles.iconContainer}>
+            <Text style={styles.icon}>🔔</Text>
+          </View>
+          <View style={styles.permissionContent}>
+            <Text style={[styles.permissionTitle, { color: theme.text }]}>通知</Text>
+            <Text style={[styles.permissionDescription, { color: theme.textSecondary }]}>目標達成やリマインダーをお知らせします</Text>
+            <TouchableOpacity
+              style={[
+                styles.permissionButton,
+                notificationsGranted && styles.permissionButtonGranted,
+                { backgroundColor: notificationsGranted ? theme.success : theme.primary }
+              ]}
+              onPress={async () => {
+                const ok = await requestNotificationPermissions();
+                setNotificationsGranted(!!ok);
+              }}
+              disabled={notificationsGranted}
+            >
+              <Text style={styles.permissionButtonText}>
+                {notificationsGranted ? (t('onboarding.permissions.granted') || '✓ 許可済み') : (t('onboarding.permissions.allow') || '許可する')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Motion & Fitness (Pedometer) Permission */}
+        <View style={[styles.permissionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View style={styles.iconContainer}>
+            <Text style={styles.icon}>🏃‍♂️</Text>
+          </View>
+          <View style={styles.permissionContent}>
+            <Text style={[styles.permissionTitle, { color: theme.text }]}>モーションとフィットネス</Text>
+            <Text style={[styles.permissionDescription, { color: theme.textSecondary }]}>歩数の計測に必要です（端末の設定でいつでも変更できます）</Text>
+            <TouchableOpacity
+              style={[
+                styles.permissionButton,
+                motionGranted && styles.permissionButtonGranted,
+                { backgroundColor: motionGranted ? theme.success : theme.primary }
+              ]}
+              onPress={async () => {
+                const ok = await requestPedometerPermissions();
+                setMotionGranted(!!ok);
+              }}
+              disabled={motionGranted}
+            >
+              <Text style={styles.permissionButtonText}>
+                {motionGranted ? (t('onboarding.permissions.granted') || '✓ 許可済み') : (t('onboarding.permissions.allow') || '許可する')}
               </Text>
             </TouchableOpacity>
           </View>

@@ -141,29 +141,53 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.background }]}>
+    <View style={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20, backgroundColor: theme.background }]}>
       <View style={styles.content}>
-        <Text style={styles.emoji}>❤️</Text>
-        <Text style={[styles.title, { color: theme.text }]}>{t('onboarding.health.title')}</Text>
-        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-          {t('onboarding.health.subtitle')}
-        </Text>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: theme.text }]}>
+            {t('onboarding.health.title')}
+          </Text>
+          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+            {t('onboarding.health.subtitle')}
+          </Text>
+        </View>
 
-        <View style={styles.benefitsContainer}>
-          <View style={styles.benefit}>
-            <Text style={styles.benefitIcon}>⭐</Text>
-            <Text style={[styles.benefitText, { color: theme.text }]}>{t('onboarding.health.benefit1')}</Text>
+        {/* HealthKit Permission Card */}
+        <View style={[styles.permissionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View style={styles.iconContainer}>
+            <Text style={styles.icon}>❤️</Text>
           </View>
-          <View style={styles.benefit}>
-            <Text style={styles.benefitIcon}>🔔</Text>
-            <Text style={[styles.benefitText, { color: theme.text }]}>{t('onboarding.health.benefit2')}</Text>
-          </View>
-          <View style={styles.benefit}>
-            <Text style={styles.benefitIcon}>🔄</Text>
-            <Text style={[styles.benefitText, { color: theme.text }]}>{t('onboarding.health.benefit3')}</Text>
+          <View style={styles.permissionContent}>
+            <Text style={[styles.permissionTitle, { color: theme.text }]}>
+              {t('onboarding.health.cardTitle') || 'ヘルスケア連携'}
+            </Text>
+            <Text style={[styles.permissionDescription, { color: theme.textSecondary }]}>
+              {t('onboarding.health.benefit1') || '正確な歩数計測と自動同期'}
+            </Text>
+            <Text style={[styles.permissionDescription, { color: theme.textSecondary }]}>
+              {t('onboarding.health.benefit2') || 'バックグラウンドでの自動更新'}
+            </Text>
+            <Text style={[styles.permissionDescription, { color: theme.textSecondary }]}>
+              {t('onboarding.health.benefit3') || '過去30日分のデータをインポート'}
+            </Text>
+            <TouchableOpacity
+              style={[styles.permissionButton, { backgroundColor: theme.primary }]}
+              onPress={handleAllow}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.permissionButtonText}>
+                  {t('onboarding.health.allow') || '連携する（推奨）'}
+                </Text>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
 
+        {/* Info Note */}
         <View
           style={[
             styles.infoBox,
@@ -182,24 +206,16 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
         </View>
       </View>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
+      {/* Bottom Buttons */}
+      <View style={styles.bottomButtons}>
         <TouchableOpacity
-          style={[styles.allowButton, { backgroundColor: theme.primary }]}
-          onPress={handleAllow}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.allowButtonText}>{t('onboarding.health.allow') || '連携する（推奨）'}</Text>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.skipButton}
+          style={[styles.skipButton, { borderColor: theme.border }]}
           onPress={handleSkip}
           disabled={isLoading}
         >
-          <Text style={[styles.skipButtonText, { color: theme.textSecondary }]}>{t('onboarding.health.skip') || 'スキップ'}</Text>
+          <Text style={[styles.skipButtonText, { color: theme.textSecondary }]}>
+            {t('onboarding.health.skip') || 'スキップ'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -207,45 +223,70 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
   content: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 30,
   },
-  emoji: {
-    fontSize: 100,
-    marginBottom: 30,
+  header: {
+    marginBottom: 32,
   },
   title: {
-    fontSize: 32,
-    fontWeight: '800',
-    marginBottom: 15,
-    textAlign: 'center',
+    fontSize: 28,
+    fontWeight: '700',
+    marginBottom: 12,
   },
   subtitle: {
     fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 26,
-    marginBottom: 40,
+    lineHeight: 24,
   },
-  benefitsContainer: {
-    width: '100%',
-    marginBottom: 30,
-  },
-  benefit: {
+  permissionCard: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-    paddingHorizontal: 20,
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  benefitIcon: { fontSize: 24, marginRight: 15, fontWeight: '700' },
-  benefitText: { fontSize: 16, fontWeight: '500' },
-  privacyNote: { fontSize: 12, textAlign: 'center', lineHeight: 18 },
-  infoBox: {
-    width: '100%',
+  iconContainer: {
+    marginRight: 16,
+  },
+  icon: {
+    fontSize: 32,
+  },
+  permissionContent: {
+    flex: 1,
+  },
+  permissionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  permissionDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  permissionButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
     marginTop: 4,
+  },
+  permissionButtonText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  infoBox: {
+    marginTop: 8,
     padding: 12,
     borderRadius: 12,
     borderLeftWidth: 4,
@@ -255,21 +296,16 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: 'left',
   },
-  footer: {
-    paddingHorizontal: 30,
-  },
-  allowButton: { paddingVertical: 18, borderRadius: 30, alignItems: 'center', marginBottom: 15 },
-  allowButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
+  bottomButtons: {
+    gap: 12,
   },
   skipButton: {
-    paddingVertical: 18,
+    paddingVertical: 16,
+    borderRadius: 12,
+    borderWidth: 1,
     alignItems: 'center',
   },
   skipButtonText: {
-    color: '#9E9E9E',
     fontSize: 16,
     fontWeight: '600',
   },

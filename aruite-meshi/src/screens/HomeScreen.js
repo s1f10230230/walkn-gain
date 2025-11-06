@@ -893,38 +893,15 @@ export default function HomeScreen({ navigation, route }) {
   };
 
   const initializeApp = async () => {
-    // 通知の権限をリクエスト
-    const granted = await requestNotificationPermissions();
-    if (granted) {
-      try {
-        await scheduleReminderNotification(20, 30);
-        await saveReminderEnabled(true);
-      } catch (e) {
-        console.warn('Reminder auto-enable failed:', e);
-      }
-    }
-
-    // 通知リスナーを設定
+    // 通知はオンボーディングでリクエストする（ここではリスナーのみ設定）
     const subscription = setupNotificationListeners((data) => {
       console.log('通知がタップされました:', data);
       try { logEvent('notification_opened', { type: data?.type || 'unknown' }); } catch (_) {}
       // 必要に応じて画面遷移などの処理を追加
     });
 
-    // 歩数計の初期化
-    try {
-      const initialized = await initializePedometer();
-      if (initialized) {
-        console.log('歩数計が有効化されました');
-      }
-    } catch (error) {
-      console.error('歩数計の初期化に失敗:', error);
-      // 🌍 オフライン対応: エラー時はキャッシュデータを使用（既に表示済み）
-      const latestCache = await getLatestCachedData();
-      if (latestCache) {
-        console.log('📦 オフラインモード: キャッシュデータを使用');
-      }
-    }
+    // 歩数計の初期化（権限リクエストはオンボーディングで行うため、ここではスキップ）
+    // オフライン時はキャッシュをそのまま利用
 
     // HealthKit背景更新（通知用）
     try {
