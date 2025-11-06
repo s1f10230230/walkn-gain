@@ -25,6 +25,13 @@ const HealthKitConstants = {
     kilocalorie: 'kilocalorie',
     count: 'count',
   },
+  // 背景配信の更新頻度（react-native-healthが提供するものに合わせる）
+  UpdateFrequency: {
+    IMMEDIATE: 'immediate',
+    HOURLY: 'hourly',
+    DAILY: 'daily',
+    WEEKLY: 'weekly',
+  },
 };
 
 // react-native-healthライブラリをインポート
@@ -458,16 +465,23 @@ export const startStepsBackgroundUpdates = async () => {
     if (!AppleHealthKit) return false;
 
     // 背景配信の有効化
-    if (!hkBgDeliveryEnabled && AppleHealthKit.enableBackgroundDelivery && AppleHealthKit.Constants?.UpdateFrequency) {
+    if (!hkBgDeliveryEnabled && AppleHealthKit.enableBackgroundDelivery) {
       try {
+        const freq = AppleHealthKit?.Constants?.UpdateFrequency?.HOURLY || 'hourly';
         await new Promise((resolve) => {
           AppleHealthKit.enableBackgroundDelivery(
             'StepCount',
-            AppleHealthKit.Constants.UpdateFrequency.HOURLY,
-            (err, ok) => resolve(!err && ok)
+            freq,
+            (err, ok) => {
+              if (err) {
+                console.warn('enableBackgroundDelivery エラー:', err);
+              }
+              resolve(!err && ok);
+            }
           );
         });
         hkBgDeliveryEnabled = true;
+        console.log('✅ 背景配信を有効化しました');
       } catch (e) {
         console.warn('enableBackgroundDelivery が利用できません', e);
       }
