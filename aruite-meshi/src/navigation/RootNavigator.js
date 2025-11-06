@@ -87,9 +87,7 @@ export default function RootNavigator() {
       try {
         const completed = await getOnboardingComplete();
         setHasCompletedOnboarding(completed);
-      } catch (error) {
-        console.error('Error checking onboarding status:', error);
-      } finally {
+
         // オンボーディング済みの場合のみスプラッシュを表示
         if (completed) {
           setTimeout(() => {
@@ -106,6 +104,10 @@ export default function RootNavigator() {
           setShowSplash(false);
           setIsLoading(false);
         }
+      } catch (error) {
+        console.error('Error checking onboarding status:', error);
+        setShowSplash(false);
+        setIsLoading(false);
       }
     };
 
