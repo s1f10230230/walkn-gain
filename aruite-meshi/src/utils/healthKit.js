@@ -422,8 +422,10 @@ const processBackgroundStepUpdate = async () => {
       }
     });
 
-    // 目標を取得
+    // 目標・通知設定を取得
     const settings = await getSettings();
+    // 通知がOFFなら何もしない（統一ポリシー）
+    if (!settings?.notifications) return;
     const goal = settings?.dailyGoal || 10000;
 
     if (!goal || goal <= 0) return;
@@ -435,8 +437,8 @@ const processBackgroundStepUpdate = async () => {
     const state = await loadProgressState();
     const sent = new Set(state.sent);
 
-    // 50%/80%/100%の閾値を跨いだときのみ通知
-    const milestones = [50, 80, 100];
+    // 80%/100%の閾値を跨いだときのみ通知（統一ポリシー）
+    const milestones = [80, 100];
     for (const m of milestones) {
       if (progress >= m && !sent.has(m)) {
         if (m === 100) {

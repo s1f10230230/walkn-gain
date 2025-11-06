@@ -16,6 +16,7 @@ import LanguageSelectScreen from '../screens/onboarding/LanguageSelectScreen';
 
 // メインアプリ
 import AppNavigator from './AppNavigator';
+import AppSplashScreen from '../screens/AppSplashScreen';
 
 const Stack = createStackNavigator();
 
@@ -108,8 +109,14 @@ export default function RootNavigator() {
           cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid,
           detachPreviousScreen: false,
         }}
-        initialRouteName={hasCompletedOnboarding ? 'MainApp' : 'Onboarding'}
+        initialRouteName={hasCompletedOnboarding ? 'PreMainSplash' : 'Onboarding'}
       >
+        {/* メイン前の短いスプラッシュ（オンボーディング済みのみ） */}
+        <Stack.Screen
+          name="PreMainSplash"
+          component={AppSplashScreen}
+          options={{ detachPreviousScreen: false }}
+        />
         <Stack.Screen
           name="MainApp"
           component={AppNavigator}

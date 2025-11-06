@@ -67,7 +67,7 @@ export const TRANSLATIONS = {
         },
         analytics: {
           title: '8. 分析ツール',
-          body: '本アプリは、クラッシュレポートやエラーログの収集のため、匿名化された使用統計情報を収集する場合があります。この情報には個人を特定できる情報は含まれません。',
+          body: '本アプリは分析ツールやトラッキングを使用していません。すべてのデータは端末内にのみ保存され、外部サーバーへ送信されることは一切ありません。',
         },
         children: {
           title: '9. 子供のプライバシー',
@@ -278,6 +278,7 @@ export const TRANSLATIONS = {
         benefit2: '正確なカロリー計算',
         benefit3: 'バックグラウンド記録',
         privacy: '※ データはデバイス内にのみ保存され、\n外部に送信されることはありません',
+        importNote: '🗓️ 初回連携時に、端末のヘルスケアに保存されている範囲で過去30日分の歩数を自動で取り込みます（端末内にのみ保存）。',
         allow: '連携する',
         skip: 'スキップ',
         alertTitle: 'ヘルスケア連携',
@@ -700,6 +701,7 @@ export const TRANSLATIONS = {
         benefit2: 'Accurate calorie calculation',
         benefit3: 'Background recording',
         privacy: 'Data is stored only on device\nand never sent externally',
+        importNote: '🗓️ On first connect, we automatically import up to the last 30 days of steps available on your device. Data stays on your device.',
         allow: 'Connect',
         skip: 'Skip',
         alertTitle: 'Health Integration',
@@ -1167,6 +1169,7 @@ export const TRANSLATIONS = {
         benefit2: '准确的热量计算',
         benefit3: '后台记录',
         privacy: '数据仅保存在设备上，\n不会上传到外部',
+        importNote: '🗓️ 首次连接时，将自动从设备可用数据中导入最近30天的步数。数据仅保存在本机。',
         allow: '连接',
         skip: '跳过',
         alertTitle: '健康连接',

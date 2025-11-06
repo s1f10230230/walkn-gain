@@ -157,9 +157,22 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
           </View>
         </View>
 
-        <Text style={[styles.privacyNote, { color: theme.textSecondary }]}>
-          {t('onboarding.health.privacy')}
-        </Text>
+        <View
+          style={[
+            styles.infoBox,
+            {
+              backgroundColor: theme.isDark ? '#2A1B14' : '#FFF3E0',
+              borderLeftColor: theme.primary,
+            },
+          ]}
+        >
+          <Text style={[styles.infoText, { color: theme.textSecondary }]}>
+            {t('onboarding.health.privacy')}
+          </Text>
+          <Text style={[styles.infoText, { color: theme.textSecondary, marginTop: 6 }]}>
+            {t('onboarding.health.importNote')}
+          </Text>
+        </View>
       </View>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
@@ -223,6 +236,18 @@ const styles = StyleSheet.create({
   benefitIcon: { fontSize: 24, marginRight: 15, fontWeight: '700' },
   benefitText: { fontSize: 16, fontWeight: '500' },
   privacyNote: { fontSize: 12, textAlign: 'center', lineHeight: 18 },
+  infoBox: {
+    width: '100%',
+    marginTop: 4,
+    padding: 12,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+  },
+  infoText: {
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'left',
+  },
   footer: {
     paddingHorizontal: 30,
   },

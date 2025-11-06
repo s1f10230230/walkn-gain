@@ -403,3 +403,8 @@ export const dismissPersistentWidget = async () => {
     console.error('常駐型通知の削除エラー:', error);
   }
 };
+
+/**
+ * アプリ起動時の今日の歩数ダイジェストを1日1回だけ送信
+ */
+// 起動時ダイジェストは廃止（ユーザー体験の簡素化のため）

@@ -33,7 +33,7 @@
         "NSMotionUsageDescription": "歩数を計測するために、モーションセンサーにアクセスします。",
         "NSCalendarsUsageDescription": "履歴にカレンダーの予定を表示します。",
         "NSCalendarsFullAccessUsageDescription": "履歴にカレンダーの予定を表示します。",
-        "UIBackgroundModes": ["remote-notification"],
+        "UIBackgroundModes": ["fetch", "remote-notification"],
         "ITSAppUsesNonExemptEncryption": false
       },
       "entitlements": {

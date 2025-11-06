@@ -10,7 +10,7 @@ import SettingsScreen from '../screens/SettingsScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 import FoodListScreen from '../screens/FoodListScreen';
 import SharePreviewScreen from '../screens/SharePreviewScreen';
-import { HomeIcon, HistoryIcon, FoodIcon, SettingsIcon } from '../components/TabIcons';
+import { HomeIcon, HistoryIcon, SettingsIcon } from '../components/TabIcons';
 import { useI18n } from '../i18n/I18nProvider';
 import { getTheme } from '../utils/theme';
 

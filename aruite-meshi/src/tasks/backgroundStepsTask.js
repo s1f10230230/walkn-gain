@@ -17,9 +17,9 @@ TaskManager.defineTask(BACKGROUND_STEPS_TASK, async () => {
   try {
     console.log('[BackgroundTask] バックグラウンド歩数チェック開始');
 
-    // 設定を確認
+    // 設定を確認（notificationsEnabled → notifications に修正）
     const settings = await getSettings();
-    if (!settings?.notificationsEnabled) {
+    if (!settings?.notifications) {
       console.log('[BackgroundTask] 通知が無効化されています');
       return BackgroundFetch.BackgroundFetchResult.NoData;
     }
@@ -33,9 +33,9 @@ TaskManager.defineTask(BACKGROUND_STEPS_TASK, async () => {
       return BackgroundFetch.BackgroundFetchResult.NoData;
     }
 
-    // ユーザープロファイルを取得
+    // 目標歩数は設定値から取得（profile.goalSteps → settings.dailyGoal に修正）
     const profile = await getUserProfile();
-    const goalSteps = profile?.goalSteps || 10000;
+    const goalSteps = settings?.dailyGoal || 10000;
     const weight = profile?.weight || 60;
 
     // 目標達成チェック
@@ -69,7 +69,8 @@ TaskManager.defineTask(BACKGROUND_STEPS_TASK, async () => {
       const alreadySent = await AsyncStorage.getItem(milestoneKey);
 
       if (progress >= milestone && !alreadySent) {
-        const message = getEncouragementMessage(progress, todaySteps, goalSteps);
+        // getEncouragementMessage は progress のみを受け取るシグネチャ
+        const message = getEncouragementMessage(progress);
         await sendImmediateNotification(
           `目標の${milestone}%達成！`,
           message,

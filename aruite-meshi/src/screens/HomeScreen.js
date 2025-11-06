@@ -14,6 +14,7 @@ import {
   PanResponder,
   RefreshControl,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Pedometer } from 'expo-sensors';
@@ -70,6 +71,9 @@ import RecentNotes from '../components/RecentNotes';
 import { hasNote } from '../utils/dayNotes';
 
 const { width } = Dimensions.get('window');
+
+// 永続化用キー: 最後に選択した日付（YYYY-MM-DD）
+const LAST_SELECTED_DATE_KEY = 'ui_last_selected_date';
 
 export default function HomeScreen({ navigation, route }) {
   // RecentNotesコンポーネントへの参照
@@ -184,11 +188,6 @@ export default function HomeScreen({ navigation, route }) {
   }, [route?.params?.selectedDate, navigation]);
 
   // 週バー表示モードはタブに追従（歩数タブ=歩、カロリータブ=kcal）
-  useEffect(() => {
-    setWeeklyDisplayMode(activeTab === 'calories' ? 'calories' : 'steps');
-  }, [activeTab]);
-
-  // 週バーの表示モードはタブに追従（歩数タブ=歩、カロリータブ=kcal）
   useEffect(() => {
     setWeeklyDisplayMode(activeTab === 'calories' ? 'calories' : 'steps');
   }, [activeTab]);
@@ -758,6 +757,34 @@ export default function HomeScreen({ navigation, route }) {
     setupPedometer();
     initializeApp();
 
+    // 前回選択していた日付を復元（存在すれば）
+    (async () => {
+      // 履歴などから指定されている場合は復元しない
+      if (route?.params?.selectedDate) return;
+      try {
+        const saved = await AsyncStorage.getItem(LAST_SELECTED_DATE_KEY);
+        if (saved) {
+          const [y, m, d] = saved.split('-').map(Number);
+          if (y && m && d) {
+            const restored = new Date(y, m - 1, d);
+            // 未来日は無視
+            const today = new Date(); today.setHours(0,0,0,0);
+            const r0 = new Date(restored); r0.setHours(0,0,0,0);
+            if (r0 <= today) {
+              // 週開始（同週の月曜）も整合
+              const day = r0.getDay();
+              const diff = day === 0 ? -6 : 1 - day;
+              const monday = new Date(r0);
+              monday.setDate(r0.getDate() + diff);
+              monday.setHours(0, 0, 0, 0);
+              setWeekStartDate(monday);
+              setSelectedDate(r0);
+            }
+          }
+        }
+      } catch (_) {}
+    })();
+
     // ⚡ リアルタイム自動更新: アプリがフォアグラウンドに戻った時に更新
     const subscription = AppState.addEventListener('change', handleAppStateChange);
 
@@ -765,6 +792,18 @@ export default function HomeScreen({ navigation, route }) {
       subscription?.remove();
     };
   }, []);
+
+  // 日付変更を永続化
+  useEffect(() => {
+    (async () => {
+      try {
+        const y = selectedDate.getFullYear();
+        const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
+        const d = String(selectedDate.getDate()).padStart(2, '0');
+        await AsyncStorage.setItem(LAST_SELECTED_DATE_KEY, `${y}-${m}-${d}`);
+      } catch (_) {}
+    })();
+  }, [selectedDate]);
 
   // 画面がフォーカスされたときにお気に入りを再読み込み
   useFocusEffect(

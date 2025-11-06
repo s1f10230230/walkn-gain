@@ -27,7 +27,7 @@ import {
   saveReminderEnabled,
 } from '../utils/storage';
 import { estimateStrideLength } from '../utils/calculations';
-import { initializeHealthKit, startStepsBackgroundUpdates, stopStepsBackgroundUpdates, checkHealthKitPermissions, diagnoseHealthKit } from '../utils/healthKit';
+import { initializeHealthKit, startStepsBackgroundUpdates, stopStepsBackgroundUpdates, checkHealthKitPermissions, diagnoseHealthKit, isHistoricalImportCompleted, importHistoricalData } from '../utils/healthKit';
 import { scheduleReminderNotification, cancelReminderNotifications } from '../utils/notifications';
 import { UserIcon, TargetIcon, HeartIcon, BoxIcon, PenIcon, InfoIcon } from '../components/SettingsIcons';
 import { logEvent } from '../utils/analytics';
@@ -211,6 +211,24 @@ export default function SettingsScreen({ navigation }) {
         await startStepsBackgroundUpdates();
         console.log('✅ [SettingsScreen] HealthKit連携成功');
         Alert.alert(t('settings.alerts.healthEnabledTitle'), t('settings.alerts.healthEnabledMessage'));
+
+        // まだ取り込み未実行なら、直ちに過去30日をインポート
+        try {
+          const done = await isHistoricalImportCompleted();
+          if (!done) {
+            console.log('📥 [SettingsScreen] 過去データ（30日）をインポート開始');
+            const result = await importHistoricalData(30);
+            if (result?.success) {
+              console.log(`📥 [SettingsScreen] インポート完了: ${result.importedDays}/${result.totalDays ?? 30}日`);
+            } else {
+              console.warn('[SettingsScreen] 過去データのインポートに失敗', result?.errors);
+            }
+          } else {
+            console.log('ℹ️ [SettingsScreen] 過去データは既にインポート済み');
+          }
+        } catch (e) {
+          console.warn('[SettingsScreen] 過去データの自動インポートでエラー（続行）', e);
+        }
       } else {
         console.log('❌ [SettingsScreen] HealthKit連携失敗');
         Alert.alert(t('common.error'), t('settings.alerts.healthPermissionFail'));
