@@ -589,6 +589,7 @@ export const getStepsInRange = async (startDate, endDate) => {
         const options = {
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
+          period: 1440, // 1日 = 1440分（24時間 × 60分）
           includeManuallyAdded: true,
         };
 
