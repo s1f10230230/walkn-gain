@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, StyleSheet, Animated, Image, useColorScheme } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 import { getOnboardingComplete } from '../utils/storage';
+import { getTheme } from '../utils/theme';
 
 // オンボーディングスクリーン
 import SplashScreen from '../screens/onboarding/SplashScreen';
@@ -76,6 +77,10 @@ function OnboardingStack() {
 export default function RootNavigator() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const colorScheme = useColorScheme();
+  const theme = getTheme(colorScheme);
 
   useEffect(() => {
     const checkOnboardingStatus = async () => {
@@ -85,7 +90,22 @@ export default function RootNavigator() {
       } catch (error) {
         console.error('Error checking onboarding status:', error);
       } finally {
-        setIsLoading(false);
+        // オンボーディング済みの場合のみスプラッシュを表示
+        if (completed) {
+          setTimeout(() => {
+            Animated.timing(fadeAnim, {
+              toValue: 0,
+              duration: 300,
+              useNativeDriver: true,
+            }).start(() => {
+              setShowSplash(false);
+              setIsLoading(false);
+            });
+          }, 1200);
+        } else {
+          setShowSplash(false);
+          setIsLoading(false);
+        }
       }
     };
 
@@ -93,12 +113,21 @@ export default function RootNavigator() {
     checkOnboardingStatus();
   }, []);
 
-  if (isLoading) {
+  // スプラッシュ表示中は他の画面を完全に隠す
+  if (showSplash) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FF7043" />
-      </View>
+      <Animated.View style={[styles.splashContainer, { backgroundColor: theme.background, opacity: fadeAnim }]}>
+        <Image
+          source={require('../../assets/splash-icon.png')}
+          style={styles.splashLogo}
+          resizeMode="contain"
+        />
+      </Animated.View>
     );
+  }
+
+  if (isLoading) {
+    return null; // スプラッシュ後のローディングは不要
   }
 
   return (
@@ -109,14 +138,8 @@ export default function RootNavigator() {
           cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid,
           detachPreviousScreen: false,
         }}
-        initialRouteName={hasCompletedOnboarding ? 'PreMainSplash' : 'Onboarding'}
+        initialRouteName={hasCompletedOnboarding ? 'MainApp' : 'Onboarding'}
       >
-        {/* メイン前の短いスプラッシュ（オンボーディング済みのみ） */}
-        <Stack.Screen
-          name="PreMainSplash"
-          component={AppSplashScreen}
-          options={{ detachPreviousScreen: false }}
-        />
         <Stack.Screen
           name="MainApp"
           component={AppNavigator}
@@ -133,10 +156,13 @@ export default function RootNavigator() {
 }
 
 const styles = StyleSheet.create({
-  loadingContainer: {
+  splashContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+  },
+  splashLogo: {
+    width: 500,
+    height: 500,
   },
 });

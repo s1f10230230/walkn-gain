@@ -437,14 +437,18 @@ const processBackgroundStepUpdate = async () => {
     const state = await loadProgressState();
     const sent = new Set(state.sent);
 
-    // 80%/100%の閾値を跨いだときのみ通知（統一ポリシー）
-    const milestones = [80, 100];
+    // 50%/80%/100%の閾値を跨いだときのみ通知
+    const milestones = [50, 80, 100];
     for (const m of milestones) {
       if (progress >= m && !sent.has(m)) {
         if (m === 100) {
           await sendGoalAchievedNotification(steps, goal);
-        } else {
-          const title = m === 50 ? '🎯 半分達成！' : '🔥 もう少し！';
+        } else if (m === 50) {
+          const title = '🎯 半分達成！';
+          const body = getEncouragementMessage(progress);
+          await sendImmediateNotification(title, body, { type: 'progress', progress: m });
+        } else if (m === 80) {
+          const title = '🔥 もう少し！';
           const body = getEncouragementMessage(progress);
           await sendImmediateNotification(title, body, { type: 'progress', progress: m });
         }

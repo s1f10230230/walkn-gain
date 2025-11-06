@@ -5,7 +5,8 @@
       "Bash(copy:*)",
       "Bash(convert:*)",
       "Bash(npm dedupe:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(git push)"
     ],
     "deny": [],
     "ask": []
