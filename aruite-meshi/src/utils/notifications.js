@@ -3,7 +3,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TRANSLATIONS } from '../i18n/translations';
-import { getSettings } from './storage';
+import { getSettings, saveSettings } from './storage';
 import { getTodayDateString } from './calculations';
 
 // 内部的に使用するストレージキー（機能は変えずに内部の安定性を向上）
@@ -81,6 +81,10 @@ export const requestNotificationPermissions = async () => {
 
     if (finalStatus !== 'granted') {
       console.log('通知の権限が拒否されました');
+      try {
+        const s = await getSettings();
+        await saveSettings({ ...s, notifications: false });
+      } catch (_) {}
       return false;
     }
 
@@ -93,6 +97,12 @@ export const requestNotificationPermissions = async () => {
         lightColor: '#FF7043',
       });
     }
+
+    // アプリ設定の通知トグルも同期
+    try {
+      const s = await getSettings();
+      await saveSettings({ ...s, notifications: true });
+    } catch (_) {}
 
     return true;
   } catch (error) {

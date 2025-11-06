@@ -26,6 +26,7 @@ export default function App() {
   const resumeFade = useRef(new Animated.Value(0)).current;
   const resumeScale = useRef(new Animated.Value(0.9)).current;
   const appStateRef = useRef(AppState.currentState);
+  const lastBackgroundAtRef = useRef(null);
 
   // initialize lightweight analytics once
   useEffect(() => {
@@ -36,27 +37,39 @@ export default function App() {
 
   // HealthKit初期化はオンボーディング/設定で実施し、起動直後の許可ダイアログは出さない
 
-  // アプリ復帰（background/inactive -> active）時に短いスプラッシュを表示
+  // アプリ復帰（background -> active）時に短いスプラッシュを表示
+  // ・inactive（通知センター/許可ダイアログなど）からの復帰では表示しない
+  // ・短時間のバックグラウンド復帰（< 1200ms）では表示しない
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
       const prev = appStateRef.current;
       appStateRef.current = next;
-      if ((prev === 'background' || prev === 'inactive') && next === 'active') {
+      if (prev === 'background' && next === 'active') {
         try {
-          setResumeSplashVisible(true);
-          resumeFade.setValue(0);
-          resumeScale.setValue(0.9);
-          Animated.parallel([
-            Animated.timing(resumeFade, { toValue: 1, duration: 160, useNativeDriver: true }),
-            Animated.spring(resumeScale, { toValue: 1, friction: 6, tension: 40, useNativeDriver: true }),
-          ]).start(() => {
-            setTimeout(() => {
-              Animated.timing(resumeFade, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
-                setResumeSplashVisible(false);
-              });
-            }, 420);
-          });
+          const now = Date.now();
+          const lastBg = lastBackgroundAtRef.current || 0;
+          const elapsed = now - lastBg;
+          const MIN_BG_MS = 1200; // 1.2s 以上の実バックグラウンドでのみ表示
+          lastBackgroundAtRef.current = null;
+          if (elapsed >= MIN_BG_MS) {
+            setResumeSplashVisible(true);
+            resumeFade.setValue(0);
+            resumeScale.setValue(0.9);
+            Animated.parallel([
+              Animated.timing(resumeFade, { toValue: 1, duration: 160, useNativeDriver: true }),
+              Animated.spring(resumeScale, { toValue: 1, friction: 6, tension: 40, useNativeDriver: true }),
+            ]).start(() => {
+              setTimeout(() => {
+                Animated.timing(resumeFade, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+                  setResumeSplashVisible(false);
+                });
+              }, 420);
+            });
+          }
         } catch (_) {}
+      } else if (next === 'background') {
+        // 背景に行った時刻を記録
+        lastBackgroundAtRef.current = Date.now();
       }
     });
     return () => {

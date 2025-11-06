@@ -12,7 +12,8 @@ import { useI18n } from '../../i18n/I18nProvider';
 import { getTheme } from '../../utils/theme';
 import { useColorScheme } from 'react-native';
 import * as Calendar from 'expo-calendar';
-import { requestNotificationPermissions } from '../../utils/notifications';
+import { requestNotificationPermissions, scheduleReminderNotification } from '../../utils/notifications';
+import { saveReminderEnabled } from '../../utils/storage';
 import { requestPedometerPermissions } from '../../utils/pedometer';
 
 export default function PermissionsScreen({ navigation, route }) {
@@ -122,6 +123,12 @@ export default function PermissionsScreen({ navigation, route }) {
               onPress={async () => {
                 const ok = await requestNotificationPermissions();
                 setNotificationsGranted(!!ok);
+                if (ok) {
+                  try {
+                    await scheduleReminderNotification(20, 30);
+                    await saveReminderEnabled(true);
+                  } catch (_) {}
+                }
               }}
               disabled={notificationsGranted}
             >

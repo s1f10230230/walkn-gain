@@ -31,6 +31,12 @@ import { scheduleReminderNotification, cancelReminderNotifications } from '../ut
 import { UserIcon, TargetIcon, HeartIcon, BoxIcon, PenIcon, InfoIcon } from '../components/SettingsIcons';
 import { logEvent } from '../utils/analytics';
 import { getTheme } from '../utils/theme';
+import * as Notifications from 'expo-notifications';
+import * as Calendar from 'expo-calendar';
+import { Pedometer } from 'expo-sensors';
+import { PermissionsAndroid, Linking, Platform } from 'react-native';
+import { requestNotificationPermissions } from '../utils/notifications';
+import { requestPedometerPermissions } from '../utils/pedometer';
 
 export default function SettingsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -43,6 +49,41 @@ export default function SettingsScreen({ navigation }) {
     if (typeof v === 'boolean') return v;
     if (typeof v === 'string') return v.toLowerCase() === 'true';
     return !!v;
+  };
+
+  // OS権限トグル
+  // 通知は「目標設定 > 通知」トグルで統合管理（OS許可もそこで同期）
+  const onToggleNotificationsOS = async (value) => {
+    if (value) {
+      const ok = await requestNotificationPermissions();
+      setNotifOSGranted(!!ok);
+    } else {
+      // OS側はアプリからOFFにできないため、設定アプリを開く
+      Alert.alert(t('common.error'), t('settings.helpers.languageHelper') || '端末の設定から変更できます');
+      try { await Linking.openSettings(); } catch (_) {}
+    }
+  };
+
+  const onToggleCalendarOS = async (value) => {
+    if (value) {
+      try {
+        const { status } = await Calendar.requestCalendarPermissionsAsync();
+        setCalendarOSGranted(status === 'granted');
+      } catch (_) {}
+    } else {
+      Alert.alert(t('common.error'), t('settings.helpers.languageHelper') || '端末の設定から変更できます');
+      try { await Linking.openSettings(); } catch (_) {}
+    }
+  };
+
+  const onToggleMotionOS = async (value) => {
+    if (value) {
+      const ok = await requestPedometerPermissions();
+      setMotionOSGranted(!!ok);
+    } else {
+      Alert.alert(t('common.error'), t('settings.helpers.languageHelper') || '端末の設定から変更できます');
+      try { await Linking.openSettings(); } catch (_) {}
+    }
   };
 
   const [profile, setProfile] = useState({
@@ -60,6 +101,10 @@ export default function SettingsScreen({ navigation }) {
   });
   const [healthSync, setHealthSync] = useState(false);
   // 位置情報・都市選択はオプトイン外に（非表示）
+  // OS権限の状態
+  const [notifOSGranted, setNotifOSGranted] = useState(false);
+  const [calendarOSGranted, setCalendarOSGranted] = useState(false);
+  const [motionOSGranted, setMotionOSGranted] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -87,6 +132,25 @@ export default function SettingsScreen({ navigation }) {
 
     setHealthSync(toBoolean(healthSyncEnabled));
     // 位置情報関連は読み込まない（非表示）
+
+    // OS権限の状態
+    try {
+      const p = await Notifications.getPermissionsAsync();
+      setNotifOSGranted(p?.status === 'granted');
+    } catch (_) {}
+    try {
+      const p = await Calendar.getCalendarPermissionsAsync();
+      setCalendarOSGranted(p?.status === 'granted');
+    } catch (_) {}
+    try {
+      if (Platform.OS === 'android') {
+        const ok = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACTIVITY_RECOGNITION);
+        setMotionOSGranted(!!ok);
+      } else {
+        const pm = await Pedometer.getPermissionsAsync?.();
+        setMotionOSGranted(pm?.status === 'granted');
+      }
+    } catch (_) {}
   };
 
   const handleSaveProfile = async () => {
@@ -145,16 +209,36 @@ export default function SettingsScreen({ navigation }) {
 
   // 通知トグルを自動保存に統一（進捗通知50/80/100%とリマインダーの両方を制御）
   const handleAppNotificationsToggle = async (value) => {
+    // ON時はOS許可も同時に要求し、拒否ならアプリ設定もOFFに戻す
+    if (value) {
+      const granted = await requestNotificationPermissions();
+      if (!granted) {
+        setSettings((s) => ({ ...s, notifications: false }));
+        const ok2 = await saveSettings({
+          dailyGoal: parseInt(settings.dailyGoal) || 10000,
+          defaultFood: settings.defaultFood,
+          notifications: false,
+          unit: settings.unit,
+          goalCalories: parseInt(settings.goalCalories) || 500,
+          language: settings.language || 'auto',
+        });
+        if (!ok2) {
+          Alert.alert(t('common.error'), t('settings.alerts.notificationsSaveError'));
+        }
+        return;
+      }
+    }
+
     const next = { ...settings, notifications: value };
     setSettings(next);
-    const payload = {
+    const ok = await saveSettings({
       dailyGoal: parseInt(next.dailyGoal) || 10000,
       defaultFood: next.defaultFood,
       notifications: value,
       unit: next.unit,
       goalCalories: parseInt(next.goalCalories) || 500,
-    };
-    const ok = await saveSettings(payload);
+      language: next.language || 'auto',
+    });
     if (!ok) {
       Alert.alert(t('common.error'), t('settings.alerts.notificationsSaveError'));
       return;
@@ -545,6 +629,24 @@ export default function SettingsScreen({ navigation }) {
       </View>
 
       {/* 提出用: データ削除・オンボーディングリセットは非表示 */}
+
+      {/* 権限（OS） */}
+      <View style={styles.section}>
+        <View style={styles.sectionTitleContainer}>
+          <InfoIcon size={20} color={theme.accent} />
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>権限</Text>
+        </View>
+        <View style={[styles.card, { backgroundColor: theme.card }] }>
+          <View style={styles.switchRow}>
+            <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.permissions.calendar') || 'カレンダーの許可'}</Text>
+            <Switch value={calendarOSGranted} onValueChange={onToggleCalendarOS} />
+          </View>
+          <View style={styles.switchRow}>
+            <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.permissions.motion') || 'モーションとフィットネス'}</Text>
+            <Switch value={motionOSGranted} onValueChange={onToggleMotionOS} />
+          </View>
+        </View>
+      </View>
 
       {/* 計算式の透明化 */}
       <View style={styles.section}>

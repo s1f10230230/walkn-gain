@@ -39,6 +39,9 @@ const HealthKitConstants = {
 let AppleHealthKit = null;
 let healthKitLoadMethod = 'none';
 
+// デバッグ/切り分け用: Pedometerフォールバックを一時停止（iOSのみ）
+const DISABLE_PEDOMETER_FALLBACK = true;
+
 try {
   console.log('🔵 [healthKit.js] HealthKit読み込み開始...');
 
@@ -605,30 +608,81 @@ export const getTodaySteps = async () => {
 export const getStepsInRange = async (startDate, endDate) => {
   try {
     if (Platform.OS === 'ios') {
-      return new Promise((resolve, reject) => {
+      const useDailySamples = typeof AppleHealthKit?.getDailyStepCountSamples === 'function';
+
+      // フォールバック: getDailyStepCountSamples が無い/エラー時は日ごとに getStepCount を呼ぶ
+      const fallbackByDay = async () => {
+        try {
+          const out = [];
+          const cur = new Date(startDate);
+          cur.setHours(0, 0, 0, 0);
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+
+          while (cur <= end) {
+            const dayKey = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
+            const dayEnd = new Date(cur);
+            dayEnd.setHours(23, 59, 59, 999);
+            const steps = await new Promise((resolve) => {
+              try {
+                AppleHealthKit.getStepCount({ date: dayEnd.toISOString(), includeManuallyAdded: true }, (err, res) => {
+                  if (err) return resolve(0);
+                  resolve(res?.value || 0);
+                });
+              } catch (_) {
+                resolve(0);
+              }
+            });
+            out.push({ date: dayKey, steps });
+            // 軽いウェイト（連続呼び出しの安定化）
+            try { await new Promise((r) => setTimeout(r, 25)); } catch (_) {}
+            // 次の日へ
+            cur.setDate(cur.getDate() + 1);
+            cur.setHours(0, 0, 0, 0);
+          }
+          return out;
+        } catch (e) {
+          console.error('Apple Health日別フォールバック取得エラー:', e);
+          return [];
+        }
+      };
+
+      if (!useDailySamples) {
+        console.log('Apple Health getDailyStepCountSamples が未定義のため、日別フォールバックで取得します');
+        return await fallbackByDay();
+      }
+
+      // 通常パス: 日別サンプルAPI
+      const results = await new Promise((resolve) => {
         const options = {
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
-          period: 1440, // 1日 = 1440分（24時間 × 60分）
+          period: 1440, // 1日 = 1440分
           includeManuallyAdded: true,
         };
-
-        AppleHealthKit.getDailyStepCountSamples(options, (error, results) => {
-          if (error) {
-            console.error('Apple Health期間歩数取得エラー:', error);
-            resolve([]);
-            return;
-          }
-
-          // データを整形
-          const formattedData = results.map(item => ({
-            date: item.startDate.split('T')[0],
-            steps: item.value,
-          }));
-
-          resolve(formattedData);
-        });
+        try {
+          AppleHealthKit.getDailyStepCountSamples(options, (error, res) => {
+            if (error) {
+              console.warn('Apple Health期間歩数取得エラー。フォールバックに切り替えます:', error);
+              return resolve(null);
+            }
+            resolve(res || []);
+          });
+        } catch (e) {
+          console.warn('Apple Health期間歩数取得例外。フォールバックに切り替えます:', e);
+          resolve(null);
+        }
       });
+
+      if (!Array.isArray(results)) {
+        return await fallbackByDay();
+      }
+
+      const formattedData = results.map(item => ({
+        date: (item.startDate || '').split('T')[0],
+        steps: item.value,
+      }));
+      return formattedData;
     } else if (Platform.OS === 'android') {
       const options = {
         startDate: startDate.toISOString(),
@@ -805,16 +859,25 @@ export const getDistance = async (startDate, endDate) => {
 export const isHealthKitAvailable = async () => {
   try {
     if (Platform.OS === 'ios') {
-      if (!AppleHealthKit || !AppleHealthKit.isAvailable) {
-        console.warn('Apple HealthKitが利用できません');
+      if (!AppleHealthKit) {
+        console.warn('Apple HealthKitモジュールが見つかりません');
         return false;
+      }
+
+      // 一部の環境では isAvailable がエクスポートされない場合がある。
+      // その場合でも initializeHealthKit が成功していれば実アクセス可能なことが多いため、
+      // ここでは「利用可能」とみなして先に進める（偽陰性回避）。
+      if (typeof AppleHealthKit.isAvailable !== 'function') {
+        console.log('Apple Health isAvailable が未定義のため、利用可能とみなします');
+        return true;
       }
 
       return new Promise((resolve) => {
         AppleHealthKit.isAvailable((error, available) => {
           if (error) {
             console.error('Apple Health利用可否チェックエラー:', error);
-            resolve(false);
+            // エラー時も保守的に「利用可能」とみなして先に進める（初期化が通っていれば多くは動作する）
+            resolve(true);
             return;
           }
           resolve(available);
@@ -955,6 +1018,10 @@ export const getStepsHybrid = async (startDate = null, endDate = null) => {
 
   // HealthKit失敗時、Pedometerにフォールバック
   try {
+    // 切り分け用にフォールバックを止めたい場合
+    if (Platform.OS === 'ios' && DISABLE_PEDOMETER_FALLBACK) {
+      return { steps: 0, source: 'none' };
+    }
     // Pedometerをインポート（動的）
     const { Pedometer } = require('expo-sensors');
     const isAvailable = await Pedometer.isAvailableAsync();
@@ -1034,8 +1101,8 @@ export const importHistoricalData = async (daysBack = 30, onProgress = null) => 
     // HealthKitが利用可能かチェック
     const available = await isHealthKitAvailable();
     if (!available) {
-      console.warn('HealthKitが利用できないため、インポートをスキップします');
-      return { success: false, importedDays: 0, errors: ['HealthKit not available'] };
+      // 一部環境で偽陰性があるため、警告のみ出して続行（実アクセスで判定）
+      console.warn('HealthKitの利用可否チェックがfalseですが、取り込みを試行します');
     }
 
     // 初期化
@@ -1044,6 +1111,9 @@ export const importHistoricalData = async (daysBack = 30, onProgress = null) => 
       console.warn('HealthKit初期化に失敗したため、インポートをスキップします');
       return { success: false, importedDays: 0, errors: ['HealthKit initialization failed'] };
     }
+
+    // 許可直後はインデックス反映に時間がかかる場合があるため、短い待機を入れる
+    try { await new Promise((r) => setTimeout(r, 400)); } catch (_) {}
 
     // インポート期間を計算
     const endDate = new Date();

@@ -72,6 +72,9 @@ import { hasNote } from '../utils/dayNotes';
 
 const { width } = Dimensions.get('window');
 
+// Dev flag: Pedometer の取り込みを一時停止（HealthKit取り込みの切り分け用）
+const DISABLE_PEDOMETER_DEV = true;
+
 // 永続化用キー: 最後に選択した日付（YYYY-MM-DD）
 const LAST_SELECTED_DATE_KEY = 'ui_last_selected_date';
 
@@ -754,7 +757,9 @@ export default function HomeScreen({ navigation, route }) {
 
     // バックグラウンドで最新データを取得
     loadData();
-    setupPedometer();
+    if (!DISABLE_PEDOMETER_DEV) {
+      setupPedometer();
+    }
     initializeApp();
 
     // 前回選択していた日付を復元（存在すれば）
@@ -1045,6 +1050,7 @@ export default function HomeScreen({ navigation, route }) {
   };
 
   const setupPedometer = async () => {
+    if (DISABLE_PEDOMETER_DEV) return;
     try {
       const isAvailable = await Pedometer.isAvailableAsync();
       setIsPedometerAvailable(isAvailable);
@@ -1133,24 +1139,7 @@ export default function HomeScreen({ navigation, route }) {
         }
       }
 
-      // 常駐型通知ウィジェットを更新（音なし、リアルタイム更新）
-      try {
-        // 次の食べ物目標を取得
-        const currentGoals = todayGoals.length > 0 ? todayGoals : [];
-        const nextGoalIndex = currentGoals.findIndex(g => cal < g.food.calories);
-        let nextFoodName = null;
-        let nextFoodCalories = null;
-
-        if (nextGoalIndex !== -1) {
-          const nextGoal = currentGoals[nextGoalIndex];
-          nextFoodName = nextGoal.food.name;
-          nextFoodCalories = nextGoal.food.calories - cal;
-        }
-
-        await updatePersistentWidget(newSteps, goal, cal, nextFoodName, nextFoodCalories);
-      } catch (err) {
-        console.log('常駐通知更新エラー（スキップ）:', err);
-      }
+      // 常駐型ウィジェットは無効化（ユーザー体験を簡素化）
       }
 
     // スイープの手動制御はしない（標準animatedに任せる）

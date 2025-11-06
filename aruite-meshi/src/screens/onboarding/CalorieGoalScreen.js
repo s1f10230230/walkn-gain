@@ -8,7 +8,7 @@ import {
   Alert,
   useColorScheme,
 } from 'react-native';
-import { saveSettings, saveUserProfile, saveOnboardingComplete } from '../../utils/storage';
+import { getSettings, saveSettings, saveUserProfile, saveOnboardingComplete } from '../../utils/storage';
 import { CommonActions } from '@react-navigation/native';
 import { getTheme } from '../../utils/theme';
 import { useI18n } from '../../i18n/I18nProvider';
@@ -46,8 +46,10 @@ export default function CalorieGoalScreen({ navigation, route }) {
       });
       console.log('✅ プロフィール保存完了');
 
-      // 設定を保存
+      // 既存設定を取り込み、上書き（言語などを保持）
+      const current = await getSettings();
       await saveSettings({
+        ...current,
         dailyGoal: goalSteps,
         goalCalories: skipCalorieGoal ? 500 : selectedCalories,
         defaultFood: 'ramen',

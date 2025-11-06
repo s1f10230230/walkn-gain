@@ -132,6 +132,12 @@ export const TRANSLATIONS = {
         formulas: '計算式',
         about: 'アプリについて',
       },
+      permissions: {
+        title: '権限',
+        notifications: '通知の許可',
+        calendar: 'カレンダーの許可',
+        motion: 'モーションとフィットネス',
+      },
       share: {
         previewTitle: '記録カード',
         saveImage: '画像を保存',
@@ -561,6 +567,12 @@ export const TRANSLATIONS = {
         data: 'Data',
         formulas: 'Formulas',
         about: 'About',
+      },
+      permissions: {
+        title: 'Permissions',
+        notifications: 'Notifications',
+        calendar: 'Calendar',
+        motion: 'Motion & Fitness',
       },
       share: {
         previewTitle: 'Log Card',
@@ -1036,6 +1048,12 @@ export const TRANSLATIONS = {
         data: '数据',
         formulas: '计算公式',
         about: '关于应用',
+      },
+      permissions: {
+        title: '权限',
+        notifications: '通知权限',
+        calendar: '日历权限',
+        motion: '运动与健康',
       },
       share: {
         previewTitle: '记录卡',
