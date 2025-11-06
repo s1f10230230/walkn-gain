@@ -6,7 +6,8 @@
       "Bash(convert:*)",
       "Bash(npm dedupe:*)",
       "Bash(npm install:*)",
-      "Bash(git push)"
+      "Bash(git push)",
+      "Bash(eas build:*)"
     ],
     "deny": [],
     "ask": []

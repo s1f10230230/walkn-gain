@@ -102,12 +102,19 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
         await saveHealthSyncEnabled(true);
         // 過去30日をインポート（失敗しても続行）
         try {
+          console.log('📊 [HealthKitPermission] 過去30日分のデータインポートを開始...');
           const result = await importHistoricalData(30);
+          console.log('📊 [HealthKitPermission] インポート結果:', JSON.stringify(result, null, 2));
+
           const msg = result?.success
             ? `過去${result.totalDays ?? 30}日中 ${result.importedDays ?? 0}日をインポートしました。`
-            : '過去データのインポートに失敗しました';
+            : `過去データのインポートに失敗しました\nエラー: ${result?.errors?.[0] || '不明'}`;
           Alert.alert('✅ 連携完了', `${msg}`);
-        } catch (_) {}
+        } catch (err) {
+          console.error('❌ [HealthKitPermission] インポートエラー:', err);
+          console.error('❌ [HealthKitPermission] エラー詳細:', err.message, err.stack);
+          Alert.alert('✅ 連携完了', '過去データのインポートに失敗しましたが、連携は成功しました。');
+        }
         navigateToCalorieGoal();
       } else {
         Alert.alert(
