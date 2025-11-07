@@ -983,8 +983,10 @@ export const getStepsHybrid = async (startDate = null, endDate = null) => {
   try {
     if (Platform.OS === 'ios' && AppleHealthKit) {
       const steps = await new Promise((resolve) => {
+        // 動画の方法: startDate/endDateで範囲指定（その日の00:00:00～23:59:59）
         const options = {
-          date: endDate.toISOString(),
+          startDate: startDate.toISOString(), // 開始時刻（00:00:00）
+          endDate: endDate.toISOString(),     // 終了時刻（23:59:59 or 現在時刻）
           includeManuallyAdded: true,
         };
 
@@ -999,7 +1001,7 @@ export const getStepsHybrid = async (startDate = null, endDate = null) => {
       });
 
       if (steps !== null) {
-        console.log('✓ HealthKitから歩数取得:', steps);
+        console.log('✓ HealthKitから歩数取得 (範囲指定):', steps, `from ${startDate.toISOString()} to ${endDate.toISOString()}`);
         return { steps, source: 'healthkit' };
       }
     } else if (Platform.OS === 'android' && GoogleFit) {
