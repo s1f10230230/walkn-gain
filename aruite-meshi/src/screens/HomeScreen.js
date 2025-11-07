@@ -73,7 +73,7 @@ import { hasNote } from '../utils/dayNotes';
 const { width } = Dimensions.get('window');
 
 // Dev flag: Pedometer の取り込みを一時停止（HealthKit取り込みの切り分け用）
-const DISABLE_PEDOMETER_DEV = true;
+const DISABLE_PEDOMETER_DEV = false;
 
 // 永続化用キー: 最後に選択した日付（YYYY-MM-DD）
 const LAST_SELECTED_DATE_KEY = 'ui_last_selected_date';
@@ -914,17 +914,6 @@ export default function HomeScreen({ navigation, route }) {
       if (enabled) {
         console.log('🔔 HealthKit背景更新を開始（通知用）');
         await startStepsBackgroundUpdates();
-
-        // まだ一度も取り込んでいなければ、過去30日をインポート（サイレント）
-        try {
-          const done = await isHistoricalImportCompleted();
-          if (!done) {
-            console.log('📥 過去データ（30日）をインポート開始');
-            await importHistoricalData(30);
-          }
-        } catch (e) {
-          console.warn('過去データの自動インポートに失敗（続行）', e);
-        }
       }
     } catch (e) {
       console.warn('背景歩数更新の開始に失敗（オプショナル）', e);

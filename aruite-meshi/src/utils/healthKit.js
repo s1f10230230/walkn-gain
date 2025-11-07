@@ -610,6 +610,62 @@ export const getStepsInRange = async (startDate, endDate) => {
     if (Platform.OS === 'ios') {
       const useDailySamples = typeof AppleHealthKit?.getDailyStepCountSamples === 'function';
 
+      // 最強フォールバック: Rawサンプルを取得してローカル日付で集計
+      const aggregateRawSamples = async () => {
+        try {
+          const hasGetSamplesForType = typeof AppleHealthKit?.getSamplesForType === 'function';
+          const hasGetSamples = typeof AppleHealthKit?.getSamples === 'function';
+          if (!hasGetSamplesForType && !hasGetSamples) return null;
+
+          const options = {
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+            type: 'StepCount',
+            ascending: true,
+            includeManuallyAdded: true,
+          };
+
+          const samples = await new Promise((resolve) => {
+            try {
+              const cb = (err, res) => {
+                if (err) return resolve(null);
+                resolve(Array.isArray(res) ? res : []);
+              };
+              if (hasGetSamplesForType) {
+                AppleHealthKit.getSamplesForType(options, cb);
+              } else if (hasGetSamples) {
+                AppleHealthKit.getSamples(options, cb);
+              }
+            } catch (_) {
+              resolve(null);
+            }
+          });
+
+          if (!samples) return null;
+          // ローカル日付キーで合算
+          const byDate = new Map();
+          for (const it of samples) {
+            try {
+              const d = it?.startDate || it?.endDate || it?.date;
+              const val = Number(it?.value ?? it?.quantity ?? it?.count ?? 0);
+              if (!d || !Number.isFinite(val)) continue;
+              const dd = new Date(d);
+              const y = dd.getFullYear();
+              const m = String(dd.getMonth() + 1).padStart(2, '0');
+              const day = String(dd.getDate()).padStart(2, '0');
+              const key = `${y}-${m}-${day}`;
+              byDate.set(key, (byDate.get(key) || 0) + val);
+            } catch (_) {}
+          }
+          const out = Array.from(byDate.entries())
+            .sort((a, b) => (a[0] > b[0] ? 1 : -1))
+            .map(([date, steps]) => ({ date, steps }));
+          return out;
+        } catch (e) {
+          return null;
+        }
+      };
+
       // フォールバック: getDailyStepCountSamples が無い/エラー時は日ごとに getStepCount を呼ぶ
       const fallbackByDay = async () => {
         try {
@@ -646,6 +702,10 @@ export const getStepsInRange = async (startDate, endDate) => {
           return [];
         }
       };
+
+      // まずRawサンプル合算を試す
+      const raw = await aggregateRawSamples();
+      if (Array.isArray(raw) && raw.length > 0) return raw;
 
       if (!useDailySamples) {
         console.log('Apple Health getDailyStepCountSamples が未定義のため、日別フォールバックで取得します');
@@ -1119,12 +1179,25 @@ export const importHistoricalData = async (daysBack = 30, onProgress = null) => 
     const endDate = new Date();
     endDate.setHours(23, 59, 59, 999);
 
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - daysBack);
-    startDate.setHours(0, 0, 0, 0);
+    // 欲しい開始日（直近 daysBack 日）
+    const desiredStart = new Date();
+    desiredStart.setDate(desiredStart.getDate() - daysBack);
+    desiredStart.setHours(0, 0, 0, 0);
 
-    // 期間のデータを取得
-    const historicalSteps = await getStepsInRange(startDate, endDate);
+    // 既知の回避策: 開始日をさらに1ヶ月（30日）前倒しして取得し、あとで直近 daysBack 日だけ抽出
+    const queryStart = new Date(desiredStart);
+    queryStart.setDate(queryStart.getDate() - 30);
+    queryStart.setHours(0, 0, 0, 0);
+
+    // 期間のデータを取得（前倒し期間で取得）
+    let historicalSteps = await getStepsInRange(queryStart, endDate);
+    try {
+      // 直近 daysBack 日だけに絞り込み
+      const cutoff = desiredStart.toISOString().split('T')[0];
+      historicalSteps = (historicalSteps || [])
+        .filter(d => (d?.date || '') >= cutoff)
+        .sort((a, b) => (a.date > b.date ? 1 : -1));
+    } catch (_) {}
 
     if (!historicalSteps || historicalSteps.length === 0) {
       console.log('インポートするデータがありません');

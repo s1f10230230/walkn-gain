@@ -307,7 +307,7 @@ export default function SharePreviewScreen({ navigation, route }) {
           {
             backgroundColor:
               steps / goal > 0.5
-                ? "#FFF9F0" // 薄いオレンジ（目標50%以上）
+                ? (theme.isDark ? "#2A1B14" : "#FFF9F0") // ダークモード対応
                 : theme.card, // 通常の背景
           },
         ]}

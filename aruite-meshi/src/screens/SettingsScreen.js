@@ -302,58 +302,7 @@ export default function SettingsScreen({ navigation }) {
         console.log('✅ [SettingsScreen] HealthKit連携成功');
         Alert.alert(t('settings.alerts.healthEnabledTitle'), t('settings.alerts.healthEnabledMessage'));
 
-        // まだ取り込み未実行なら、直ちに過去30日をインポート
-        try {
-          const done = await isHistoricalImportCompleted();
-          if (!done) {
-            console.log('📥 [SettingsScreen] 過去データ（30日）をインポート開始');
-            const result = await importHistoricalData(30);
-            if (result?.success) {
-              console.log(`📥 [SettingsScreen] インポート完了: ${result.importedDays}/${result.totalDays ?? 30}日`);
-            } else {
-              console.warn('[SettingsScreen] 過去データのインポートに失敗', result?.errors);
-            }
-          } else {
-            console.log('ℹ️ [SettingsScreen] 過去データは既にインポート済み');
-          }
-        } catch (e) {
-          console.warn('[SettingsScreen] 過去データの自動インポートでエラー（続行）', e);
-        }
-
-        // キャッチアップ取り込み（任意）: 直近14日を再取り込みしてOFF期間を補完
-        try {
-          Alert.alert(
-            t('settings.alerts.catchupTitle') || 'キャッチアップ取り込み',
-            t('settings.alerts.catchupMessage') || '連携OFF中の期間を埋めるため、過去14日を取り込みますか？',
-            [
-              { text: t('common.cancel') || 'キャンセル', style: 'cancel' },
-              {
-                text: t('settings.alerts.catchupConfirm') || '取り込み',
-                onPress: async () => {
-                  try {
-                    const res = await importHistoricalData(14);
-                    if (res?.success) {
-                      Alert.alert(
-                        t('settings.alerts.reimportTitle') || '取り込み完了',
-                        `${res.importedDays ?? 0}/${res.totalDays ?? 14}`
-                      );
-                    } else {
-                      Alert.alert(
-                        t('settings.alerts.reimportTitle') || '取り込み完了',
-                        t('settings.alerts.reimportFail') || '取り込みに失敗しました'
-                      );
-                    }
-                  } catch (e) {
-                    Alert.alert(
-                      t('settings.alerts.reimportTitle') || '取り込み完了',
-                      t('settings.alerts.reimportFail') || '取り込みに失敗しました'
-                    );
-                  }
-                },
-              },
-            ]
-          );
-        } catch (_) {}
+        // 背景配信用に限定: 自動の過去取り込みやキャッチアップは実行しない
       } else {
         console.log('❌ [SettingsScreen] HealthKit連携失敗');
         Alert.alert(t('common.error'), t('settings.alerts.healthPermissionFail'));
