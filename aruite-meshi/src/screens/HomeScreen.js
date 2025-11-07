@@ -1549,7 +1549,7 @@ export default function HomeScreen({ navigation, route }) {
           <Animated.View style={{ transform: [{ scale: pulseAnim }], position: 'relative' }}>
             <Progress.Circle
               size={200}
-              progress={activeTab === 'steps' ? progress : caloriesProgress}
+              progress={Math.min(1, activeTab === 'steps' ? progress : caloriesProgress)}
               showsText={false}
               animated={!isChangingWeekRef.current}
               color={activeTab === 'steps' ? (progress >= 1.0 ? theme.success : theme.accent) : (caloriesProgress >= 1.0 ? theme.success : theme.accent)}
