@@ -677,11 +677,19 @@ export const getStepsInRange = async (startDate, endDate) => {
 
           while (cur <= end) {
             const dayKey = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
+            const dayStart = new Date(cur);
+            dayStart.setHours(0, 0, 0, 0);
             const dayEnd = new Date(cur);
             dayEnd.setHours(23, 59, 59, 999);
+
+            // 動画の方法: startDate/endDateで範囲指定
             const steps = await new Promise((resolve) => {
               try {
-                AppleHealthKit.getStepCount({ date: dayEnd.toISOString(), includeManuallyAdded: true }, (err, res) => {
+                AppleHealthKit.getStepCount({
+                  startDate: dayStart.toISOString(),
+                  endDate: dayEnd.toISOString(),
+                  includeManuallyAdded: true
+                }, (err, res) => {
                   if (err) return resolve(0);
                   resolve(res?.value || 0);
                 });

@@ -15,7 +15,7 @@ import { useColorScheme } from 'react-native';
 import { getTheme } from '../../utils/theme';
 
 export default function HealthKitPermissionScreen({ navigation, route }) {
-  const ENABLE_HEALTHKIT_IMPORT = false; // 背景配信用に限定: 初回の過去取り込みは無効化
+  const ENABLE_HEALTHKIT_IMPORT = true; // 動画の方法で30日分取得を有効化
   const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(false);
   const { gender, age, height, weight, goalSteps } = route.params;
