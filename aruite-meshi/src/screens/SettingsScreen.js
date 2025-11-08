@@ -212,7 +212,7 @@ export default function SettingsScreen({ navigation }) {
     }
   };
 
-  // 通知トグル：アプリ内の通知可否のみを制御（リマインダーは自動スケジュールしない）
+  // 通知トグル：ONにしたらデフォルトでリマインダーもONにする
   const handleAppNotificationsToggle = async (value) => {
     // ON時はOS許可も同時に要求し、拒否ならアプリ設定もOFFに戻す
     if (value) {
@@ -249,7 +249,17 @@ export default function SettingsScreen({ navigation }) {
       return;
     }
 
-    // リマインダーのON/OFFは別途で制御（ここでは自動スケジュールしない）
+    // デフォルト動作：通知ONにしたら、リマインダーを自動ON（初回/未設定時）
+    if (value) {
+      try {
+        const hasDailyReminder = await getReminderEnabled();
+        if (!hasDailyReminder) {
+          await scheduleReminderNotification(20, 30);
+          await saveReminderEnabled(true);
+          setReminderEnabled(true);
+        }
+      } catch (_) {}
+    }
 
     try { logEvent('settings_changed', { field: 'notifications' }); } catch (_) {}
   };

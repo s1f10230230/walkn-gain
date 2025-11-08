@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
   container: {
     borderRadius: 12,
     padding: 12,
-    marginHorizontal: 16,
+    marginHorizontal: 20, // 16 -> 20: 画面端ジェスチャーとの干渉を回避
     marginVertical: 8,
     position: 'relative',
     zIndex: 10,

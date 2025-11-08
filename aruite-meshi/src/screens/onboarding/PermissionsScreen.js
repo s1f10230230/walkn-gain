@@ -46,6 +46,12 @@ export default function PermissionsScreen({ navigation, route }) {
         if (!notificationsGranted) {
           const ok = await requestNotificationPermissions();
           setNotificationsGranted(!!ok);
+          if (ok) {
+            try {
+              await scheduleReminderNotification(20, 30);
+              await saveReminderEnabled(true);
+            } catch (_) {}
+          }
         }
       } catch (_) {}
       try {
@@ -123,7 +129,13 @@ export default function PermissionsScreen({ navigation, route }) {
               onPress={async () => {
                 const ok = await requestNotificationPermissions();
                 setNotificationsGranted(!!ok);
-                // 許可直後にリマインダーはスケジュールしない（意図しない即時通知を避ける）
+                // 許可されたらデフォルトで毎日20:30のリマインダーをON
+                if (ok) {
+                  try {
+                    await scheduleReminderNotification(20, 30);
+                    await saveReminderEnabled(true);
+                  } catch (_) {}
+                }
               }}
               disabled={notificationsGranted}
             >

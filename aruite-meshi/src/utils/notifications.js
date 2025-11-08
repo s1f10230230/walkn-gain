@@ -125,6 +125,8 @@ export const sendImmediateNotification = async (title, body, data = {}) => {
         body,
         data,
         sound: true,
+        // iOS 15+: フォーカス/要約中でも通す（Time Sensitive）
+        interruptionLevel: Notifications.IOSInterruptionLevel?.TimeSensitive,
       },
       trigger: null, // 即座に送信
     });
@@ -228,6 +230,8 @@ export const scheduleReminderNotification = async (hour = 20, minute = 30) => {
         body,
         data: { type: 'reminder' },
         sound: true,
+        // iOS 15+: フォーカス/要約中でも通す（Time Sensitive）
+        interruptionLevel: Notifications.IOSInterruptionLevel?.TimeSensitive,
       },
       trigger,
     });
