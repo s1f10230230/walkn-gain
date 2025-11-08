@@ -239,6 +239,13 @@ export default function HomeScreen({ navigation, route }) {
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (evt, gestureState) => {
+          // 画面端60px以内ではPanResponderを無効化（戻るジェスチャー優先）
+          const touchX = evt.nativeEvent.pageX;
+          const edgeThreshold = 60;
+          if (touchX < edgeThreshold || touchX > width - edgeThreshold) {
+            return false;
+          }
+
           // 横方向のスワイプを軽く検出 + フリックも許容
           const horizontalBias =
             Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.1 ||
@@ -603,9 +610,9 @@ export default function HomeScreen({ navigation, route }) {
     const contentWidth = contentSize.width;
     const viewWidth = layoutMeasurement.width;
 
-    const threshold = 50;
-    const leftPulling = scrollX < -20; // 左に引っ張り始めた
-    const rightPulling = scrollX + viewWidth > contentWidth + 20; // 右に引っ張り始めた
+    const threshold = 15;
+    const leftPulling = scrollX < -15; // 左に引っ張り始めた
+    const rightPulling = scrollX + viewWidth > contentWidth + 15; // 右に引っ張り始めた
 
     setCalendarPullIndicator({
       left: leftPulling,
@@ -626,8 +633,8 @@ export default function HomeScreen({ navigation, route }) {
     const viewWidth = layoutMeasurement.width;
 
     // 閾値: より強く引っ張らないと切り替わらないように
-    const edgeThreshold = -50; // 左端から50px以上オーバースクロール
-    const rightEdgeThreshold = 50; // 右端から50px以上オーバースクロール
+    const edgeThreshold = -15; // 左端から50px以上オーバースクロール
+    const rightEdgeThreshold = 15; // 右端から50px以上オーバースクロール
 
     // 左端に到達（前の週へ）- 意図的に引っ張って止める必要がある
     if (scrollX < edgeThreshold) {

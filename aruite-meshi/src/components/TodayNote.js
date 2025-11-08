@@ -303,8 +303,8 @@ const styles = StyleSheet.create({
   container: {
     borderRadius: 12,
     padding: 12,
-    marginLeft: 60, // 画面左端ジェスチャー完全回避
-    marginRight: 60, // 画面右端ジェスチャー完全回避
+    marginLeft: 20, // 画面左端ジェスチャー完全回避
+    marginRight: 20, // 画面右端ジェスチャー完全回避
     marginVertical: 8,
     position: "relative",
     zIndex: 10,
