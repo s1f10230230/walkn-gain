@@ -1536,7 +1536,7 @@ export default function HomeScreen({ navigation, route }) {
 
       {/* 今日へ戻るチップ（横スクロール週の直下・右寄せ） */}
       {!isToday(selectedDate) && (
-        <View style={{ alignItems: 'flex-end', marginTop: 6, paddingHorizontal: 24 }}>
+        <View style={{ alignItems: 'flex-end', marginTop: 6, paddingHorizontal: 32 }}>
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel={'今日へ戻る'}
