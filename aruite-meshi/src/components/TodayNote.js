@@ -1,5 +1,5 @@
 // 今日のひとこと入力コンポーネント
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -9,15 +9,20 @@ import {
   Platform,
   Animated,
   Alert,
-} from 'react-native';
-import { getDayNote, setDayNote, deleteDayNote, getRandomPresets } from '../utils/dayNotes';
-import { useI18n } from '../i18n/I18nProvider';
-import { getTodayDateString } from '../utils/calculations';
+} from "react-native";
+import {
+  getDayNote,
+  setDayNote,
+  deleteDayNote,
+  getRandomPresets,
+} from "../utils/dayNotes";
+import { useI18n } from "../i18n/I18nProvider";
+import { getTodayDateString } from "../utils/calculations";
 
 export default function TodayNote({ theme, date, onNoteChange }) {
   const { t } = useI18n();
   const [isExpanded, setIsExpanded] = useState(false);
-  const [noteText, setNoteText] = useState('');
+  const [noteText, setNoteText] = useState("");
   const [presets, setPresets] = useState([]);
   const [hasNote, setHasNote] = useState(false);
 
@@ -106,128 +111,164 @@ export default function TodayNote({ theme, date, onNoteChange }) {
 
   const handleDelete = async () => {
     await deleteDayNote(targetDate);
-    setNoteText('');
+    setNoteText("");
     setHasNote(false);
     setIsExpanded(false);
 
     if (onNoteChange) {
-      onNoteChange('');
+      onNoteChange("");
     }
   };
 
   // 今日かどうかをチェック
   const isToday = targetDate === getTodayDateString();
-  const label = isToday ? (t('todayNote.titleToday') || '今日のひとこと') : (t('todayNote.title') || 'ひとこと');
+  const label = isToday
+    ? t("todayNote.titleToday") || "今日のひとこと"
+    : t("todayNote.title") || "ひとこと";
 
   return (
     <>
-      <Animated.View style={[styles.container, { backgroundColor: theme.card, opacity: fadeAnim }] }>
+      <Animated.View
+        style={[
+          styles.container,
+          { backgroundColor: theme.card, opacity: fadeAnim },
+        ]}
+      >
         {!isExpanded && !hasNote && (
-        <TouchableOpacity
-          activeOpacity={0.4}
-          style={styles.addButton}
-          onPress={() => setIsExpanded(true)}
-        >
-          <Text style={styles.commentIcon}>💬</Text>
-          <Text style={[styles.addButtonText, { color: theme.primary }]}>
-            {t('todayNote.add') || 'ひとことを追加'}
-          </Text>
-          <Text style={[styles.editIcon, { color: theme.textSecondary }]}>✏️</Text>
-        </TouchableOpacity>
-      )}
+          <TouchableOpacity
+            activeOpacity={0.4}
+            style={styles.addButton}
+            onPress={() => setIsExpanded(true)}
+          >
+            <Text style={styles.commentIcon}>💬</Text>
+            <Text style={[styles.addButtonText, { color: theme.primary }]}>
+              {t("todayNote.add") || "ひとことを追加"}
+            </Text>
+            <Text style={[styles.editIcon, { color: theme.textSecondary }]}>
+              ✏️
+            </Text>
+          </TouchableOpacity>
+        )}
 
-      {!isExpanded && hasNote && (
-        <TouchableOpacity
-          activeOpacity={0.4}
-          style={styles.noteDisplay}
-          onPress={() => setIsExpanded(true)}
-        >
-          <Text style={styles.commentIcon}>💬</Text>
-          <View style={styles.noteContent}>
-            <Text style={[styles.noteLabel, { color: theme.textSecondary }]}>
+        {!isExpanded && hasNote && (
+          <TouchableOpacity
+            activeOpacity={0.4}
+            style={styles.noteDisplay}
+            onPress={() => setIsExpanded(true)}
+          >
+            <Text style={styles.commentIcon}>💬</Text>
+            <View style={styles.noteContent}>
+              <Text style={[styles.noteLabel, { color: theme.textSecondary }]}>
+                {label}
+              </Text>
+              <Text style={[styles.noteText, { color: theme.text }]}>
+                {noteText}
+              </Text>
+            </View>
+            <Text style={[styles.editIcon, { color: theme.textSecondary }]}>
+              ✏️
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {isExpanded && (
+          <View style={styles.inputContainer}>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
               {label}
             </Text>
-            <Text style={[styles.noteText, { color: theme.text }]}>
-              {noteText}
-            </Text>
-          </View>
-          <Text style={[styles.editIcon, { color: theme.textSecondary }]}>✏️</Text>
-        </TouchableOpacity>
-      )}
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.background,
+                  color: theme.text,
+                  borderColor: theme.border,
+                },
+              ]}
+              value={noteText}
+              onChangeText={setNoteText}
+              placeholder={
+                isToday
+                  ? t("todayNote.placeholderToday") ||
+                    "今日の気分や出来事を記録..."
+                  : t("todayNote.placeholderOther") ||
+                    "この日の気分や出来事を記録..."
+              }
+              placeholderTextColor={theme.textSecondary}
+              maxLength={100}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleSave}
+            />
 
-      {isExpanded && (
-        <View style={styles.inputContainer}>
-          <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
-            {label}
-          </Text>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: theme.background,
-                color: theme.text,
-                borderColor: theme.border,
-              },
-            ]}
-            value={noteText}
-            onChangeText={setNoteText}
-            placeholder={isToday ? (t('todayNote.placeholderToday') || '今日の気分や出来事を記録...') : (t('todayNote.placeholderOther') || 'この日の気分や出来事を記録...')}
-            placeholderTextColor={theme.textSecondary}
-            maxLength={100}
-            autoFocus
-            returnKeyType="done"
-            onSubmitEditing={handleSave}
-          />
-
-          <View style={styles.presetsContainer}>
-            <Text style={[styles.presetsLabel, { color: theme.textSecondary }]}>
-              {t('todayNote.templates') || 'テンプレート：'}
-            </Text>
-            <View style={styles.presetsRow}>
-              {presets.map((preset, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[styles.presetButton, { backgroundColor: theme.primary + '20' }]}
-                  onPress={() => handlePresetSelect(preset)}
-                >
-                  <Text style={[styles.presetText, { color: theme.primary }]}>
-                    {preset}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          <View style={styles.buttonRow}>
-            <TouchableOpacity
-              style={[styles.button, styles.cancelButton, { borderColor: theme.border }]}
-              onPress={() => setIsExpanded(false)}
-            >
-              <Text style={[styles.buttonText, { color: theme.textSecondary }]}>
-                {t('common.cancel') || 'キャンセル'}
-              </Text>
-            </TouchableOpacity>
-            {hasNote && (
-              <TouchableOpacity
-                style={[styles.button, styles.deleteButton, { backgroundColor: '#FF3B30' }]}
-                onPress={handleDelete}
+            <View style={styles.presetsContainer}>
+              <Text
+                style={[styles.presetsLabel, { color: theme.textSecondary }]}
               >
-                <Text style={[styles.buttonText, { color: '#FFFFFF' }]}>
-                  {t('todayNote.delete') || '削除'}
+                {t("todayNote.templates") || "テンプレート："}
+              </Text>
+              <View style={styles.presetsRow}>
+                {presets.map((preset, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.presetButton,
+                      { backgroundColor: theme.primary + "20" },
+                    ]}
+                    onPress={() => handlePresetSelect(preset)}
+                  >
+                    <Text style={[styles.presetText, { color: theme.primary }]}>
+                      {preset}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  styles.cancelButton,
+                  { borderColor: theme.border },
+                ]}
+                onPress={() => setIsExpanded(false)}
+              >
+                <Text
+                  style={[styles.buttonText, { color: theme.textSecondary }]}
+                >
+                  {t("common.cancel") || "キャンセル"}
                 </Text>
               </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={[styles.button, styles.saveButton, { backgroundColor: theme.primary }]}
-              onPress={handleSave}
-            >
-              <Text style={[styles.buttonText, { color: '#FFFFFF' }]}>
-                {t('todayNote.save') || '保存'}
-              </Text>
-            </TouchableOpacity>
+              {hasNote && (
+                <TouchableOpacity
+                  style={[
+                    styles.button,
+                    styles.deleteButton,
+                    { backgroundColor: "#FF3B30" },
+                  ]}
+                  onPress={handleDelete}
+                >
+                  <Text style={[styles.buttonText, { color: "#FFFFFF" }]}>
+                    {t("todayNote.delete") || "削除"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  styles.saveButton,
+                  { backgroundColor: theme.primary },
+                ]}
+                onPress={handleSave}
+              >
+                <Text style={[styles.buttonText, { color: "#FFFFFF" }]}>
+                  {t("todayNote.save") || "保存"}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      )}
+        )}
       </Animated.View>
 
       {/* 保存トースト */}
@@ -249,7 +290,9 @@ export default function TodayNote({ theme, date, onNoteChange }) {
             },
           ]}
         >
-          <Text style={styles.toastText}>{t('todayNote.savedToast') || '保存しました'}</Text>
+          <Text style={styles.toastText}>
+            {t("todayNote.savedToast") || "保存しました"}
+          </Text>
         </Animated.View>
       )}
     </>
@@ -263,11 +306,11 @@ const styles = StyleSheet.create({
     marginLeft: 60, // 画面左端ジェスチャー完全回避
     marginRight: 60, // 画面右端ジェスチャー完全回避
     marginVertical: 8,
-    position: 'relative',
+    position: "relative",
     zIndex: 10,
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
+        shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 4,
@@ -278,20 +321,20 @@ const styles = StyleSheet.create({
     }),
   },
   addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 12,
     paddingHorizontal: 12,
   },
   addButtonText: {
     flex: 1,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 8,
   },
   noteDisplay: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 12,
     paddingHorizontal: 12,
   },
@@ -319,7 +362,7 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   input: {
     borderRadius: 8,
@@ -335,8 +378,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   presetsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
   presetButton: {
@@ -346,10 +389,10 @@ const styles = StyleSheet.create({
   },
   presetText: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   buttonRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
     marginTop: 4,
   },
@@ -357,7 +400,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 10,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
   cancelButton: {
     borderWidth: 1,
@@ -366,18 +409,18 @@ const styles = StyleSheet.create({
   saveButton: {},
   buttonText: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   toast: {
-    position: 'absolute',
+    position: "absolute",
     bottom: -50,
-    alignSelf: 'center',
+    alignSelf: "center",
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 20,
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
+        shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.25,
         shadowRadius: 4,
@@ -388,8 +431,8 @@ const styles = StyleSheet.create({
     }),
   },
   toastText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });

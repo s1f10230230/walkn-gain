@@ -121,7 +121,7 @@ const styles = StyleSheet.create({
   container: {
     borderRadius: 12,
     padding: 16,
-    marginHorizontal: 16,
+    marginHorizontal: 60, // 画面端ジェスチャー完全回避
     marginVertical: 8,
     position: 'relative',
     zIndex: 10,
