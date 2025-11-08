@@ -64,6 +64,7 @@ import {
 import { saveReminderEnabled } from '../utils/storage';
 import { logEvent } from '../utils/analytics';
 import { getStepsHybrid, startStepsBackgroundUpdates, isHistoricalImportCompleted, importHistoricalData } from '../utils/healthKit';
+import { registerBackgroundStepsTask } from '../tasks/backgroundStepsTask';
 import { CalendarIcon } from '../components/SettingsIcons';
 import { getEventsForDate, getEventsSummary } from '../utils/calendar';
 import TodayNote from '../components/TodayNote';
@@ -153,6 +154,8 @@ export default function HomeScreen({ navigation, route }) {
   const calendarScrollRef = useRef(null); // カレンダースクロールのref
   const isChangingWeekRef = useRef(false); // 週切り替え中フラグ
   const calendarAnimValues = useRef(Array(7).fill(0).map(() => new Animated.Value(1))).current; // カレンダーアイテムのアニメーション
+  // 初回保存ガード（復元完了までは保存しない）
+  const hasRestoredDateRef = useRef(false);
   let Haptics = null;
   try {
     // 存在する環境のみ使用（依存未追加でも壊れないように）
@@ -187,6 +190,8 @@ export default function HomeScreen({ navigation, route }) {
 
       // パラメータをクリア（再度同じ日付に遷移できるように）
       navigation.setParams({ selectedDate: undefined });
+      // 復元済みとしてマーク
+      hasRestoredDateRef.current = true;
     }
   }, [route?.params?.selectedDate, navigation]);
 
@@ -630,10 +635,11 @@ export default function HomeScreen({ navigation, route }) {
         return;
       }
 
-      const dateKey = selectedDate.toISOString().split('T')[0];
+      const currentSelected = selectedDateRef.current || selectedDate;
+      const dateKey = currentSelected.toISOString().split('T')[0];
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const selectedStart = new Date(selectedDate);
+      const selectedStart = new Date(currentSelected);
       selectedStart.setHours(0, 0, 0, 0);
 
       // 未来の日付（翌日以降）の場合は何もしない
@@ -647,9 +653,9 @@ export default function HomeScreen({ navigation, route }) {
       }
 
       // その日の開始と終了時刻
-      const start = new Date(selectedDate);
+      const start = new Date(currentSelected);
       start.setHours(0, 0, 0, 0);
-      const end = new Date(selectedDate);
+      const end = new Date(currentSelected);
       end.setHours(23, 59, 59, 999);
 
       // 今日の場合は現在時刻まで
@@ -784,10 +790,14 @@ export default function HomeScreen({ navigation, route }) {
               monday.setHours(0, 0, 0, 0);
               setWeekStartDate(monday);
               setSelectedDate(r0);
+              hasRestoredDateRef.current = true;
             }
           }
         }
       } catch (_) {}
+      if (!hasRestoredDateRef.current) {
+        hasRestoredDateRef.current = true;
+      }
     })();
 
     // ⚡ リアルタイム自動更新: アプリがフォアグラウンドに戻った時に更新
@@ -801,6 +811,7 @@ export default function HomeScreen({ navigation, route }) {
   // 日付変更を永続化
   useEffect(() => {
     (async () => {
+      if (!hasRestoredDateRef.current) return;
       try {
         const y = selectedDate.getFullYear();
         const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
@@ -849,10 +860,11 @@ export default function HomeScreen({ navigation, route }) {
 
   // データを強制的に更新（フォアグラウンド復帰時）
   const refreshData = async () => {
-    // 選択されている日付のデータを再取得
+    // 選択されている日付のデータを再取得（最新のselectedDateをrefから参照）
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const isSelectedToday = selectedDate.toDateString() === today.toDateString();
+    const currentSelected = selectedDateRef.current || selectedDate;
+    const isSelectedToday = currentSelected.toDateString() === today.toDateString();
 
     if (isSelectedToday) {
       const nowTs = Date.now();
@@ -908,12 +920,18 @@ export default function HomeScreen({ navigation, route }) {
     // 歩数計の初期化（権限リクエストはオンボーディングで行うため、ここではスキップ）
     // オフライン時はキャッシュをそのまま利用
 
-    // HealthKit背景更新（通知用）
+    // HealthKit背景更新（通知用） + BackgroundFetch（フォールバック）
     try {
       const enabled = await getHealthSyncEnabled();
       if (enabled) {
         console.log('🔔 HealthKit背景更新を開始（通知用）');
         await startStepsBackgroundUpdates();
+        try {
+          const s = await getSettings();
+          if (s?.notifications) {
+            await registerBackgroundStepsTask();
+          }
+        } catch (_) {}
       }
     } catch (e) {
       console.warn('背景歩数更新の開始に失敗（オプショナル）', e);
@@ -1076,16 +1094,24 @@ export default function HomeScreen({ navigation, route }) {
   // Pedometerからのデータを更新（アプリ内で計算）
   const updateSteps = async (newSteps) => {
     const oldSteps = steps;
-    setSteps(newSteps);
     // 体重を考慮した歩行カロリー計算
     const cal = calculateCalories(newSteps, profile.weight);
     const dist = calculateDistance(newSteps, profile.stride);
     const prog = calculateGoalProgress(newSteps, goal);
 
-    setCalories(cal);
-    setDistance(dist);
-    const nextNorm = prog / 100;
-    setProgress(nextNorm);
+    // 表示の更新は「今日」を見ている時だけ行う（過去日表示中に飛ばないように）
+    try {
+      const today = new Date(); today.setHours(0,0,0,0);
+      const currentSelected = selectedDateRef.current || selectedDate;
+      const isViewingToday = currentSelected.toDateString() === today.toDateString();
+      if (isViewingToday) {
+        setSteps(newSteps);
+        setCalories(cal);
+        setDistance(dist);
+        const nextNorm = prog / 100;
+        setProgress(nextNorm);
+      }
+    } catch (_) {}
 
     const data = {
       date: getTodayDateString(),
@@ -1133,17 +1159,23 @@ export default function HomeScreen({ navigation, route }) {
 
     // スイープの手動制御はしない（標準animatedに任せる）
 
-    // 小気味よい弾む演出（大きく変化したとき）
+    // 小気味よい弾む演出（大きく変化したとき）: 今日表示時のみ
     try {
-      const prev = (oldSteps / Math.max(1, goal));
-      if (nextNorm - prev > 0.005) {
-        bumpAnim.stopAnimation(() => {
-          bumpAnim.setValue(1);
-          Animated.sequence([
-            Animated.timing(bumpAnim, { toValue: 1.06, duration: 180, useNativeDriver: true }),
-            Animated.timing(bumpAnim, { toValue: 1.0, duration: 250, useNativeDriver: true }),
-          ]).start();
-        });
+      const today = new Date(); today.setHours(0,0,0,0);
+      const currentSelected = selectedDateRef.current || selectedDate;
+      const isViewingToday = currentSelected.toDateString() === today.toDateString();
+      if (isViewingToday) {
+        const nextNorm = prog / 100;
+        const prev = (oldSteps / Math.max(1, goal));
+        if (nextNorm - prev > 0.005) {
+          bumpAnim.stopAnimation(() => {
+            bumpAnim.setValue(1);
+            Animated.sequence([
+              Animated.timing(bumpAnim, { toValue: 1.06, duration: 180, useNativeDriver: true }),
+              Animated.timing(bumpAnim, { toValue: 1.0, duration: 250, useNativeDriver: true }),
+            ]).start();
+          });
+        }
       }
     } catch (_) {}
 
@@ -1432,14 +1464,20 @@ export default function HomeScreen({ navigation, route }) {
                   const ringColor = ratio >= 1 ? theme.success : theme.accent;
                   return (
                     <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-                      <Progress.Circle
-                        size={34}
-                        progress={ratio}
-                        thickness={3}
-                        borderWidth={0}
-                        color={selected ? '#FFF' : ringColor}
-                        unfilledColor={selected ? 'rgba(255,255,255,0.25)' : theme.circleUnfilled}
-                      />
+                      {(() => {
+                        const full = ratio >= 0.999;
+                        const unfilled = selected ? 'rgba(255,255,255,0.25)' : theme.circleUnfilled;
+                        return (
+                          <Progress.Circle
+                            size={34}
+                            progress={ratio}
+                            thickness={3}
+                            borderWidth={0}
+                            color={selected ? '#FFF' : ringColor}
+                            unfilledColor={full ? 'transparent' : unfilled}
+                          />
+                        );
+                      })()}
                       <Text style={[
                         styles.calendarRingDay,
                         { position: 'absolute', color: selected ? '#FFF' : future ? theme.textTertiary : theme.textSecondary }
@@ -1547,16 +1585,25 @@ export default function HomeScreen({ navigation, route }) {
           <View style={[styles.circleBackground, { backgroundColor: theme.card }]}>
           <Animated.View style={{ transform: [{ scale: bumpAnim }] }}>
           <Animated.View style={{ transform: [{ scale: pulseAnim }], position: 'relative' }}>
-            <Progress.Circle
-              size={200}
-              progress={Math.min(1, activeTab === 'steps' ? progress : caloriesProgress)}
-              showsText={false}
-              animated={!isChangingWeekRef.current}
-              color={activeTab === 'steps' ? (progress >= 1.0 ? theme.success : theme.accent) : (caloriesProgress >= 1.0 ? theme.success : theme.accent)}
-              unfilledColor={theme.circleUnfilled}
-              borderWidth={0}
-              thickness={12}
-            />
+            {(() => {
+              const ringP = Math.min(1, activeTab === 'steps' ? progress : caloriesProgress);
+              const isFull = ringP >= 0.999;
+              const ringColor = activeTab === 'steps'
+                ? (ringP >= 1.0 ? theme.success : theme.accent)
+                : (ringP >= 1.0 ? theme.success : theme.accent);
+              return (
+                <Progress.Circle
+                  size={200}
+                  progress={ringP}
+                  showsText={false}
+                  animated={!isChangingWeekRef.current}
+                  color={ringColor}
+                  unfilledColor={isFull ? 'transparent' : theme.circleUnfilled}
+                  borderWidth={0}
+                  thickness={12}
+                />
+              );
+            })()}
           </Animated.View>
           </Animated.View>
           <View style={styles.circleCenter}>

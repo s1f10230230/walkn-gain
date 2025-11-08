@@ -216,12 +216,8 @@ export const scheduleReminderNotification = async (hour = 20, minute = 30) => {
     // 既存のリマインダーをキャンセル
     await cancelReminderNotifications();
 
-    // 毎日指定時刻に通知
-    const trigger = {
-      hour,
-      minute,
-      repeats: true,
-    };
+    // 毎日指定時刻に通知（OSが次の該当時刻にスケジュール）
+    const trigger = { hour, minute, repeats: true };
 
     const title = await tAsync('notifications.reminder.title');
     const body = await tAsync('notifications.reminder.body');

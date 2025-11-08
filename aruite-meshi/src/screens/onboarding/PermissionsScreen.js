@@ -123,12 +123,7 @@ export default function PermissionsScreen({ navigation, route }) {
               onPress={async () => {
                 const ok = await requestNotificationPermissions();
                 setNotificationsGranted(!!ok);
-                if (ok) {
-                  try {
-                    await scheduleReminderNotification(20, 30);
-                    await saveReminderEnabled(true);
-                  } catch (_) {}
-                }
+                // 許可直後にリマインダーはスケジュールしない（意図しない即時通知を避ける）
               }}
               disabled={notificationsGranted}
             >

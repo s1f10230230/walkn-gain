@@ -24,11 +24,13 @@ import {
   saveHealthSyncEnabled,
   saveOnboardingComplete,
   saveReminderEnabled,
+  getReminderEnabled,
 } from '../utils/storage';
 import { estimateStrideLength } from '../utils/calculations';
-import { initializeHealthKit, startStepsBackgroundUpdates, stopStepsBackgroundUpdates, checkHealthKitPermissions, diagnoseHealthKit, isHistoricalImportCompleted, importHistoricalData } from '../utils/healthKit';
+import { initializeHealthKit, startStepsBackgroundUpdates, stopStepsBackgroundUpdates, isHistoricalImportCompleted, importHistoricalData } from '../utils/healthKit';
+import { registerBackgroundStepsTask, unregisterBackgroundStepsTask } from '../tasks/backgroundStepsTask';
 import { scheduleReminderNotification, cancelReminderNotifications } from '../utils/notifications';
-import { UserIcon, TargetIcon, HeartIcon, BoxIcon, PenIcon, InfoIcon } from '../components/SettingsIcons';
+import { UserIcon, TargetIcon, HeartIcon, PenIcon, InfoIcon } from '../components/SettingsIcons';
 import { logEvent } from '../utils/analytics';
 import { getTheme } from '../utils/theme';
 import * as Notifications from 'expo-notifications';
@@ -105,6 +107,7 @@ export default function SettingsScreen({ navigation }) {
   const [notifOSGranted, setNotifOSGranted] = useState(false);
   const [calendarOSGranted, setCalendarOSGranted] = useState(false);
   const [motionOSGranted, setMotionOSGranted] = useState(false);
+  const [reminderEnabled, setReminderEnabled] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -114,6 +117,7 @@ export default function SettingsScreen({ navigation }) {
     const userProfile = await getUserProfile();
     const userSettings = await getSettings();
     const healthSyncEnabled = await getHealthSyncEnabled();
+    const reminderOn = await getReminderEnabled();
 
     setProfile({
       height: String(userProfile.height),
@@ -131,6 +135,7 @@ export default function SettingsScreen({ navigation }) {
     });
 
     setHealthSync(toBoolean(healthSyncEnabled));
+    setReminderEnabled(!!reminderOn);
     // 位置情報関連は読み込まない（非表示）
 
     // OS権限の状態
@@ -207,7 +212,7 @@ export default function SettingsScreen({ navigation }) {
     }
   };
 
-  // 通知トグルを自動保存に統一（進捗通知50/80/100%とリマインダーの両方を制御）
+  // 通知トグル：アプリ内の通知可否のみを制御（リマインダーは自動スケジュールしない）
   const handleAppNotificationsToggle = async (value) => {
     // ON時はOS許可も同時に要求し、拒否ならアプリ設定もOFFに戻す
     if (value) {
@@ -244,13 +249,7 @@ export default function SettingsScreen({ navigation }) {
       return;
     }
 
-    // リマインダー通知も同時に制御
-    await saveReminderEnabled(value);
-    if (value) {
-      await scheduleReminderNotification(20, 30);
-    } else {
-      await cancelReminderNotifications();
-    }
+    // リマインダーのON/OFFは別途で制御（ここでは自動スケジュールしない）
 
     try { logEvent('settings_changed', { field: 'notifications' }); } catch (_) {}
   };
@@ -299,6 +298,8 @@ export default function SettingsScreen({ navigation }) {
         await saveHealthSyncEnabled(true);
         // 背景更新を開始
         await startStepsBackgroundUpdates();
+        // フォールバック：BackgroundFetch（通知ON時のみ）
+        try { if (toBoolean(settings.notifications)) await registerBackgroundStepsTask(); } catch (_) {}
         console.log('✅ [SettingsScreen] HealthKit連携成功');
         Alert.alert(t('settings.alerts.healthEnabledTitle'), t('settings.alerts.healthEnabledMessage'));
 
@@ -313,46 +314,37 @@ export default function SettingsScreen({ navigation }) {
       await saveHealthSyncEnabled(false);
       // 背景更新を停止
       await stopStepsBackgroundUpdates();
+      try { await unregisterBackgroundStepsTask(); } catch (_) {}
       Alert.alert(t('settings.alerts.healthDisabledTitle'), t('settings.alerts.healthDisabledMessage'));
     }
     try { logEvent('settings_changed', { field: 'health_sync' }); } catch (_) {}
   };
 
-  const handleReimport30 = async () => {
+  const handleReminderToggle = async (value) => {
     try {
-      Alert.alert(
-        t('settings.alerts.reimportTitle') || '過去データの再取り込み',
-        t('settings.alerts.reimportConfirm') || '過去30日分の歩数を再取り込みしますか？',
-        [
-          { text: t('common.cancel') || 'キャンセル', style: 'cancel' },
-          {
-            text: t('settings.data.reimport') || '過去30日を再取り込み',
-            onPress: async () => {
-              try {
-                const res = await importHistoricalData(30);
-                if (res?.success) {
-                  Alert.alert(
-                    t('settings.alerts.reimportTitle') || '取り込み完了',
-                    `${res.importedDays ?? 0}/${res.totalDays ?? 30}`
-                  );
-                } else {
-                  Alert.alert(
-                    t('settings.alerts.reimportTitle') || '取り込み完了',
-                    t('settings.alerts.reimportFail') || '取り込みに失敗しました'
-                  );
-                }
-              } catch (e) {
-                Alert.alert(
-                  t('settings.alerts.reimportTitle') || '取り込み完了',
-                  t('settings.alerts.reimportFail') || '取り込みに失敗しました'
-                );
-              }
-            },
-          },
-        ]
-      );
-    } catch (e) {}
+      if (value) {
+        const granted = await requestNotificationPermissions();
+        if (!granted) {
+          setReminderEnabled(false);
+          return;
+        }
+        await scheduleReminderNotification(20, 30);
+        await saveReminderEnabled(true);
+        setReminderEnabled(true);
+        Alert.alert(t('common.success'), t('settings.alerts.reminderSetMessage'));
+      } else {
+        await cancelReminderNotifications();
+        await saveReminderEnabled(false);
+        setReminderEnabled(false);
+        Alert.alert(t('settings.alerts.reminderDisabledTitle') || '無効化', t('settings.alerts.reminderDisabledMessage'));
+      }
+    } catch (e) {
+      Alert.alert(t('common.error'), 'リマインダー設定に失敗しました');
+    }
   };
+
+
+  // 30日再取り込み機能は提出版では非表示
 
   const handleResetOnboarding = () => {
     Alert.alert(
@@ -572,8 +564,7 @@ export default function SettingsScreen({ navigation }) {
               trackColor={{ false: '#ccc', true: theme.accent }}
             />
           </View>
-
-          {/* 提出用: デバッグボタンは非表示 */}
+          {/* 診断ログボタン（提出版では非表示） */}
         </View>
       </View>
 
@@ -584,7 +575,8 @@ export default function SettingsScreen({ navigation }) {
         <View style={styles.sectionTitleContainer}>
           <InfoIcon size={20} color={theme.accent} />
           <Text style={[styles.sectionTitle, { color: theme.text }]}>権限</Text>
-        </View>
+  </View>
+  {/* Diagnostics Modal（提出版では非表示） */}
         <View style={[styles.card, { backgroundColor: theme.card }] }>
           <View style={styles.switchRow}>
             <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.permissions.calendar') || 'カレンダーの許可'}</Text>
@@ -593,6 +585,38 @@ export default function SettingsScreen({ navigation }) {
           <View style={styles.switchRow}>
             <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.permissions.motion') || 'モーションとフィットネス'}</Text>
             <Switch value={motionOSGranted} onValueChange={onToggleMotionOS} />
+          </View>
+        </View>
+      </View>
+
+      {/* 通知（アプリ） */}
+      <View style={styles.section}>
+        <View style={styles.sectionTitleContainer}>
+          <InfoIcon size={20} color={theme.accent} />
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>通知</Text>
+        </View>
+        <View style={[styles.card, { backgroundColor: theme.card }]}>
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.fields.notifications') || '通知'}</Text>
+              <Text style={[styles.helperText, { color: theme.textSecondary }]}>{t('settings.helpers.reminderDaily') || 'アプリからの通知を有効にします'}</Text>
+            </View>
+            <Switch
+              value={toBoolean(settings.notifications)}
+              onValueChange={handleAppNotificationsToggle}
+              trackColor={{ false: '#ccc', true: theme.accent }}
+            />
+          </View>
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.fields.reminder') || 'リマインダー通知'}</Text>
+              <Text style={[styles.helperText, { color: theme.textSecondary }]}>毎日20:30にお知らせ</Text>
+            </View>
+            <Switch
+              value={toBoolean(reminderEnabled)}
+              onValueChange={handleReminderToggle}
+              trackColor={{ false: '#ccc', true: theme.accent }}
+            />
           </View>
         </View>
       </View>
@@ -661,21 +685,7 @@ export default function SettingsScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       </View>
-      {/* データ再取り込み（任意） */}
-      <View style={styles.section}>
-        <View style={styles.sectionTitleContainer}>
-          <BoxIcon size={20} color={theme.accent} />
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settings.sections.data')}</Text>
-        </View>
-        <View style={[styles.card, { backgroundColor: theme.card }] }>
-          <TouchableOpacity style={styles.menuItem} onPress={handleReimport30}>
-            <Text style={[styles.menuText, { color: theme.text }]}>
-              {t('settings.data.reimport') || '過去30日を再取り込み'}
-            </Text>
-            <Text style={[styles.menuArrow, { color: theme.textSecondary }]}>›</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      {/* データ再取り込みは提出版では非表示 */}
       {/* 都市選択モーダルは非表示 */}
     </ScrollView>
   );

@@ -148,48 +148,33 @@ export default function SharePreviewScreen({ navigation, route }) {
 
   useEffect(() => {
     (async () => {
-      // Consistency（直近7日間の目標達成日数） & 週合計（シェア画面の選択日から直近）
+      // Consistency（直近7日間の目標達成日数） & 週合計（選択日から直近）
       try {
         const s = await getSettings();
         const base = new Date(selectedDate);
         base.setHours(12, 0, 0, 0);
 
-        // 選択日から遡る直近7日（選択日を含む）
-        const weekDates = [];
-        for (let i = 0; i < 7; i++) {
-          const d = new Date(base);
-          d.setDate(base.getDate() - i);
-          const y = d.getFullYear();
-          const m = String(d.getMonth() + 1).padStart(2, '0');
-          const dd = String(d.getDate()).padStart(2, '0');
-          weekDates.push(`${y}-${m}-${dd}`);
+        // 選択日を含む直近7日を範囲取得
+        const rangeEnd = new Date(base);
+        const rangeStart = new Date(base);
+        rangeStart.setDate(base.getDate() - 6);
+        rangeStart.setHours(0,0,0,0);
+        if (rangeEnd.toDateString() === new Date().toDateString()) {
+          rangeEnd.setTime(Date.now());
+        } else {
+          rangeEnd.setHours(23,59,59,999);
         }
+        const weekList = await getStepsInRange(rangeStart, rangeEnd);
+        const wTotal = Array.isArray(weekList) ? weekList.reduce((acc, d) => acc + (Number(d?.steps)||0), 0) : 0;
 
-        let wTotal = 0;
+        // 直近7日分の達成日数
         let count = 0;
-        console.log('📊 WEEK calculation - dates (from selectedDate):', weekDates);
-        for (const dateStr of weekDates) {
-          const [year, month, day] = dateStr.split('-').map(Number);
-          const date = new Date(year, month - 1, day);
-          const start = new Date(date);
-          start.setHours(0, 0, 0, 0);
-          const end = new Date(date);
-          end.setHours(23, 59, 59, 999);
-          // 端末の“今日”に該当する場合のみ現在時刻まで
-          if (date.toDateString() === new Date().toDateString()) {
-            end.setTime(Date.now());
-          }
-          try {
-            const result = await getStepsHybrid(start, end);
-            const daySteps = result.steps || 0;
-            console.log(`📊 ${dateStr}: ${daySteps} steps`);
-            wTotal += daySteps;
-            if (daySteps >= (s?.dailyGoal || 10000)) count++;
-          } catch (error) {
-            console.error(`Error getting steps for ${dateStr}:`, error);
+        if (Array.isArray(weekList)) {
+          for (const d of weekList) {
+            if ((Number(d?.steps)||0) >= (s?.dailyGoal || 10000)) count++;
           }
         }
-        console.log('📊 WEEK total:', wTotal);
+        console.log('📊 WEEK total:', wTotal, 'days achieved:', count);
         setConsistency(count);
         setWeekTotal(wTotal);
 
@@ -198,57 +183,48 @@ export default function SharePreviewScreen({ navigation, route }) {
         setStreakDays(streak);
       } catch (_) {}
 
-      // Month (その日から過去30日) - HealthKit/Pedometerから取得
+      // Month (その日から過去30日) - 範囲APIで安定取得
       try {
-        const targetDate = new Date(selectedDate);
-        targetDate.setHours(12, 0, 0, 0);
-        let mTotal = 0;
-        for (let i = 0; i < 30; i++) {
-          const date = new Date(targetDate);
-          date.setDate(targetDate.getDate() - i);
-          const start = new Date(date);
-          start.setHours(0, 0, 0, 0);
-          const end = new Date(date);
-          end.setHours(23, 59, 59, 999);
-          if (date.toDateString() === new Date().toDateString()) {
-            end.setTime(Date.now());
-          }
-          try {
-            const { steps: daySteps } = await getStepsHybrid(start, end);
-            mTotal += (daySteps || 0);
-          } catch (_) {}
+        const targetDate = new Date(selectedDate); targetDate.setHours(12,0,0,0);
+        const rangeEnd = new Date(targetDate);
+        const rangeStart = new Date(targetDate);
+        rangeStart.setDate(targetDate.getDate() - 29);
+        rangeStart.setHours(0,0,0,0);
+        if (rangeEnd.toDateString() === new Date().toDateString()) {
+          rangeEnd.setTime(Date.now());
+        } else {
+          rangeEnd.setHours(23,59,59,999);
         }
+        const monthList = await getStepsInRange(rangeStart, rangeEnd);
+        const mTotal = Array.isArray(monthList) ? monthList.reduce((acc, d) => acc + (Number(d?.steps)||0), 0) : 0;
         console.log('📊 MONTH total:', mTotal);
         setMonthTotal(mTotal);
       } catch (_) {}
 
-      // All-time（全期間）: HealthKit/Google Fitから選択日までの全期間合計（フォールバックでローカル保存分）
+      // All-time（全期間）: まずローカル保存分（このアプリの範囲）を優先し、0なら範囲APIで補完
       try {
-        const end = new Date(selectedDate);
-        // 選択日が“今日”なら現在時刻まで、それ以外はその日の23:59:59まで
-        if (end.toDateString() === new Date().toDateString()) {
-          // keep end as now
-        } else {
-          end.setHours(23, 59, 59, 999);
-        }
-        // 十分古い開始日に設定（10年分）
-        const start = new Date(end);
-        start.setFullYear(end.getFullYear() - 10);
-        start.setHours(0, 0, 0, 0);
-
+        // 1) ローカル保存（インポート済み＋アプリ内計測）の合計
         let allTotal = 0;
         try {
-          const daily = await getStepsInRange(start, end);
-          if (Array.isArray(daily) && daily.length > 0) {
-            allTotal = daily.reduce((acc, d) => acc + (Number(d?.steps) || 0), 0);
-          }
+          const storedSum = await getAllDailyStepsTotal();
+          if (Number.isFinite(storedSum)) allTotal = storedSum;
         } catch (_) {}
 
-        // フォールバック: ローカル保存分の合計
+        // 2) まだ0なら範囲APIで補完（最大1年分程度に留める）
         if (!allTotal || allTotal <= 0) {
           try {
-            const storedSum = await getAllDailyStepsTotal();
-            if (Number.isFinite(storedSum)) allTotal = storedSum;
+            const end = new Date(selectedDate);
+            if (end.toDateString() !== new Date().toDateString()) {
+              end.setHours(23, 59, 59, 999);
+            }
+            const start = new Date(end);
+            start.setFullYear(end.getFullYear() - 1); // 1年分を上限に取得（安定性重視）
+            start.setHours(0, 0, 0, 0);
+            const daily = await getStepsInRange(start, end);
+            if (Array.isArray(daily) && daily.length > 0) {
+              const s = daily.reduce((acc, d) => acc + (Number(d?.steps) || 0), 0);
+              if (s > 0) allTotal = s;
+            }
           } catch (_) {}
         }
 

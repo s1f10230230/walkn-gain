@@ -6,6 +6,43 @@ import { getSettings, getUserProfile, getDailyData, saveDailyData } from './stor
 import { calculateCalories, calculateDistance } from './calculations';
 import { sendGoalAchievedNotification, sendImmediateNotification, getEncouragementMessage } from './notifications';
 
+// =============================
+// Verbose logging utilities (enable/disable at runtime)
+// =============================
+let HK_DEBUG = false; // production default: verbose logs disabled
+export const setHealthKitDebugLogging = (enabled) => {
+  HK_DEBUG = !!enabled;
+  try { console.log(`[healthKit] verbose logging ${HK_DEBUG ? 'ENABLED' : 'DISABLED'}`); } catch (_) {}
+};
+const HK_LOG_STORAGE_KEY = 'hk_debug_logs_v1';
+const HK_LOG_LIMIT = 300;
+
+async function hkAppendRecord(level, parts) {
+  try {
+    const ts = new Date().toISOString();
+    const msg = parts.map((p) => {
+      if (typeof p === 'string') return p;
+      try { return JSON.stringify(p); } catch (_) { return String(p); }
+    }).join(' ');
+    const line = `[${ts}] ${level} ${msg}`;
+    const raw = await AsyncStorage.getItem(HK_LOG_STORAGE_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    arr.push(line);
+    if (arr.length > HK_LOG_LIMIT) arr.splice(0, arr.length - HK_LOG_LIMIT);
+    await AsyncStorage.setItem(HK_LOG_STORAGE_KEY, JSON.stringify(arr));
+  } catch (_) {}
+}
+
+const hkLog = (...args) => { if (HK_DEBUG) try { console.log('[healthKit]', ...args); } catch (_) {} hkAppendRecord('INFO', args); };
+const hkWarn = (...args) => { if (HK_DEBUG) try { console.warn('[healthKit]', ...args); } catch (_) {} hkAppendRecord('WARN', args); };
+const hkErr = (...args) => { try { console.error('[healthKit]', ...args); } catch (_) {} hkAppendRecord('ERROR', args); };
+
+export const getHealthKitLogs = async () => {
+  try { const raw = await AsyncStorage.getItem(HK_LOG_STORAGE_KEY); return raw ? JSON.parse(raw) : []; } catch (_) { return []; }
+};
+export const clearHealthKitLogs = async () => { try { await AsyncStorage.setItem(HK_LOG_STORAGE_KEY, JSON.stringify([])); } catch (_) {} };
+export const appendHealthKitLog = async (line) => { await hkAppendRecord('NOTE', [line]); };
+
 // HealthKit Constantsをハードコード（ライブラリのインポートエラーを回避）
 const HealthKitConstants = {
   Permissions: {
@@ -40,7 +77,9 @@ let AppleHealthKit = null;
 let healthKitLoadMethod = 'none';
 
 // デバッグ/切り分け用: Pedometerフォールバックを一時停止（iOSのみ）
-const DISABLE_PEDOMETER_FALLBACK = true;
+// 開発/検証環境（Expo Go など）では HealthKit が未同梱のケースが多いため
+// 既定でフォールバックを有効化して数値が表示されるようにする
+const DISABLE_PEDOMETER_FALLBACK = false;
 
 try {
   console.log('🔵 [healthKit.js] HealthKit読み込み開始...');
@@ -186,9 +225,15 @@ export const initializeHealthKit = async (showAlert = false) => {
   if (hkInitPromise) return hkInitPromise;
   hkInitPromise = (async () => {
   try {
+    hkLog('initializeHealthKit: start', { platform: Platform.OS });
     // iOSの権限ダイアログはアプリがactiveの時に要求するのが安定
     await waitForAppActive();
     if (Platform.OS === 'ios') {
+      hkLog('initializeHealthKit: ios branch', {
+        hasModule: !!AppleHealthKit,
+        hasInit: !!AppleHealthKit?.initHealthKit,
+        methods: AppleHealthKit ? Object.keys(AppleHealthKit).slice(0, 12) : [],
+      });
       try {
         console.log('HealthKit permissions (iOS):', JSON.stringify(PERMISSIONS.ios));
       } catch (_) {}
@@ -215,7 +260,7 @@ export const initializeHealthKit = async (showAlert = false) => {
         }
         AppleHealthKit.initHealthKit(PERMISSIONS.ios, (error, results) => {
           if (error) {
-            console.error('❌ Apple Health初期化エラー:', error);
+            hkErr('Apple Health init error:', error);
             console.error('エラーの詳細:', JSON.stringify(error, null, 2));
             if (showAlert) {
               let msg = 'ヘルスケアの接続に失敗しました。';
@@ -228,7 +273,7 @@ export const initializeHealthKit = async (showAlert = false) => {
             resolve(false);
             return;
           }
-          console.log('✅ Apple Health初期化成功:', results);
+          hkLog('Apple Health init OK', results);
 
           // 権限状態を確認
           checkHealthKitPermissions();
@@ -253,12 +298,12 @@ export const initializeHealthKit = async (showAlert = false) => {
       }
 
       const result = await GoogleFit.authorize(PERMISSIONS.android);
-      console.log('Google Fit初期化:', result);
+      hkLog('Google Fit authorize result:', result);
       return result?.success === true;
     }
     return false;
   } catch (error) {
-    console.error('ヘルスケア初期化エラー:', error);
+    hkErr('initializeHealthKit exception:', error);
     return false;
   }
   })();
@@ -610,6 +655,42 @@ export const getStepsInRange = async (startDate, endDate) => {
     if (Platform.OS === 'ios') {
       const useDailySamples = typeof AppleHealthKit?.getDailyStepCountSamples === 'function';
 
+      // Pedometer 範囲フォールバック（iOSでも利用可能）
+      const pedometerRangeFallback = async () => {
+        try {
+          const { Pedometer } = require('expo-sensors');
+          try { await Pedometer.requestPermissionsAsync?.(); } catch (_) {}
+          const ok = await Pedometer.isAvailableAsync();
+          hkLog('range.pedometerFallback available', ok);
+          if (!ok) return [];
+
+          const out = [];
+          const cur = new Date(startDate);
+          cur.setHours(0, 0, 0, 0);
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+
+          while (cur <= end) {
+            const dayKey = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
+            const dayStart = new Date(cur); dayStart.setHours(0,0,0,0);
+            const dayEnd = new Date(cur); dayEnd.setHours(23,59,59,999);
+            try {
+              const res = await Pedometer.getStepCountAsync(dayStart, dayEnd);
+              out.push({ date: dayKey, steps: Number(res?.steps || 0) });
+            } catch (_) {
+              out.push({ date: dayKey, steps: 0 });
+            }
+            cur.setDate(cur.getDate() + 1);
+            cur.setHours(0, 0, 0, 0);
+          }
+          hkLog('range.pedometerFallback out count', out.length);
+          return out;
+        } catch (e) {
+          hkWarn('range.pedometerFallback error', e?.message || e);
+          return [];
+        }
+      };
+
       // 最強フォールバック: Rawサンプルを取得してローカル日付で集計
       const aggregateRawSamples = async () => {
         try {
@@ -624,7 +705,7 @@ export const getStepsInRange = async (startDate, endDate) => {
             ascending: true,
             includeManuallyAdded: true,
           };
-
+          hkLog('range.aggregateRawSamples begin', { hasGetSamplesForType, hasGetSamples, start: options.startDate, end: options.endDate });
           const samples = await new Promise((resolve) => {
             try {
               const cb = (err, res) => {
@@ -640,8 +721,7 @@ export const getStepsInRange = async (startDate, endDate) => {
               resolve(null);
             }
           });
-
-          if (!samples) return null;
+          if (!samples) { hkWarn('range.aggregateRawSamples no samples'); return null; }
           // ローカル日付キーで合算
           const byDate = new Map();
           for (const it of samples) {
@@ -660,8 +740,10 @@ export const getStepsInRange = async (startDate, endDate) => {
           const out = Array.from(byDate.entries())
             .sort((a, b) => (a[0] > b[0] ? 1 : -1))
             .map(([date, steps]) => ({ date, steps }));
+          hkLog('range.aggregateRawSamples out count', out.length);
           return out;
         } catch (e) {
+          hkWarn('range.aggregateRawSamples error', e?.message || e);
           return null;
         }
       };
@@ -704,6 +786,7 @@ export const getStepsInRange = async (startDate, endDate) => {
             cur.setDate(cur.getDate() + 1);
             cur.setHours(0, 0, 0, 0);
           }
+          hkLog('range.fallbackByDay out count', out.length);
           return out;
         } catch (e) {
           console.error('Apple Health日別フォールバック取得エラー:', e);
@@ -717,7 +800,14 @@ export const getStepsInRange = async (startDate, endDate) => {
 
       if (!useDailySamples) {
         console.log('Apple Health getDailyStepCountSamples が未定義のため、日別フォールバックで取得します');
-        return await fallbackByDay();
+        const out = await fallbackByDay();
+        hkLog('range.useDailySamples=false -> used fallbackByDay');
+        // HealthKitが0連発の場合はPedometerフォールバック
+        if (!out || out.every(d => !d?.steps)) {
+          hkWarn('range.fallbackByDay all zeros -> using pedometerRangeFallback');
+          return await pedometerRangeFallback();
+        }
+        return out;
       }
 
       // 通常パス: 日別サンプルAPI
@@ -743,13 +833,25 @@ export const getStepsInRange = async (startDate, endDate) => {
       });
 
       if (!Array.isArray(results)) {
-        return await fallbackByDay();
+        hkWarn('range.dailySamples non-array -> fallbackByDay');
+        const out = await fallbackByDay();
+        if (!out || out.every(d => !d?.steps)) {
+          hkWarn('range.dailySamples fallback all zeros -> pedometerRangeFallback');
+          return await pedometerRangeFallback();
+        }
+        return out;
       }
 
       const formattedData = results.map(item => ({
         date: (item.startDate || '').split('T')[0],
         steps: item.value,
       }));
+      hkLog('range.dailySamples formatted count', formattedData.length);
+      // HealthKit日別結果が全て0の場合はPedometerも試す
+      if (!formattedData || formattedData.length === 0 || formattedData.every(d => !d?.steps)) {
+        hkWarn('range.dailySamples all zeros -> pedometerRangeFallback');
+        return await pedometerRangeFallback();
+      }
       return formattedData;
     } else if (Platform.OS === 'android') {
       const options = {
@@ -986,31 +1088,153 @@ export const getStepsHybrid = async (startDate = null, endDate = null) => {
   if (!endDate) {
     endDate = new Date();
   }
+  try {
+    const tz = -new Date().getTimezoneOffset();
+    hkLog('getStepsHybrid input', {
+      startISO: startDate.toISOString(),
+      endISO: endDate.toISOString(),
+      tzMinutesEast: tz,
+      platform: Platform.OS,
+    });
+  } catch (_) {}
 
-  // まずHealthKitを試す
+  // まずHealthKitを試す（複数ルートで堅牢化）
   try {
     if (Platform.OS === 'ios' && AppleHealthKit) {
-      const steps = await new Promise((resolve) => {
-        // 動画の方法: startDate/endDateで範囲指定（その日の00:00:00～23:59:59）
-        const options = {
-          startDate: startDate.toISOString(), // 開始時刻（00:00:00）
-          endDate: endDate.toISOString(),     // 終了時刻（23:59:59 or 現在時刻）
-          includeManuallyAdded: true,
-        };
-
-        AppleHealthKit.getStepCount(options, (error, results) => {
-          if (error) {
-            console.log('HealthKit歩数取得失敗、Pedometerにフォールバック:', error);
-            resolve(null);
-            return;
-          }
-          resolve(results?.value || 0);
-        });
+      const s = new Date(startDate);
+      const e = new Date(endDate);
+      hkLog('HealthKit available?', {
+        hasModule: !!AppleHealthKit,
+        hasDaily: typeof AppleHealthKit.getDailyStepCountSamples === 'function',
+        hasSamplesForType: typeof AppleHealthKit.getSamplesForType === 'function',
+        hasSamples: typeof AppleHealthKit.getSamples === 'function',
+        hasGetStepCount: typeof AppleHealthKit.getStepCount === 'function',
       });
 
-      if (steps !== null) {
-        console.log('✓ HealthKitから歩数取得 (範囲指定):', steps, `from ${startDate.toISOString()} to ${endDate.toISOString()}`);
-        return { steps, source: 'healthkit' };
+      // 1) 日別サンプルAPI（推奨）
+      const tryDailySamples = async () => {
+        try {
+          const options = {
+            startDate: s.toISOString(),
+            endDate: e.toISOString(),
+            period: 1440,
+            includeManuallyAdded: true,
+          };
+          if (typeof AppleHealthKit.getDailyStepCountSamples === 'function') {
+            const res = await new Promise((resolve) =>
+              AppleHealthKit.getDailyStepCountSamples(options, (err, data) => resolve(err ? null : (data || [])))
+            );
+            if (Array.isArray(res) && res.length > 0) {
+              const sum = res.reduce((acc, it) => acc + (Number(it?.value) || 0), 0);
+              hkLog('tryDailySamples: count', res.length, 'sum', sum);
+              if (sum > 0) return sum;
+            }
+          }
+        } catch (e) {
+          hkWarn('tryDailySamples error', e?.message || e);
+        }
+        return null;
+      };
+
+      // 2) Rawサンプル合算（getSamples / getSamplesForType）
+      const tryAggregateSamples = async () => {
+        try {
+          const hasGetSamplesForType = typeof AppleHealthKit?.getSamplesForType === 'function';
+          const hasGetSamples = typeof AppleHealthKit?.getSamples === 'function';
+          if (!hasGetSamplesForType && !hasGetSamples) return null;
+          const options = {
+            startDate: s.toISOString(),
+            endDate: e.toISOString(),
+            type: 'StepCount',
+            ascending: true,
+            includeManuallyAdded: true,
+          };
+          const res = await new Promise((resolve) => {
+            try {
+              const cb = (err, data) => resolve(err ? null : (Array.isArray(data) ? data : []));
+              if (hasGetSamplesForType) AppleHealthKit.getSamplesForType(options, cb);
+              else AppleHealthKit.getSamples(options, cb);
+            } catch (err) {
+              resolve(null);
+            }
+          });
+          if (Array.isArray(res) && res.length > 0) {
+            // 当日範囲内サンプルを合算
+            const startMs = new Date(s).getTime();
+            const endMs = new Date(e).getTime();
+            const sum = res.reduce((acc, it) => {
+              const d = it?.endDate || it?.startDate || it?.date;
+              const v = Number(it?.value ?? it?.quantity ?? it?.count ?? 0);
+              const t = d ? new Date(d).getTime() : NaN;
+              if (Number.isFinite(v) && Number.isFinite(t) && t >= startMs && t <= endMs) {
+                return acc + v;
+              }
+              return acc;
+            }, 0);
+            hkLog('tryAggregateSamples: samples', res.length, 'sumInRange', sum);
+            if (sum > 0) return sum;
+          }
+        } catch (e) {
+          hkWarn('tryAggregateSamples error', e?.message || e);
+        }
+        return null;
+      };
+
+      // 3) getStepCount（範囲指定）
+      const tryRangeGetStepCount = async () => {
+        try {
+          const options = {
+            startDate: s.toISOString(),
+            endDate: e.toISOString(),
+            includeManuallyAdded: true,
+          };
+          const val = await new Promise((resolve) =>
+            AppleHealthKit.getStepCount(options, (err, results) => {
+              if (err) return resolve(null);
+              resolve(Number(results?.value || 0));
+            })
+          );
+          hkLog('tryRangeGetStepCount result', val);
+          if (val !== null && val > 0) return val;
+        } catch (e) {}
+        return null;
+      };
+
+      // 4) getStepCount（dateのみ。バージョン差異対策）
+      const tryDayGetStepCount = async () => {
+        try {
+          // 対象日の正午を指定（タイムゾーン境界の誤差回避）
+          const mid = new Date(s);
+          mid.setHours(12, 0, 0, 0);
+          const options = { date: mid.toISOString(), includeManuallyAdded: true };
+          const val = await new Promise((resolve) =>
+            AppleHealthKit.getStepCount(options, (err, results) => {
+              if (err) return resolve(null);
+              resolve(Number(results?.value || 0));
+            })
+          );
+          hkLog('tryDayGetStepCount result', val, 'mid', options.date);
+          if (val !== null && val > 0) return val;
+        } catch (e) {}
+        return null;
+      };
+
+      let hkZeroCandidate = null;
+      const routes = [tryDailySamples, tryAggregateSamples, tryRangeGetStepCount, tryDayGetStepCount];
+      for (const fn of routes) {
+        const val = await fn();
+        if (val !== null) {
+          hkLog('HealthKit candidate steps', val, { from: s.toISOString(), to: e.toISOString() });
+          if (val > 0) {
+            return { steps: val, source: 'healthkit' };
+          }
+          hkZeroCandidate = 0; // 0は保持しつつ、フォールバックも試す
+          break;
+        }
+      }
+      // HealthKitで0だった場合はPedometerも試し、より大きい値を採用
+      if (hkZeroCandidate === 0) {
+        hkWarn('HealthKit returned 0, trying Pedometer as tie-breaker');
       }
     } else if (Platform.OS === 'android' && GoogleFit) {
       const s = new Date(startDate);
@@ -1045,37 +1269,41 @@ export const getStepsHybrid = async (startDate = null, endDate = null) => {
             }
             return acc;
           }, 0);
-          console.log('✓ Google Fitから歩数取得 (範囲適用):', steps);
+          hkLog('Google Fit steps (ranged)', steps, { count: src.steps.length });
           return { steps, source: 'googlefit' };
         }
       }
     }
   } catch (error) {
-    console.log('HealthKit取得エラー、Pedometerにフォールバック:', error);
+    hkWarn('HealthKit path error, fallback to Pedometer', error?.message || error);
   }
 
   // HealthKit失敗時、Pedometerにフォールバック
   try {
     // 切り分け用にフォールバックを止めたい場合
     if (Platform.OS === 'ios' && DISABLE_PEDOMETER_FALLBACK) {
+      hkLog('Pedometer fallback disabled by flag');
       return { steps: 0, source: 'none' };
     }
     // Pedometerをインポート（動的）
     const { Pedometer } = require('expo-sensors');
+    // iOSでは権限ダイアログが必要な場合がある
+    try { await Pedometer.requestPermissionsAsync?.(); } catch (_) {}
     const isAvailable = await Pedometer.isAvailableAsync();
+    hkLog('Pedometer.isAvailable', isAvailable);
 
     if (isAvailable) {
       const result = await Pedometer.getStepCountAsync(startDate, endDate);
       const steps = result?.steps || 0;
-      console.log('✓ Pedometerから歩数取得（フォールバック）:', steps);
+      hkLog('Pedometer steps fallback', steps);
       return { steps, source: 'pedometer' };
     }
   } catch (error) {
-    console.error('Pedometer取得エラー:', error);
+    hkErr('Pedometer path error', error);
   }
 
   // 両方失敗
-  console.warn('⚠ 歩数取得失敗（HealthKit & Pedometer）');
+  hkWarn('⚠ 歩数取得失敗（HealthKit & Pedometer）');
   return { steps: 0, source: 'none' };
 };
 
@@ -1262,33 +1490,12 @@ export const importHistoricalData = async (daysBack = 30, onProgress = null) => 
  */
 export const getStepsToday = async () => {
   try {
-    if (Platform.OS !== 'ios' || !AppleHealthKit) {
-      console.warn('[getStepsToday] HealthKit not available');
-      return 0;
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const now = new Date();
-
-    return new Promise((resolve) => {
-      const options = {
-        date: now.toISOString(),
-        includeManuallyAdded: true,
-      };
-
-      AppleHealthKit.getStepCount(options, (err, results) => {
-        if (err) {
-          console.error('[getStepsToday] Error:', err);
-          resolve(0);
-          return;
-        }
-        const steps = results?.value || 0;
-        console.log('[getStepsToday] Steps:', steps);
-        resolve(steps);
-      });
-    });
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    // ハイブリッド取得（HealthKit優先、なければPedometer）
+    const { steps } = await getStepsHybrid(start, end);
+    return Number(steps || 0);
   } catch (error) {
     console.error('[getStepsToday] Exception:', error);
     return 0;

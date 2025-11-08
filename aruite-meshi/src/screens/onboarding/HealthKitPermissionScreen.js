@@ -15,7 +15,7 @@ import { useColorScheme } from 'react-native';
 import { getTheme } from '../../utils/theme';
 
 export default function HealthKitPermissionScreen({ navigation, route }) {
-  const ENABLE_HEALTHKIT_IMPORT = true; // 動画の方法で30日分取得を有効化
+  const ENABLE_HEALTHKIT_IMPORT = true; // 初回にサイレントで過去データを取り込み（ユーザー通知なし）
   const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(false);
   const { gender, age, height, weight, goalSteps } = route.params;
@@ -103,22 +103,15 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
         await saveHealthSyncEnabled(true);
         if (ENABLE_HEALTHKIT_IMPORT) {
           try {
-            console.log('📊 [HealthKitPermission] 過去30日分のデータインポートを開始...');
+            console.log('📊 [HealthKitPermission] 過去データのサイレント取り込みを開始...');
             const result = await importHistoricalData(30);
             console.log('📊 [HealthKitPermission] インポート結果:', JSON.stringify(result, null, 2));
-
-            const msg = result?.success
-              ? `過去${result.totalDays ?? 30}日中 ${result.importedDays ?? 0}日をインポートしました。`
-              : `過去データのインポートに失敗しました\nエラー: ${result?.errors?.[0] || '不明'}`;
-            Alert.alert('✅ 連携完了', `${msg}`);
           } catch (err) {
             console.error('❌ [HealthKitPermission] インポートエラー:', err);
             console.error('❌ [HealthKitPermission] エラー詳細:', err.message, err.stack);
-            Alert.alert('✅ 連携完了', '過去データのインポートに失敗しましたが、連携は成功しました。');
           }
-        } else {
-          Alert.alert('✅ 連携完了', 'ヘルスケア連携を有効にしました（背景配信のみ使用）');
         }
+        // アラートは出さず次のステップへ
         navigateToCalorieGoal();
       } else {
         Alert.alert(

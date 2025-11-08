@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
+  InteractionManager,
 } from 'react-native';
 import { useColorScheme } from 'react-native';
 
@@ -29,7 +30,7 @@ import {
   getDayOfWeek,
   calculateCalories,
 } from '../utils/calculations';
-import { getStepsHybrid } from '../utils/healthKit';
+import { getStepsHybrid, getStepsInRange } from '../utils/healthKit';
 import { getMultipleDaysData, getSettings, getUserProfile } from '../utils/storage';
 import { calculateFoodAmount, getFoodById } from '../data/foodDatabase';
 import { useI18n } from '../i18n/I18nProvider';
@@ -52,6 +53,12 @@ export default function HistoryScreen({ navigation }) {
   const [defaultFood, setDefaultFood] = useState('ramen');
   const [pointTip, setPointTip] = useState({ visible: false, x: 0, y: 0, value: 0 });
   const tipTimerRef = React.useRef(null);
+  // 軽量キャッシュと多重実行防止でラグを軽減
+  const cacheRef = useRef({ week: null, month: null });
+  const cacheAtRef = useRef({ week: 0, month: 0 });
+  const inFlightRef = useRef(false);
+  const loadTokenRef = useRef(0);
+  const CACHE_TTL_MS = 10000; // 10秒は即時キャッシュを許容
 
   const changeTab = (newTab) => {
     if (Haptics?.impactAsync) {
@@ -61,91 +68,148 @@ export default function HistoryScreen({ navigation }) {
   };
 
   useEffect(() => {
-    loadHistoryData();
-    // analytics: range viewed
-    try {
-      logEvent('history_viewed', { range: activeTab === 'week' ? '7d' : '30d' });
-    } catch (_) {}
+    const key = activeTab === 'week' ? 'week' : 'month';
+    const now = Date.now();
+    const cached = cacheRef.current[key];
+    const cachedAt = cacheAtRef.current[key] || 0;
+    if (cached && (now - cachedAt) < CACHE_TTL_MS) {
+      setHistoryData(cached.list);
+      setTotalSteps(cached.totalSteps);
+      setAverageSteps(cached.averageSteps);
+      setTotalCalories(cached.totalCalories);
+    } else {
+      InteractionManager.runAfterInteractions(() => {
+        loadHistoryData();
+      });
+    }
+    try { logEvent('history_viewed', { range: key === 'week' ? '7d' : '30d' }); } catch (_) {}
   }, [activeTab]);
 
+  // 初回マウント時に両方の範囲をプレフェッチ（バックグラウンド）
+  useEffect(() => {
+    InteractionManager.runAfterInteractions(() => {
+      prefetchTab('week');
+      prefetchTab('month');
+    });
+  }, []);
+
   const loadHistoryData = async () => {
+    if (inFlightRef.current) return; // 多重実行防止
+    inFlightRef.current = true;
+    const myToken = ++loadTokenRef.current;
     const settings = await getSettings();
     const userProfile = await getUserProfile();
     setDefaultFood(settings.defaultFood);
 
     const dates = activeTab === 'week' ? getWeekDates() : getMonthDates();
 
-    // HealthKitから実際のデータを取得（30日以上対応）
+    // HealthKitから実際のデータを取得（範囲APIで安定取得）
     try {
       const data = [];
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      for (const dateStr of dates) {
-        const [year, month, day] = dateStr.split('-').map(Number);
-        const date = new Date(year, month - 1, day);
-
-        // 未来の日付はスキップ
-        if (date > today) {
-          continue;
-        }
-
-        // その日の開始と終了時刻
-        const start = new Date(date);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(date);
-        end.setHours(23, 59, 59, 999);
-
-        // 今日の場合は現在時刻まで
-        if (date.toDateString() === today.toDateString()) {
-          end.setTime(Date.now());
-        }
-
-        try {
-          // HealthKitを優先、失敗時はPedometerにフォールバック（30日以上対応）
-          const result = await getStepsHybrid(start, end);
-          const steps = result.steps || 0;
-          const calories = calculateCalories(steps, userProfile.weight);
-
-          data.push({
-            date: dateStr,
-            steps: steps,
-            calories: calories,
-            distance: 0,
-            goal: settings.dailyGoal,
-          });
-        } catch (error) {
-          console.error(`Failed to get steps for ${dateStr}:`, error);
-          // エラー時は0データを追加
-          data.push({
-            date: dateStr,
-            steps: 0,
-            calories: 0,
-            distance: 0,
-            goal: settings.dailyGoal,
-          });
-        }
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      // 範囲を一括取得してから日別にマップ
+      const startStr = dates[0];
+      const endStr = dates[dates.length - 1];
+      const [sy, sm, sd] = startStr.split('-').map(Number);
+      const [ey, em, ed] = endStr.split('-').map(Number);
+      const rangeStart = new Date(sy, sm - 1, sd); rangeStart.setHours(0,0,0,0);
+      const rangeEnd = new Date(ey, em - 1, ed);
+      // 終端が今日なら現在時刻まで
+      if (rangeEnd.toDateString() === new Date().toDateString()) {
+        rangeEnd.setTime(Date.now());
+      } else {
+        rangeEnd.setHours(23,59,59,999);
       }
 
-      setHistoryData(data);
+      const rangeList = await getStepsInRange(rangeStart, rangeEnd);
+      if (loadTokenRef.current !== myToken) { inFlightRef.current = false; return; }
+      const byDate = new Map((rangeList || []).map(it => [it.date, Number(it.steps) || 0]));
+
+      for (const dateStr of dates) {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const date = new Date(y, m - 1, d);
+        if (date > today) continue; // 未来日は除外
+        const stepsVal = byDate.get(dateStr) || 0;
+        const caloriesVal = calculateCalories(stepsVal, userProfile.weight);
+        data.push({
+          date: dateStr,
+          steps: stepsVal,
+          calories: caloriesVal,
+          distance: 0,
+          goal: settings.dailyGoal,
+        });
+      }
 
       const stepsList = data.map(d => d.steps);
       const caloriesList = data.map(d => d.calories);
+      const total = calculateTotal(stepsList);
+      const avg = calculateAverage(stepsList);
+      const totalCal = calculateTotal(caloriesList);
 
-      setTotalSteps(calculateTotal(stepsList));
-      setAverageSteps(calculateAverage(stepsList));
-      setTotalCalories(calculateTotal(caloriesList));
+      // まとめて反映（再レンダ回数を最小化）
+      setHistoryData(data);
+      setTotalSteps(total);
+      setAverageSteps(avg);
+      setTotalCalories(totalCal);
+
+      // 簡易キャッシュ
+      const key = activeTab === 'week' ? 'week' : 'month';
+      cacheRef.current[key] = { list: data, totalSteps: total, averageSteps: avg, totalCalories: totalCal };
+      cacheAtRef.current[key] = Date.now();
+
+      // 次に切り替えそうなもう一方もプレフェッチ
+      const other = key === 'week' ? 'month' : 'week';
+      prefetchTab(other);
     } catch (error) {
       console.error('Error loading history data:', error);
       // エラー時はストレージからデータを取得
       const data = await getMultipleDaysData(dates);
-      setHistoryData(data);
       const stepsList = data.map(d => d.steps);
       const caloriesList = data.map(d => d.calories);
+      setHistoryData(data);
       setTotalSteps(calculateTotal(stepsList));
       setAverageSteps(calculateAverage(stepsList));
       setTotalCalories(calculateTotal(caloriesList));
     }
+    inFlightRef.current = false;
+  };
+
+  // バックグラウンドで指定タブ範囲をキャッシュ
+  const prefetchTab = async (tab) => {
+    try {
+      const dates = tab === 'week' ? getWeekDates() : getMonthDates();
+      const settings = await getSettings();
+      const userProfile = await getUserProfile();
+      const startStr = dates[0];
+      const endStr = dates[dates.length - 1];
+      const [sy, sm, sd] = startStr.split('-').map(Number);
+      const [ey, em, ed] = endStr.split('-').map(Number);
+      const rangeStart = new Date(sy, sm - 1, sd); rangeStart.setHours(0,0,0,0);
+      const rangeEnd = new Date(ey, em - 1, ed);
+      if (rangeEnd.toDateString() === new Date().toDateString()) rangeEnd.setTime(Date.now());
+      else rangeEnd.setHours(23,59,59,999);
+      const rangeList = await getStepsInRange(rangeStart, rangeEnd);
+      const byDate = new Map((rangeList || []).map(it => [it.date, Number(it.steps) || 0]));
+      const today = new Date(); today.setHours(0,0,0,0);
+      const data = [];
+      for (const dateStr of dates) {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const date = new Date(y, m - 1, d);
+        if (date > today) continue;
+        const stepsVal = byDate.get(dateStr) || 0;
+        const caloriesVal = calculateCalories(stepsVal, userProfile.weight);
+        data.push({ date: dateStr, steps: stepsVal, calories: caloriesVal, distance: 0, goal: settings.dailyGoal });
+      }
+      const stepsList = data.map(d => d.steps);
+      const caloriesList = data.map(d => d.calories);
+      cacheRef.current[tab] = {
+        list: data,
+        totalSteps: calculateTotal(stepsList),
+        averageSteps: calculateAverage(stepsList),
+        totalCalories: calculateTotal(caloriesList),
+      };
+      cacheAtRef.current[tab] = Date.now();
+    } catch (_) {}
   };
 
   const renderChart = () => {
