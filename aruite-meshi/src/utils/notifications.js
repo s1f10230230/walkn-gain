@@ -15,7 +15,7 @@ const STORAGE_KEYS = {
 // 通知の動作設定
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
+    shouldShowBanner: true, // shouldShowAlert は非推奨
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
@@ -119,15 +119,21 @@ export const requestNotificationPermissions = async () => {
  */
 export const sendImmediateNotification = async (title, body, data = {}) => {
   try {
+    const content = {
+      title,
+      body,
+      data,
+      sound: true,
+    };
+
+    // iOS 15+: フォーカス/要約中でも通す（Time Sensitive）
+    // Expo Goでは使えないため、存在チェック
+    if (Notifications.IOSInterruptionLevel?.TimeSensitive) {
+      content.interruptionLevel = Notifications.IOSInterruptionLevel.TimeSensitive;
+    }
+
     await Notifications.scheduleNotificationAsync({
-      content: {
-        title,
-        body,
-        data,
-        sound: true,
-        // iOS 15+: フォーカス/要約中でも通す（Time Sensitive）
-        interruptionLevel: Notifications.IOSInterruptionLevel?.TimeSensitive,
-      },
+      content,
       trigger: null, // 即座に送信
     });
   } catch (error) {
@@ -224,15 +230,21 @@ export const scheduleReminderNotification = async (hour = 20, minute = 30) => {
     const title = await tAsync('notifications.reminder.title');
     const body = await tAsync('notifications.reminder.body');
 
+    const content = {
+      title,
+      body,
+      data: { type: 'reminder' },
+      sound: true,
+    };
+
+    // iOS 15+: フォーカス/要約中でも通す（Time Sensitive）
+    // Expo Goでは使えないため、存在チェック
+    if (Notifications.IOSInterruptionLevel?.TimeSensitive) {
+      content.interruptionLevel = Notifications.IOSInterruptionLevel.TimeSensitive;
+    }
+
     const identifier = await Notifications.scheduleNotificationAsync({
-      content: {
-        title,
-        body,
-        data: { type: 'reminder' },
-        sound: true,
-        // iOS 15+: フォーカス/要約中でも通す（Time Sensitive）
-        interruptionLevel: Notifications.IOSInterruptionLevel?.TimeSensitive,
-      },
+      content,
       trigger,
     });
 
