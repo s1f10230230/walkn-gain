@@ -243,6 +243,10 @@ export const scheduleReminderNotification = async (hour = 20, minute = 30) => {
       content.interruptionLevel = Notifications.IOSInterruptionLevel.TimeSensitive;
     }
 
+    console.log(`📅 [DEBUG] リマインダー通知をスケジュール中...`);
+    console.log(`📅 [DEBUG] trigger:`, JSON.stringify(trigger));
+    console.log(`📅 [DEBUG] content:`, JSON.stringify(content));
+
     const identifier = await Notifications.scheduleNotificationAsync({
       content,
       trigger,
@@ -251,7 +255,7 @@ export const scheduleReminderNotification = async (hour = 20, minute = 30) => {
     // 後で確実にキャンセルできるようにIDを保存
     await AsyncStorage.setItem(STORAGE_KEYS.DAILY_REMINDER_ID, identifier);
 
-    console.log(`リマインダー通知を設定しました: ${hour}:${minute}`);
+    console.log(`✅ リマインダー通知をスケジュールしました: ${hour}:${minute} (ID: ${identifier})`);
   } catch (error) {
     console.error('リマインダー通知の設定エラー:', error);
   }
