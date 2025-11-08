@@ -260,7 +260,8 @@ const styles = StyleSheet.create({
   container: {
     borderRadius: 12,
     padding: 12,
-    marginHorizontal: 24, // 画面端ジェスチャーとの干渉を完全回避
+    marginLeft: 24,
+    marginRight: 48, // 「今日へ」ボタンと同じマージンで画面右端ジェスチャー回避
     marginVertical: 8,
     position: 'relative',
     zIndex: 10,
