@@ -1781,8 +1781,10 @@ export default function HomeScreen({ navigation, route }) {
             style={{
               alignItems: "flex-end",
               marginTop: 6,
-              paddingRight: 48,
+              paddingRight: 20,
               paddingLeft: 20,
+              zIndex: 10,
+              position: "relative",
             }}
           >
             <TouchableOpacity
@@ -1807,6 +1809,7 @@ export default function HomeScreen({ navigation, route }) {
                 backgroundColor: theme.card,
                 borderWidth: 1,
                 borderColor: theme.border,
+                zIndex: 10,
               }}
             >
               <Text style={{ color: theme.textSecondary, fontWeight: "700" }}>
@@ -1822,6 +1825,7 @@ export default function HomeScreen({ navigation, route }) {
           style={{
             transform: [{ translateX: slideAnim }],
             position: "relative",
+            zIndex: 5,
           }}
         >
           {/* 円形プログレス（タブ切替） */}
@@ -1941,7 +1945,7 @@ export default function HomeScreen({ navigation, route }) {
           <View
             style={{
               alignItems: "flex-end",
-              paddingHorizontal: 45,
+              paddingHorizontal: 20,
               marginTop: 8,
               marginBottom: 8,
               zIndex: 10,
@@ -1973,6 +1977,7 @@ export default function HomeScreen({ navigation, route }) {
                 shadowOffset: { width: 0, height: 2 },
                 shadowOpacity: 0.1,
                 shadowRadius: 6,
+                zIndex: 10,
               }}
             >
               <Text
@@ -2441,6 +2446,7 @@ export default function HomeScreen({ navigation, route }) {
         </Animated.View>
 
         {/* 画面端タップで日付切り替え */}
+        {/* 左端：全体タップ可能（ボタンなし） */}
         <TouchableOpacity
           activeOpacity={1}
           style={{
@@ -2453,19 +2459,22 @@ export default function HomeScreen({ navigation, route }) {
           }}
           onPress={() => changeDate(-1)}
         />
-        {/* 右側：シェアボタンを避けて2つに分割 */}
+        {/* 右端：「今日へ」とShare buttonを避けて分割 */}
+        {/* 右端上部：反応エリア（「今日へ」の上） */}
         <TouchableOpacity
           activeOpacity={1}
           style={{
             position: "absolute",
             right: 0,
             top: 100,
-            height: 100,
+            height: 60,
             width: 60,
             zIndex: 1,
           }}
           onPress={() => changeDate(1)}
         />
+        {/* 右端中部：未反応エリア（「今日へ」～Share button） 160-300px */}
+        {/* 右端下部：反応エリア（Share buttonの下） */}
         <TouchableOpacity
           activeOpacity={1}
           style={{
