@@ -331,7 +331,9 @@ export const TRANSLATIONS = {
         openCalendar: 'カレンダーを開く',
         prevWeek: '前の週へ',
         nextWeek: '次の週へ',
+        backToToday: '今日へ戻る',
       },
+      backToToday: '今日へ',
       banner: { sensorUnavailable: '歩数を取得できません。権限設定をご確認ください。' },
       chart: { hourlyDistribution: '時間帯別の歩数分布' },
       events: {
@@ -767,7 +769,9 @@ export const TRANSLATIONS = {
         openCalendar: 'Open calendar',
         prevWeek: 'Previous week',
         nextWeek: 'Next week',
+        backToToday: 'Back to today',
       },
+      backToToday: 'Today',
       banner: { sensorUnavailable: 'Step data not available. Please check permissions.' },
       chart: { hourlyDistribution: 'Hourly steps distribution' },
       events: {
@@ -1248,7 +1252,9 @@ export const TRANSLATIONS = {
         openCalendar: '打开日历',
         prevWeek: '上一周',
         nextWeek: '下一周',
+        backToToday: '回到今日',
       },
+      backToToday: '今日',
       banner: { sensorUnavailable: '无法获取步数。请检查权限。' },
       chart: { hourlyDistribution: '各时间段步数分布' },
       events: {

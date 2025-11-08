@@ -1539,7 +1539,7 @@ export default function HomeScreen({ navigation, route }) {
         <View style={{ alignItems: 'flex-end', marginTop: 6, paddingRight: 48, paddingLeft: 20 }}>
           <TouchableOpacity
             accessibilityRole="button"
-            accessibilityLabel={'今日へ戻る'}
+            accessibilityLabel={t('home.a11y.backToToday')}
             onPress={() => {
               const now = new Date();
               const today = new Date(now);
@@ -1561,7 +1561,7 @@ export default function HomeScreen({ navigation, route }) {
               borderColor: theme.border,
             }}
           >
-            <Text style={{ color: theme.textSecondary, fontWeight: '700' }}>今日へ</Text>
+            <Text style={{ color: theme.textSecondary, fontWeight: '700' }}>{t('home.backToToday')}</Text>
           </TouchableOpacity>
         </View>
       )}
