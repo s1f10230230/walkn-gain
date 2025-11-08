@@ -2285,6 +2285,7 @@ const styles = StyleSheet.create({
     borderColor: '#FF7043',
   },
   calendarDay: {
+    width: '14.28%', // 100% / 7 = 14.28% で均等配置（空白セル用）
     fontSize: 20,
     fontWeight: '700',
     color: '#212121',
@@ -2531,11 +2532,11 @@ const styles = StyleSheet.create({
   },
   weekdayRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-evenly',
     marginBottom: 10,
   },
   weekdayText: {
-    width: 40,
+    width: '14.28%', // 100% / 7 = 14.28% で均等配置
     textAlign: 'center',
     fontSize: 14,
     fontWeight: '600',
@@ -2543,11 +2544,10 @@ const styles = StyleSheet.create({
   },
   calendarWeek: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
     marginBottom: 8,
   },
   calendarDayCell: {
-    width: 40,
+    width: '14.28%', // 100% / 7 = 14.28% で均等配置
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
@@ -2558,7 +2558,7 @@ const styles = StyleSheet.create({
     color: '#212121',
   },
   calendarModalDayCell: {
-    width: 40,
+    width: '14.28%', // 100% / 7 = 14.28% で均等配置
     minHeight: 60,
     justifyContent: 'center',
     alignItems: 'center',
