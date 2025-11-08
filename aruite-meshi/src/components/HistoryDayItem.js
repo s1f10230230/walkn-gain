@@ -1,17 +1,29 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, useColorScheme } from 'react-native';
-import { getTheme } from '../utils/theme';
-import { getEventsForDate, getEventsSummary } from '../utils/calendar';
-import { getDayNote } from '../utils/dayNotes';
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Dimensions,
+  TouchableOpacity,
+  useColorScheme,
+} from "react-native";
+import { getTheme } from "../utils/theme";
+import { getEventsForDate, getEventsSummary } from "../utils/calendar";
+import { getDayNote } from "../utils/dayNotes";
 
-const { width } = Dimensions.get('window');
+const { width } = Dimensions.get("window");
 
-export default function HistoryDayItem({ dayData, getWeekdayShort, formatNumber, onDatePress }) {
+export default function HistoryDayItem({
+  dayData,
+  getWeekdayShort,
+  formatNumber,
+  onDatePress,
+}) {
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [noteText, setNoteText] = useState('');
+  const [noteText, setNoteText] = useState("");
 
   useEffect(() => {
     const loadDayInfo = async () => {
@@ -22,15 +34,15 @@ export default function HistoryDayItem({ dayData, getWeekdayShort, formatNumber,
           const dayEvents = await getEventsForDate(date);
           setEvents(dayEvents);
         } catch (calendarError) {
-          console.log('Calendar not available (needs development build)');
+          console.log("Calendar not available (needs development build)");
           // カレンダーが使えない場合はスキップ
         }
 
         // コメントを取得
         const note = await getDayNote(dayData.date);
-        setNoteText(note || '');
+        setNoteText(note || "");
       } catch (error) {
-        console.error('Error loading day info:', error);
+        console.error("Error loading day info:", error);
       } finally {
         setLoading(false);
       }
@@ -39,7 +51,10 @@ export default function HistoryDayItem({ dayData, getWeekdayShort, formatNumber,
     loadDayInfo();
   }, [dayData.date]);
 
-  const progressPercentage = Math.min((dayData.steps / dayData.goal) * 100, 100);
+  const progressPercentage = Math.min(
+    (dayData.steps / dayData.goal) * 100,
+    100
+  );
   const barWidth = (width - 100) * (progressPercentage / 100);
 
   return (
@@ -54,20 +69,34 @@ export default function HistoryDayItem({ dayData, getWeekdayShort, formatNumber,
             {dayData.date.slice(5)} ({getWeekdayShort(new Date(dayData.date))})
           </Text>
           {noteText && (
-            <View style={[styles.commentDot, { backgroundColor: theme.primary }]} />
+            <View
+              style={[styles.commentDot, { backgroundColor: theme.primary }]}
+            />
           )}
         </View>
-        <Text style={[styles.daySteps, { color: theme.text }]}>{formatNumber(dayData.steps)}</Text>
+        <Text style={[styles.daySteps, { color: theme.text }]}>
+          {formatNumber(dayData.steps)}
+        </Text>
       </View>
-      <View style={[styles.progressBarContainer, { backgroundColor: theme.border }]}>
-        <View style={[styles.progressBar, { width: barWidth, backgroundColor: theme.primary }]} />
+      <View
+        style={[styles.progressBarContainer, { backgroundColor: theme.border }]}
+      >
+        <View
+          style={[
+            styles.progressBar,
+            { width: barWidth, backgroundColor: theme.primary },
+          ]}
+        />
       </View>
 
       {/* コメント情報 */}
       {noteText && (
         <View style={styles.dayInfoRow}>
           <Text style={styles.dayInfoIcon}>💬</Text>
-          <Text style={[styles.dayInfoText, { color: theme.textSecondary }]} numberOfLines={1}>
+          <Text
+            style={[styles.dayInfoText, { color: theme.textSecondary }]}
+            numberOfLines={1}
+          >
             {noteText}
           </Text>
         </View>
@@ -77,7 +106,10 @@ export default function HistoryDayItem({ dayData, getWeekdayShort, formatNumber,
       {!loading && events.length > 0 && (
         <View style={styles.dayInfoRow}>
           <Text style={styles.dayInfoIcon}>📅</Text>
-          <Text style={[styles.dayInfoText, { color: theme.textSecondary }]} numberOfLines={1}>
+          <Text
+            style={[styles.dayInfoText, { color: theme.textSecondary }]}
+            numberOfLines={1}
+          >
             {getEventsSummary(events)}
           </Text>
         </View>
@@ -91,47 +123,47 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   dayHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 8,
   },
   dateContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
   },
   dayDate: {
     fontSize: 14,
-    color: '#616161',
+    color: "#616161",
   },
   commentDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#FF7043',
+    backgroundColor: "#FF7043",
   },
   daySteps: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#212121',
+    fontWeight: "600",
+    color: "#212121",
   },
   progressBarContainer: {
     height: 8,
     borderRadius: 4,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   progressBar: {
-    height: '100%',
+    height: "100%",
     borderRadius: 4,
   },
   dayInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.06)',
+    borderTopColor: "rgba(0,0,0,0.06)",
   },
   dayInfoIcon: {
     fontSize: 16,

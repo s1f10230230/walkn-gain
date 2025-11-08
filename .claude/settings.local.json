@@ -7,7 +7,9 @@
       "Bash(npm dedupe:*)",
       "Bash(npm install:*)",
       "Bash(git push)",
-      "Bash(eas build:*)"
+      "Bash(eas build:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

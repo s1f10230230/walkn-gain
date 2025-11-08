@@ -1,14 +1,19 @@
 // 最近のひとこと表示コンポーネント
-import React, { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useImperativeHandle,
+  forwardRef,
+} from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Platform,
-} from 'react-native';
-import { getRecentNotes } from '../utils/dayNotes';
-import { useI18n } from '../i18n/I18nProvider';
+} from "react-native";
+import { getRecentNotes } from "../utils/dayNotes";
+import { useI18n } from "../i18n/I18nProvider";
 
 const RecentNotes = forwardRef(({ theme, onNotePress }, ref) => {
   const { t, formatNumber } = useI18n();
@@ -34,8 +39,16 @@ const RecentNotes = forwardRef(({ theme, onNotePress }, ref) => {
     const date = new Date(dateStr);
     const month = date.getMonth() + 1;
     const day = date.getDate();
-    const weekdays = t('weekdaysShort') || ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    const weekday = Array.isArray(weekdays) ? weekdays[date.getDay()] : '';
+    const weekdays = t("weekdaysShort") || [
+      "Sun",
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+    ];
+    const weekday = Array.isArray(weekdays) ? weekdays[date.getDay()] : "";
     return `${month}/${day} (${weekday})`;
   };
 
@@ -50,10 +63,11 @@ const RecentNotes = forwardRef(({ theme, onNotePress }, ref) => {
     <View style={[styles.container, { backgroundColor: theme.cardBackground }]}>
       <View style={styles.header}>
         <Text style={[styles.title, { color: theme.text }]}>
-          {t('recentNotes.title') || '最近のひとこと'}
+          {t("recentNotes.title") || "最近のひとこと"}
         </Text>
         <Text style={[styles.count, { color: theme.textSecondary }]}>
-          {t('recentNotes.count', { count: formatNumber(notes.length) }) || `${notes.length}件`}
+          {t("recentNotes.count", { count: formatNumber(notes.length) }) ||
+            `${notes.length}件`}
         </Text>
       </View>
       <View style={styles.notesList}>
@@ -85,7 +99,9 @@ const RecentNotes = forwardRef(({ theme, onNotePress }, ref) => {
                 {note.text}
               </Text>
             </View>
-            <Text style={[styles.arrow, { color: theme.textSecondary }]}>›</Text>
+            <Text style={[styles.arrow, { color: theme.textSecondary }]}>
+              ›
+            </Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -96,7 +112,9 @@ const RecentNotes = forwardRef(({ theme, onNotePress }, ref) => {
           activeOpacity={0.7}
         >
           <Text style={[styles.showMoreText, { color: theme.primary }]}>
-            {t('recentNotes.showMore', { count: formatNumber(notes.length - 5) }) || `さらに表示 (${notes.length - 5}件)`}
+            {t("recentNotes.showMore", {
+              count: formatNumber(notes.length - 5),
+            }) || `さらに表示 (${notes.length - 5}件)`}
           </Text>
         </TouchableOpacity>
       )}
@@ -107,7 +125,7 @@ const RecentNotes = forwardRef(({ theme, onNotePress }, ref) => {
           activeOpacity={0.7}
         >
           <Text style={[styles.showMoreText, { color: theme.primary }]}>
-            {t('recentNotes.showLess') || '一部のみ表示'}
+            {t("recentNotes.showLess") || "一部のみ表示"}
           </Text>
         </TouchableOpacity>
       )}
@@ -121,13 +139,13 @@ const styles = StyleSheet.create({
   container: {
     borderRadius: 12,
     padding: 16,
-    marginHorizontal: 60, // 画面端ジェスチャー完全回避
+    marginHorizontal: 10, // 画面端ジェスチャー完全回避
     marginVertical: 8,
-    position: 'relative',
+    position: "relative",
     zIndex: 10,
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
+        shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 4,
@@ -138,25 +156,25 @@ const styles = StyleSheet.create({
     }),
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 12,
   },
   title: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   count: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   notesList: {
     gap: 0,
   },
   noteItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 12,
     paddingHorizontal: 12,
     borderBottomWidth: 1,
@@ -178,7 +196,7 @@ const styles = StyleSheet.create({
   noteDate: {
     fontSize: 12,
     marginBottom: 4,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   noteText: {
     fontSize: 14,
@@ -186,17 +204,17 @@ const styles = StyleSheet.create({
   },
   arrow: {
     fontSize: 24,
-    fontWeight: '300',
+    fontWeight: "300",
     marginLeft: 12,
   },
   showMoreButton: {
     paddingVertical: 12,
-    alignItems: 'center',
+    alignItems: "center",
     borderTopWidth: 1,
     marginTop: 8,
   },
   showMoreText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });
