@@ -40,6 +40,7 @@ import {
   getAllDailyData,
   getStatsCache,
   saveStatsCache,
+  getDailyData,
 } from "../utils/storage";
 import {
   getCachedTodayData,
