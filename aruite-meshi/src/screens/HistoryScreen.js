@@ -30,8 +30,8 @@ import {
   getDayOfWeek,
   calculateCalories,
 } from '../utils/calculations';
-import { getStepsHybrid, getStepsInRange } from '../utils/healthKit';
-import { getMultipleDaysData, getSettings, getUserProfile, saveDailyData } from '../utils/storage';
+// HealthKitは背景配信のみ使用
+import { getMultipleDaysData, getSettings, getUserProfile, saveDailyData, getDailyData } from '../utils/storage';
 import { calculateFoodAmount, getFoodById } from '../data/foodDatabase';
 import { useI18n } from '../i18n/I18nProvider';
 import { getTheme } from '../utils/theme';
@@ -121,15 +121,36 @@ export default function HistoryScreen({ navigation }) {
         rangeEnd.setHours(23,59,59,999);
       }
 
-      const rangeList = await getStepsInRange(rangeStart, rangeEnd);
-      if (loadTokenRef.current !== myToken) { inFlightRef.current = false; return; }
-      const byDate = new Map((rangeList || []).map(it => [it.date, Number(it.steps) || 0]));
-
+      // Pedometerで日ごとに取得（過去7日間のみ対応）
       for (const dateStr of dates) {
         const [y, m, d] = dateStr.split('-').map(Number);
         const date = new Date(y, m - 1, d);
         if (date > today) continue; // 未来日は除外
-        const stepsVal = byDate.get(dateStr) || 0;
+
+        let stepsVal = 0;
+        try {
+          // Pedometerは過去7日分のみ取得可能
+          const now = new Date();
+          const daysAgo = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+
+          if (daysAgo <= 7) {
+            // Pedometerで取得
+            const dayStart = new Date(y, m - 1, d, 0, 0, 0, 0);
+            const dayEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
+            const result = await Pedometer.getStepCountAsync(dayStart, dayEnd);
+            stepsVal = result.steps || 0;
+          } else {
+            // 7日以上前はAsyncStorageから取得
+            const stored = await getDailyData(dateStr);
+            stepsVal = stored?.steps || 0;
+          }
+        } catch (error) {
+          console.error(`Pedometer取得エラー (${dateStr}):`, error);
+          // エラー時はAsyncStorageから取得
+          const stored = await getDailyData(dateStr);
+          stepsVal = stored?.steps || 0;
+        }
+
         const caloriesVal = calculateCalories(stepsVal, userProfile.weight);
         const dayData = {
           date: dateStr,
@@ -194,15 +215,32 @@ export default function HistoryScreen({ navigation }) {
       const rangeEnd = new Date(ey, em - 1, ed);
       if (rangeEnd.toDateString() === new Date().toDateString()) rangeEnd.setTime(Date.now());
       else rangeEnd.setHours(23,59,59,999);
-      const rangeList = await getStepsInRange(rangeStart, rangeEnd);
-      const byDate = new Map((rangeList || []).map(it => [it.date, Number(it.steps) || 0]));
       const today = new Date(); today.setHours(0,0,0,0);
       const data = [];
       for (const dateStr of dates) {
         const [y, m, d] = dateStr.split('-').map(Number);
         const date = new Date(y, m - 1, d);
         if (date > today) continue;
-        const stepsVal = byDate.get(dateStr) || 0;
+
+        let stepsVal = 0;
+        try {
+          const now = new Date();
+          const daysAgo = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+
+          if (daysAgo <= 7) {
+            const dayStart = new Date(y, m - 1, d, 0, 0, 0, 0);
+            const dayEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
+            const result = await Pedometer.getStepCountAsync(dayStart, dayEnd);
+            stepsVal = result.steps || 0;
+          } else {
+            const stored = await getDailyData(dateStr);
+            stepsVal = stored?.steps || 0;
+          }
+        } catch (error) {
+          const stored = await getDailyData(dateStr);
+          stepsVal = stored?.steps || 0;
+        }
+
         const caloriesVal = calculateCalories(stepsVal, userProfile.weight);
         const dayData = { date: dateStr, steps: stepsVal, calories: caloriesVal, distance: 0, goal: settings.dailyGoal };
         data.push(dayData);
