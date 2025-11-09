@@ -32,6 +32,9 @@ import {
 } from "../utils/calculations";
 import { calculateFoodAmount, getFoodById } from "../data/foodDatabase";
 import { getDayNote } from "../utils/dayNotes";
+import { Pedometer } from "expo-sensors";
+import { saveTodayData } from "../utils/storage";
+import { cacheTodayData } from "../utils/cache";
 
 export default function SharePreviewScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
@@ -41,6 +44,7 @@ export default function SharePreviewScreen({ navigation, route }) {
   const viewRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [canCapture, setCanCapture] = useState(true);
+  const [isFetchingSteps, setIsFetchingSteps] = useState(false);
 
   const captureAndShare = async (target = "share") => {
     if (busy) return;
@@ -180,6 +184,33 @@ export default function SharePreviewScreen({ navigation, route }) {
               setGoal(data.goal || 10000);
             }
           }
+          // バックグラウンドで最新のPedometer値を取りに行く（小さなスピナー表示）
+          try {
+            setIsFetchingSteps(true);
+            const start = new Date();
+            start.setHours(0, 0, 0, 0);
+            const end = new Date();
+            const available = await Pedometer.isAvailableAsync();
+            if (available) {
+              const res = await Pedometer.getStepCountAsync(start, end);
+              if (typeof res?.steps === "number" && res.steps >= 0) {
+                setSteps(res.steps);
+                // ついでに保存とキャッシュも更新
+                try {
+                  const prof = await getUserProfile();
+                  const cal = calculateCalories(res.steps, prof?.weight || 65);
+                  const stride = prof?.stride || 72;
+                  const dist = calculateDistance(res.steps, stride);
+                  const todayObj = { date: getTodayDateString(), steps: res.steps, calories: cal, distance: dist, hourlySteps: [], goal };
+                  await saveTodayData(todayObj);
+                  await cacheTodayData(todayObj);
+                } catch (_) {}
+              }
+            }
+          } catch (_) {
+          } finally {
+            setIsFetchingSteps(false);
+          }
         } else {
           // 過去の日付はストレージから取得（AsyncStorage経由で高速）
           const s = await getSettings();
@@ -306,9 +337,14 @@ export default function SharePreviewScreen({ navigation, route }) {
             </>
           ) : (
             <>
-              <Text style={[styles.steps, { color: theme.primary }]}>
-                {formatNumber(steps)}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={[styles.steps, { color: theme.primary }]}>
+                  {formatNumber(steps)}
+                </Text>
+                {isFetchingSteps ? (
+                  <ActivityIndicator size="small" color={theme.accent} style={{ marginLeft: 8 }} />
+                ) : null}
+              </View>
               <Text style={[styles.achievementRate, { color: theme.textSecondary }]}>
                 {goal > 0 ? Math.round((steps / goal) * 100) : 0}%
               </Text>

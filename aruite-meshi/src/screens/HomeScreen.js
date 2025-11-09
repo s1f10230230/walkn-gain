@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   Dimensions,
   TouchableOpacity,
@@ -19,7 +18,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { Pedometer } from "expo-sensors";
-import * as Progress from "react-native-progress";
 import { getTheme } from "../utils/theme";
 import { useI18n } from "../i18n/I18nProvider";
 import {
@@ -75,30 +73,41 @@ import {
 } from "../utils/notifications";
 import { saveReminderEnabled } from "../utils/storage";
 import { logEvent } from "../utils/analytics";
-import {
-  getStepsHybrid,
-  startStepsBackgroundUpdates,
-  isHistoricalImportCompleted,
-  importHistoricalData,
-  getStepsInRange,
-} from "../utils/healthKit";
+// HealthKitは歩数取得に使用しない（Pedometerのみ）
+// import { getStepsHybrid } from "../utils/healthKit"; // 不使用
+// import { startStepsBackgroundUpdates } from "../utils/healthKit"; // 不使用（歩数取得はPedometer）
+// import { isHistoricalImportCompleted, importHistoricalData, getStepsInRange } from "../utils/healthKit"; // 不使用
 import { registerBackgroundStepsTask } from "../tasks/backgroundStepsTask";
 import { CalendarIcon } from "../components/SettingsIcons";
 import { getEventsForDate, getEventsSummary } from "../utils/calendar";
 import TodayNote from "../components/TodayNote";
 import RecentNotes from "../components/RecentNotes";
 import { hasNote } from "../utils/dayNotes";
+import HeaderStats from "../components/HeaderStats";
+import ProgressRing from "../components/ProgressRing";
+import ShareCTA from "../components/ShareCTA";
+import WeekCalendar from "../components/WeekCalendar";
+import HourlyChart from "../components/HourlyChart";
+import MetricTabs from "../components/MetricTabs";
+import StatsCards from "../components/StatsCards";
+import EventsCard from "../components/EventsCard";
+import { computeTrophiesStreak } from "../utils/stats";
+import { seedPastDaysPedometer } from "../utils/pedometerSeed";
+import styles from "./home/styles";
+import { isToday as isTodayHelper, isFuture as isFutureHelper, formatMonthDay as formatMonthDayHelper, formatMonthYear as formatMonthYearHelper } from "./home/utils";
 
 const { width } = Dimensions.get("window");
 
 // Dev flag: Pedometer の取り込みを一時停止（HealthKit取り込みの切り分け用）
 const DISABLE_PEDOMETER_DEV = false;
 
-// HealthKitを背景配信のみに使用（通常の歩数取得はPedometerを使用）
-const USE_HEALTHKIT_BACKGROUND_ONLY = true;
+// 歩数取得はPedometerのみを使用
+const USE_PEDOMETER_ONLY = true;
 
 // 永続化用キー: 最後に選択した日付（YYYY-MM-DD）
 const LAST_SELECTED_DATE_KEY = "ui_last_selected_date";
+// 初回起動時にPedometerで過去データを取り込んだかのフラグ
+const PEDOMETER_INITIAL_IMPORT_KEY = "pedometer_initial_import_v1";
 
 export default function HomeScreen({ navigation, route }) {
   // RecentNotesコンポーネントへの参照
@@ -698,17 +707,10 @@ export default function HomeScreen({ navigation, route }) {
   };
 
   // 今日かどうか判定
-  const isToday = (date) => {
-    const today = new Date();
-    return date.toDateString() === today.toDateString();
-  };
+  const isToday = (date) => isTodayHelper(date);
 
   // 未来の日付かどうか判定
-  const isFuture = (date) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return date > today;
-  };
+  const isFuture = (date) => isFutureHelper(date);
 
   // 進捗スイープの手動制御は撤廃（ライブラリの標準animatedに戻す）
 
@@ -1003,20 +1005,11 @@ export default function HomeScreen({ navigation, route }) {
         const start = new Date();
         start.setHours(0, 0, 0, 0);
 
-        if (USE_HEALTHKIT_BACKGROUND_ONLY) {
-          // Pedometerから直接取得（高速）
-          const result = await Pedometer.getStepCountAsync(start, end);
-          console.log(`🔄 更新: ${result.steps}歩 (ソース: Pedometer)`);
-          if (result.steps > 0) {
-            updateSteps(result.steps);
-          }
-        } else {
-          // HealthKitハイブリッド取得（遅い）
-          const result = await getStepsHybrid(start, end);
-          console.log(`🔄 更新: ${result.steps}歩 (ソース: ${result.source})`);
-          if (result.steps > 0 || result.source !== "none") {
-            updateSteps(result.steps);
-          }
+        // Pedometerから直接取得（高速）
+        const result = await Pedometer.getStepCountAsync(start, end);
+        console.log(`🔄 更新: ${result.steps}歩 (ソース: Pedometer)`);
+        if (result.steps > 0) {
+          updateSteps(result.steps);
         }
       } catch (error) {
         console.error("歩数データ更新に失敗:", error);
@@ -1068,21 +1061,7 @@ export default function HomeScreen({ navigation, route }) {
     // オフライン時はキャッシュをそのまま利用
 
     // HealthKit背景更新（通知用） + BackgroundFetch（フォールバック）
-    try {
-      const enabled = await getHealthSyncEnabled();
-      if (enabled) {
-        console.log("🔔 HealthKit背景更新を開始（通知用）");
-        await startStepsBackgroundUpdates();
-        try {
-          const s = await getSettings();
-          if (s?.notifications) {
-            await registerBackgroundStepsTask();
-          }
-        } catch (_) {}
-      }
-    } catch (e) {
-      console.warn("背景歩数更新の開始に失敗（オプショナル）", e);
-    }
+    // HealthKitの背景更新は使用しない（歩数取得はPedometerのみ）
 
     return () => {
       if (subscription) {
@@ -1120,6 +1099,14 @@ export default function HomeScreen({ navigation, route }) {
       setCaloriesProgress(todayData.calories / (settings.goalCalories || 500));
 
       // 毎日リセット方針のため、前日達成による持ち越しは行わない
+    }
+
+    // 初回のみ：Pedometerで過去（最大7日）を取り込み → 保存
+    try {
+      const didSeed = await seedPastDaysPedometer(7);
+      if (didSeed) setIsCalculatingStats(false);
+    } catch (_) {
+      setIsCalculatingStats(false);
     }
 
     // 全期間データを取得（トロフィー・ストリーク計算用）
@@ -1272,23 +1259,12 @@ export default function HomeScreen({ navigation, route }) {
         const start = new Date();
         start.setHours(0, 0, 0, 0);
 
-        if (USE_HEALTHKIT_BACKGROUND_ONLY) {
-          // Pedometerから取得（高速）
-          const result = await Pedometer.getStepCountAsync(start, end);
-          console.log(`📊 歩数取得: ${result.steps}歩 (ソース: Pedometer)`);
-          if (result.steps > 0) {
-            updateSteps(result.steps);
-          }
-          setIsLoadingSteps(false);
-        } else {
-          // HealthKitハイブリッド取得（遅い）
-          const result = await getStepsHybrid(start, end);
-          console.log(`📊 歩数取得: ${result.steps}歩 (ソース: ${result.source})`);
-          if (result.steps > 0 || result.source !== "none") {
-            updateSteps(result.steps);
-          }
-          setIsLoadingSteps(false);
+        // Pedometerから取得（HealthKitは使わない）
+        const result = await Pedometer.getStepCountAsync(start, end);
+        if (typeof result?.steps === 'number' && result.steps >= 0) {
+          updateSteps(result.steps);
         }
+        setIsLoadingSteps(false);
 
         // Subscribe to real-time updates
         // 注意: watchStepCountは増分を返すため、再度getStepCountAsyncで合計を取得
@@ -1407,33 +1383,7 @@ export default function HomeScreen({ navigation, route }) {
     } catch (_) {}
   };
 
-  const renderFoodCard = (foodId) => {
-    const food = getFoodById(foodId);
-    if (!food) return null;
-
-    const amount = calculateFoodAmount(calories, foodId);
-    const unitKey = `food.items.${foodId}.unit`;
-    const tUnit = t(unitKey);
-    const displayUnit = tUnit === unitKey ? food.unit : tUnit;
-
-    return (
-      <TouchableOpacity
-        key={foodId}
-        style={[
-          styles.foodCard,
-          { backgroundColor: theme.card, borderColor: theme.border },
-        ]}
-      >
-        <Text style={styles.foodEmoji}>{food.emoji}</Text>
-        <Text style={[styles.foodAmount, { color: theme.primary }]}>
-          {amount}
-        </Text>
-        <Text style={[styles.foodUnit, { color: theme.textSecondary }]}>
-          {displayUnit}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
+  // (obsolete) food card renderer was replaced by DailyFoodGoal
 
   const isStepGoalAchieved = progress >= 1.0;
   const progressColor = isStepGoalAchieved ? theme.success : theme.accent;
@@ -1455,92 +1405,14 @@ export default function HomeScreen({ navigation, route }) {
 
         // 少し待ってから計算開始（UI優先）
         setTimeout(() => {
-          const DEFAULT_GOAL = 10000;
-          console.log("📊 [Stats] allTimeDataのキー数:", Object.keys(allTimeData).length);
-          console.log("📊 [Stats] allTimeDataサンプル:", JSON.stringify(Object.entries(allTimeData).slice(0, 3)));
-
-          // トロフィー計算
-          const trophyCount = Object.entries(allTimeData).filter(([dateKey, dayData]) => {
-            if (!dayData) return false;
-            const stepsNum = Number(dayData.steps || 0);
-            const dayGoal = Number(dayData.goal || DEFAULT_GOAL);
-            return (
-              Number.isFinite(stepsNum) &&
-              Number.isFinite(dayGoal) &&
-              stepsNum >= dayGoal
-            );
-          }).length;
-
-          // 現在のストリーク計算
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          let streak = 0;
-          let currentDate = new Date(today);
-
-          const todayKey = today.toISOString().split("T")[0];
-          const todayData = allTimeData[todayKey];
-          const todaySteps = Number(todayData?.steps || 0);
-          const todayGoal = Number(todayData?.goal || DEFAULT_GOAL);
-          const todayAchieved =
-            Number.isFinite(todaySteps) &&
-            Number.isFinite(todayGoal) &&
-            todaySteps >= todayGoal;
-
-          if (!todayAchieved) {
-            currentDate.setDate(currentDate.getDate() - 1);
-          }
-
-          while (true) {
-            const dateKey = currentDate.toISOString().split("T")[0];
-            const dayData = allTimeData[dateKey];
-            const stepsNum = Number(dayData?.steps || 0);
-            const dayGoal = Number(dayData?.goal || DEFAULT_GOAL);
-
-            if (
-              Number.isFinite(stepsNum) &&
-              Number.isFinite(dayGoal) &&
-              stepsNum >= dayGoal
-            ) {
-              streak++;
-              currentDate.setDate(currentDate.getDate() - 1);
-            } else {
-              break;
-            }
-          }
-
-          // 最大ストリーク計算
-          let max = 0;
-          let current = 0;
-          const sortedDates = Object.keys(allTimeData).sort();
-
-          for (const dateKey of sortedDates) {
-            const dayData = allTimeData[dateKey];
-            const stepsNum = Number(dayData?.steps || 0);
-            const dayGoal = Number(dayData?.goal || DEFAULT_GOAL);
-            const achieved =
-              Number.isFinite(stepsNum) &&
-              Number.isFinite(dayGoal) &&
-              stepsNum >= dayGoal;
-
-            if (achieved) {
-              current++;
-              if (current > max) {
-                max = current;
-              }
-            } else {
-              current = 0;
-            }
-          }
-
-          // 結果を反映
-          console.log("📊 [Stats] 計算結果 - トロフィー:", trophyCount, "ストリーク:", streak, "最大:", max);
-          setTotalTrophies(trophyCount);
-          setCurrentStreak(streak);
-          setMaxStreak(max);
+          const { totalTrophies, currentStreak, maxStreak } = computeTrophiesStreak(allTimeData, 10000, new Date());
+          setTotalTrophies(totalTrophies);
+          setCurrentStreak(currentStreak);
+          setMaxStreak(maxStreak);
           setIsCalculatingStats(false);
 
           // キャッシュに保存
-          saveStatsCache(trophyCount, streak, max);
+          saveStatsCache(totalTrophies, currentStreak, maxStreak);
         }, 100);
       }
     };
@@ -1583,21 +1455,9 @@ export default function HomeScreen({ navigation, route }) {
   }, [allTimeData, selectedDate]);
 
   // ロケールに応じた日付表示（M/DまたはM月D日）
-  const formatMonthDay = (date) => {
-    const m = date.getMonth() + 1;
-    const d = date.getDate();
-    if (locale === "en") return `${m}/${d}`;
-    if (locale === "zh-Hans") return `${m}月${d}日`;
-    return `${m}月${d}日`; // ja
-  };
+  const formatMonthDay = (date) => formatMonthDayHelper(date, locale);
 
-  const formatMonthYear = (date) => {
-    const y = date.getFullYear();
-    const m = date.getMonth() + 1;
-    if (locale === "en") return `${y}/${m}`;
-    if (locale === "zh-Hans") return `${y}年${m}月`;
-    return `${y}年${m}月`; // ja
-  };
+  const formatMonthYear = (date) => formatMonthYearHelper(date, locale);
 
   // 80%でやさしいパルス、100%でハプティクス（対応端末）: 今日のみ
   useEffect(() => {
@@ -1721,39 +1581,17 @@ export default function HomeScreen({ navigation, route }) {
           />
         }
       >
-        {isPedometerAvailable === false && (
-          <View
-            style={[
-              styles.infoBanner,
-              { backgroundColor: theme.card, borderColor: theme.border },
-            ]}
-          >
-            <Text style={{ color: theme.textSecondary }}>
-              {t("home.banner.sensorUnavailable")}
-            </Text>
-          </View>
-        )}
+        {/* センサー未対応バナーは表示しない（UI簡素化） */}
         {/* 週のナビゲーション */}
         <View style={[styles.dateNavigation, { paddingTop: insets.top + 20 }]}>
           {/* トロフィー数とストリーク（縦2行） */}
-          <View
-            style={{
-              position: "absolute",
-              left: 16,
-              top: insets.top + 16,
-              gap: 2,
-            }}
-          >
-            <Text
-              style={{ color: theme.text, fontSize: 12, fontWeight: "600" }}
-            >
-              🏆 {t("home.trophies.achieved", { count: totalTrophies })}
-            </Text>
-            <Text
-              style={{ color: theme.text, fontSize: 12, fontWeight: "600" }}
-            >
-              🔥 {t("home.trophies.streak", { count: currentStreak })}
-            </Text>
+          <View style={{ position: 'absolute', left: 16, top: insets.top + 16 }}>
+            <HeaderStats
+              totalTrophies={totalTrophies}
+              currentStreak={currentStreak}
+              isCalculating={isCalculatingStats}
+              theme={theme}
+            />
           </View>
 
           <TouchableOpacity
@@ -1815,292 +1653,37 @@ export default function HomeScreen({ navigation, route }) {
         {/* インライン通知は非表示 */}
 
         {/* 歩数/カロリー タブ */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              activeTab === "steps" && styles.tabActive,
-              {
-                borderColor:
-                  activeTab === "steps" ? theme.primary : "transparent",
-                backgroundColor: theme.card,
-              },
-            ]}
-            onPress={() => setActiveTab("steps")}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                {
-                  color:
-                    activeTab === "steps" ? theme.primary : theme.textSecondary,
-                },
-              ]}
-            >
-              🦶 {t("home.tabs.steps")}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              activeTab === "calories" && styles.tabActive,
-              {
-                borderColor:
-                  activeTab === "calories" ? theme.accent : "transparent",
-                backgroundColor: theme.card,
-              },
-            ]}
-            onPress={() => setActiveTab("calories")}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                {
-                  color:
-                    activeTab === "calories"
-                      ? theme.accent
-                      : theme.textSecondary,
-                },
-              ]}
-            >
-              🔥 {t("home.tabs.calories")}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <MetricTabs
+          theme={theme}
+          styles={styles}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          t={t}
+        />
 
         {/* 週の操作ボタン群は削除（上部に重複する今日へをなくす） */}
 
         {/* 横スクロールカレンダー */}
-        <View style={{ position: "relative" }}>
-          <ScrollView
-            ref={calendarScrollRef}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.calendarScroll}
-            contentContainerStyle={styles.calendarContent}
-            onScroll={handleCalendarScroll}
-            onScrollEndDrag={handleCalendarScrollEnd}
-            scrollEventThrottle={16}
-            decelerationRate={0.985}
-            snapToInterval={82}
-            snapToAlignment="center"
-            disableIntervalMomentum={false}
-          >
-            {calendarDates.map((date, index) => {
-              const selected =
-                date.toDateString() === selectedDate.toDateString();
-              const today = isToday(date);
-              const future = isFuture(date);
-              const dateKey = date.toISOString().split("T")[0];
-              const dayData = weeklyData[dateKey];
-
-              const animValue =
-                calendarAnimValues[index] || new Animated.Value(1);
-              const scale = animValue;
-              const translateY = animValue.interpolate({
-                inputRange: [0, 1],
-                outputRange: [20, 0],
-              });
-              const opacity = animValue.interpolate({
-                inputRange: [0, 0.5, 1],
-                outputRange: [0, 0.5, 1],
-              });
-
-              return (
-                <Animated.View
-                  key={index}
-                  style={{
-                    transform: [{ scale }, { translateY }],
-                    opacity,
-                  }}
-                >
-                  <TouchableOpacity
-                    onPress={() => !future && setSelectedDate(date)}
-                    style={[
-                      styles.calendarItem,
-                      selected && styles.calendarItemSelected,
-                      today &&
-                        !selected && {
-                          borderWidth: 2,
-                          borderColor: theme.isDark ? "#2DD4BF" : "#14B8A6",
-                        },
-                      {
-                        backgroundColor: theme.card,
-                        borderWidth: selected ? 2 : today ? 2 : 0,
-                        borderColor: selected
-                          ? "#FF9E57"
-                          : today
-                          ? theme.isDark
-                            ? "#2DD4BF"
-                            : "#14B8A6"
-                          : "transparent",
-                      },
-                    ]}
-                    disabled={future}
-                  >
-                    <View
-                      style={{
-                        alignItems: "center",
-                        justifyContent: "center",
-                        marginBottom: 6,
-                      }}
-                    >
-                      {(() => {
-                        const stepsVal = dayData?.steps || 0;
-                        const calVal = dayData?.calories || 0;
-                        const ratio = (() => {
-                          if (weeklyDisplayMode === "calories") {
-                            const denom = goalCalories || 1;
-                            return Math.max(0, Math.min(1, calVal / denom));
-                          }
-                          // 各日の保存時目標を優先（なければ現在の目標を使用）
-                          const dayGoal = dayData?.goal || goal || 1;
-                          return Math.max(0, Math.min(1, stepsVal / dayGoal));
-                        })();
-                        const ringColor =
-                          ratio >= 1 ? theme.success : theme.accent;
-                        return (
-                          <View
-                            style={{
-                              alignItems: "center",
-                              justifyContent: "center",
-                            }}
-                          >
-                            {(() => {
-                              const full = ratio >= 0.999;
-                              const unfilled = selected
-                                ? theme.isDark
-                                  ? "rgba(255,255,255,0.25)"
-                                  : "rgba(51,51,51,0.15)"
-                                : theme.circleUnfilled;
-                              return (
-                                <Progress.Circle
-                                  size={34}
-                                  progress={ratio}
-                                  thickness={3}
-                                  borderWidth={0}
-                                  color={ringColor}
-                                  unfilledColor={
-                                    full ? "transparent" : unfilled
-                                  }
-                                  animated={false}
-                                />
-                              );
-                            })()}
-                            <Text
-                              style={[
-                                styles.calendarRingDay,
-                                {
-                                  position: "absolute",
-                                  color: selected
-                                    ? theme.text
-                                    : future
-                                    ? theme.textTertiary
-                                    : theme.textSecondary,
-                                },
-                              ]}
-                            >
-                              {date.getDate()}
-                            </Text>
-                            {/* 目標達成トロフィー */}
-                            {ratio >= 1 && (
-                              <Text
-                                style={{
-                                  position: "absolute",
-                                  top: -8,
-                                  left: -8,
-                                  fontSize: 12,
-                                }}
-                              >
-                                🏆
-                              </Text>
-                            )}
-                          </View>
-                        );
-                      })()}
-                    </View>
-                    <Text
-                      style={[
-                        styles.calendarWeekday,
-                        {
-                          color: selected
-                            ? theme.text
-                            : future
-                            ? theme.textTertiary
-                            : theme.textSecondary,
-                        },
-                      ]}
-                    >
-                      {getWeekdayShort(date)}
-                    </Text>
-                    {/* コメントドット */}
-                    {notesMap[dateKey] && (
-                      <View
-                        style={{
-                          width: 4,
-                          height: 4,
-                          borderRadius: 2,
-                          backgroundColor: selected ? "#FFF" : theme.primary,
-                          marginVertical: 2,
-                        }}
-                      />
-                    )}
-                    {!future && dayData && (
-                      <>
-                        {weeklyDisplayMode === "calories" ? (
-                          <Text
-                            style={[
-                              styles.calendarCalories,
-                              {
-                                color: selected
-                                  ? theme.text
-                                  : theme.textSecondary,
-                              },
-                            ]}
-                          >
-                            {dayData.calories.toFixed(0)} {t("units.kcal")}
-                          </Text>
-                        ) : (
-                          <Text
-                            style={[
-                              styles.calendarCalories,
-                              {
-                                color: selected
-                                  ? theme.text
-                                  : theme.textSecondary,
-                              },
-                            ]}
-                          >
-                            {dayData.steps >= 1000
-                              ? `${(dayData.steps / 1000).toFixed(1)}k`
-                              : dayData.steps}{" "}
-                            {t("units.steps")}
-                          </Text>
-                        )}
-                      </>
-                    )}
-                    {!future && !dayData && (
-                      <>
-                        <Text
-                          style={[
-                            styles.calendarCalories,
-                            {
-                              color: selected
-                                ? theme.text
-                                : theme.textSecondary,
-                            },
-                          ]}
-                        >
-                          -
-                        </Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </Animated.View>
-              );
-            })}
-          </ScrollView>
-        </View>
+        <WeekCalendar
+          theme={theme}
+          t={t}
+          styles={styles}
+          calendarDates={calendarDates}
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+          weeklyData={weeklyData}
+          weeklyDisplayMode={weeklyDisplayMode}
+          goal={goal}
+          goalCalories={goalCalories}
+          notesMap={notesMap}
+          getWeekdayShort={getWeekdayShort}
+          isToday={isToday}
+          isFuture={isFuture}
+          calendarAnimValues={calendarAnimValues}
+          calendarScrollRef={calendarScrollRef}
+          handleCalendarScroll={handleCalendarScroll}
+          handleCalendarScrollEnd={handleCalendarScrollEnd}
+        />
 
         {/* 今日へ戻るチップ（横スクロール週の直下・右寄せ） */}
         {!isToday(selectedDate) && (
@@ -2178,48 +1761,34 @@ export default function HomeScreen({ navigation, route }) {
                   { backgroundColor: theme.card },
                 ]}
               >
-                <Animated.View style={{ transform: [{ scale: bumpAnim }] }}>
-                  <Animated.View
-                    style={{
-                      transform: [{ scale: pulseAnim }],
-                      position: "relative",
-                    }}
-                  >
-                    {(() => {
-                      const ringP = Math.min(
-                        1,
-                        activeTab === "steps" ? progress : caloriesProgress
-                      );
-                      const isFull = ringP >= 0.999;
-                      const ringColor =
-                        activeTab === "steps"
-                          ? ringP >= 1.0
-                            ? theme.success
-                            : theme.accent
-                          : ringP >= 1.0
-                          ? theme.success
-                          : theme.accent;
-                      return (
-                        <Progress.Circle
-                          size={200}
-                          progress={ringP}
-                          showsText={false}
-                          animated={false}
-                          color={ringColor}
-                          unfilledColor={
-                            isFull ? "transparent" : theme.circleUnfilled
-                          }
-                          borderWidth={0}
-                          thickness={12}
-                        />
-                      );
-                    })()}
-                  </Animated.View>
-                </Animated.View>
+                {(() => {
+                  const ringP = Math.min(
+                    1,
+                    activeTab === "steps" ? progress : caloriesProgress
+                  );
+                  const isFull = ringP >= 0.999;
+                  const ringColor =
+                    activeTab === "steps"
+                      ? ringP >= 1.0
+                        ? theme.success
+                        : theme.accent
+                      : ringP >= 1.0
+                      ? theme.success
+                      : theme.accent;
+                  return (
+                    <ProgressRing
+                      size={200}
+                      progress={ringP}
+                      color={ringColor}
+                      unfilledColor={isFull ? 'transparent' : theme.circleUnfilled}
+                      thickness={12}
+                      bumpAnim={bumpAnim}
+                      pulseAnim={pulseAnim}
+                    />
+                  );
+                })()}
                 <View style={styles.circleCenter}>
-                  {isLoadingSteps ? (
-                    <ActivityIndicator size="large" color={theme.accent} />
-                  ) : activeTab === "steps" ? (
+                  {activeTab === "steps" ? (
                     <>
                       <Text style={[styles.percentText, { color: theme.text }]}>
                         {formatNumber(steps)}
@@ -2271,307 +1840,39 @@ export default function HomeScreen({ navigation, route }) {
           </View>
 
           {/* Share CTA */}
-          <View
-            style={{
-              alignItems: "flex-end",
-              paddingHorizontal: 20,
-              marginTop: 8,
-              marginBottom: 8,
-              zIndex: 10,
-              position: "relative",
-            }}
-          >
-            <TouchableOpacity
-              onPress={async () => {
-                const dateStr = selectedDate.toISOString().split("T")[0];
-                const today = getTodayDateString();
-
-                // 選択された日付のデータを取得
-                let dateSteps = steps;
-                let dateGoal = goal;
-
-                if (dateStr !== today) {
-                  // 過去の日付の場合はストレージから取得
-                  const dayData = await getDailyData(dateStr);
-                  if (dayData) {
-                    dateSteps = dayData.steps || 0;
-                    dateGoal = dayData.goal || goal;
-                  }
-                }
-
-                // 全データを取得して集計を計算
-                const allData = await getAllDailyData();
-
-                // トロフィー計算
-                let trophyCount = 0;
-                Object.values(allData).forEach((data) => {
-                  if (data.steps >= (data.goal || 10000)) {
-                    trophyCount++;
-                  }
-                });
-
-                // ストリーク計算
-                const sortedDates = Object.keys(allData).sort().reverse();
-                let streak = 0;
-                let maxStreakCalc = 0;
-                let currentStreakCalc = 0;
-
-                for (let i = 0; i < sortedDates.length; i++) {
-                  const dateKey = sortedDates[i];
-                  const data = allData[dateKey];
-                  if (data.steps >= (data.goal || 10000)) {
-                    currentStreakCalc++;
-                    maxStreakCalc = Math.max(maxStreakCalc, currentStreakCalc);
-                    if (i === 0) streak = currentStreakCalc;
-                  } else {
-                    if (i === 0) streak = 0;
-                    currentStreakCalc = 0;
-                  }
-                }
-
-                // WEEK/MONTH/ALL計算
-                const selected = new Date(selectedDate);
-                selected.setHours(0, 0, 0, 0);
-
-                let weekTotal = 0;
-                for (let i = 1; i <= 7; i++) {
-                  const d = new Date(selected);
-                  d.setDate(selected.getDate() - i);
-                  const key = d.toISOString().split("T")[0];
-                  weekTotal += allData[key]?.steps || 0;
-                }
-
-                let monthTotal = 0;
-                for (let i = 0; i < 30; i++) {
-                  const d = new Date(selected);
-                  d.setDate(selected.getDate() - i);
-                  const key = d.toISOString().split("T")[0];
-                  monthTotal += allData[key]?.steps || 0;
-                }
-
-                const allTotal = Object.values(allData).reduce(
-                  (sum, data) => sum + (data?.steps || 0),
-                  0
-                );
-
-                console.log("🚀 Navigating to SharePreview with:", {
-                  steps: dateSteps,
-                  goal: dateGoal,
-                  selectedDate: dateStr,
-                  totalTrophies: trophyCount,
-                  streakDays: streak,
-                  maxStreak: maxStreakCalc,
-                  weekTotal,
-                  monthTotal,
-                  allTimeTotal: allTotal,
-                });
-                navigation.navigate("SharePreview", {
-                  steps: dateSteps,
-                  goal: dateGoal,
-                  selectedDate: dateStr,
-                  totalTrophies: trophyCount,
-                  streakDays: streak,
-                  maxStreak: maxStreakCalc,
-                  weekTotal,
-                  monthTotal,
-                  allTimeTotal: allTotal,
-                });
-              }}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                backgroundColor: theme.accent,
-                paddingVertical: 10,
-                paddingHorizontal: 14,
-                borderRadius: 999,
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.1,
-                shadowRadius: 6,
-                zIndex: 10,
-              }}
-            >
-              <Text
-                style={{
-                  color: "#FFF",
-                  fontWeight: "800",
-                  letterSpacing: 1,
-                  marginRight: 6,
-                }}
-              >
-                {t("common.share")}
-              </Text>
-              <Text style={{ color: "#FFF", fontSize: 16 }}>↗</Text>
-            </TouchableOpacity>
+          <View style={{ alignItems: 'flex-end', paddingHorizontal: 20, marginTop: 8, marginBottom: 8, zIndex: 10, position: 'relative' }}>
+            <ShareCTA
+              selectedDate={selectedDate}
+              steps={steps}
+              goal={goal}
+              navigation={navigation}
+              theme={theme}
+              t={t}
+            />
           </View>
 
           {/* Stats カード（タブ切替） */}
-          <View style={styles.statsRow}>
-            {activeTab === "steps" ? (
-              <>
-                <View
-                  style={[styles.statCard, { backgroundColor: theme.card }]}
-                >
-                  <Text
-                    style={[styles.statLabel, { color: theme.textSecondary }]}
-                  >
-                    {t("home.stats.steps")}
-                  </Text>
-                  <Text style={[styles.statValue, { color: theme.text }]}>
-                    {formatNumber(steps)}
-                  </Text>
-                  <Text
-                    style={[styles.statSubtext, { color: theme.textSecondary }]}
-                  >
-                    {t("home.labels.goal")}:{" "}
-                    <Text style={{ color: theme.accent, fontWeight: "600" }}>
-                      {formatNumber(goal)}
-                    </Text>{" "}
-                    {t("units.steps")}
-                  </Text>
-                </View>
-                <View
-                  style={[styles.statCard, { backgroundColor: theme.card }]}
-                >
-                  <Text
-                    style={[styles.statLabel, { color: theme.textSecondary }]}
-                  >
-                    {t("home.stats.calories")}
-                  </Text>
-                  <Text style={[styles.statValue, { color: theme.text }]}>
-                    {formatNumber(Math.round(calories))}
-                  </Text>
-                  <Text
-                    style={[styles.statSubtext, { color: theme.textSecondary }]}
-                  >
-                    {t("home.stats.kcalBurnedLabel")}
-                  </Text>
-                </View>
-              </>
-            ) : (
-              <>
-                <View
-                  style={[styles.statCard, { backgroundColor: theme.card }]}
-                >
-                  <Text
-                    style={[styles.statLabel, { color: theme.textSecondary }]}
-                  >
-                    {t("home.stats.calories")}
-                  </Text>
-                  <Text style={[styles.statValue, { color: theme.text }]}>
-                    {formatNumber(Math.round(calories))}
-                  </Text>
-                  <TouchableOpacity
-                    accessibilityRole="button"
-                    accessibilityLabel={t("home.labels.goal")}
-                    onPress={() => navigation.navigate("Settings")}
-                    hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-                  >
-                    <Text
-                      style={[
-                        styles.statSubtext,
-                        { color: theme.textSecondary },
-                      ]}
-                    >
-                      {t("home.labels.goal")}:{" "}
-                      <Text style={{ color: theme.accent, fontWeight: "600" }}>
-                        {goalCalories}
-                      </Text>{" "}
-                      {t("units.kcal")}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <View
-                  style={[styles.statCard, { backgroundColor: theme.card }]}
-                >
-                  <Text
-                    style={[styles.statLabel, { color: theme.textSecondary }]}
-                  >
-                    {t("home.stats.steps")}
-                  </Text>
-                  <Text style={[styles.statValue, { color: theme.text }]}>
-                    {formatNumber(steps)}
-                  </Text>
-                  <Text
-                    style={[styles.statSubtext, { color: theme.textSecondary }]}
-                  >
-                    {t("home.stats.steps")}
-                  </Text>
-                </View>
-              </>
-            )}
-          </View>
+          <StatsCards
+            styles={styles}
+            theme={theme}
+            t={t}
+            activeTab={activeTab}
+            steps={steps}
+            calories={calories}
+            goal={goal}
+            goalCalories={goalCalories}
+            formatNumber={formatNumber}
+            navigation={navigation}
+          />
 
-          {/* 今日の予定（常に表示して揺れを防ぐ） */}
-          <View
-            style={[
-              styles.eventsContainer,
-              {
-                backgroundColor: theme.card,
-                borderColor: theme.border,
-                minHeight: 72,
-              },
-            ]}
-          >
-            <Text style={[styles.eventsTitle, { color: theme.text }]}>
-              📅 {t("home.events.today") || "今日の予定"}
-            </Text>
-            {todayEvents.length > 0 ? (
-              <>
-                {todayEvents.slice(0, 3).map((event, index) => (
-                  <View
-                    key={index}
-                    style={[
-                      styles.eventItem,
-                      { borderBottomColor: theme.border },
-                    ]}
-                  >
-                    <Text
-                      style={[styles.eventTitle, { color: theme.text }]}
-                      numberOfLines={1}
-                    >
-                      {event.title}
-                    </Text>
-                    {event.startDate && (
-                      <Text
-                        style={[
-                          styles.eventTime,
-                          { color: theme.textSecondary },
-                        ]}
-                      >
-                        {new Date(event.startDate).toLocaleTimeString("ja-JP", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </Text>
-                    )}
-                  </View>
-                ))}
-                {todayEvents.length > 3 && (
-                  <Text
-                    style={[styles.moreEvents, { color: theme.textSecondary }]}
-                  >
-                    {t("home.events.moreCount", {
-                      count: todayEvents.length - 3,
-                    }) || `他 ${todayEvents.length - 3} 件`}
-                  </Text>
-                )}
-              </>
-            ) : (
-              <Text
-                style={[styles.noEventsText, { color: theme.textSecondary }]}
-              >
-                {t("home.events.none") || "予定なし"}
-              </Text>
-            )}
-          </View>
+          {/* 今日の予定（常に表示） */}
+          <EventsCard styles={styles} theme={theme} t={t} todayEvents={todayEvents} />
 
           {/* 今日のひとこと */}
           <TodayNote
             theme={theme}
             date={selectedDate.toISOString().split("T")[0]}
             onNoteChange={async (text) => {
-              console.log("Note saved:", text);
               // 最近のひとこと一覧を更新
               if (recentNotesRef.current) {
                 recentNotesRef.current.reload();
@@ -2583,229 +1884,20 @@ export default function HomeScreen({ navigation, route }) {
           />
 
           {/* 時間帯別グラフ */}
-          <View style={styles.chartSection}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>
-              {isToday(selectedDate)
-                ? t("home.activity.today")
-                : t("home.activity.onDate", {
-                    date: formatMonthDay(selectedDate),
-                  })}
-            </Text>
-            <Text
-              style={[styles.chartSubtitle, { color: theme.textSecondary }]}
-            >
-              {t("home.chart.hourlyDistribution")}
-            </Text>
-
-            {/* 時間別詳細ツールチップ（グラフの上に表示） */}
-            {hourlyDetailTooltip.visible && hourlyDetailTooltip.hour >= 0 && (
-              <View
-                pointerEvents="none"
-                style={styles.hourlyDetailTooltipWrapper}
-              >
-                <View
-                  style={[
-                    styles.hourlyDetailTooltip,
-                    {
-                      backgroundColor: theme.card,
-                      borderWidth: 1,
-                      borderColor: theme.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.hourlyDetailTooltipTitle,
-                      { color: theme.text },
-                    ]}
-                  >
-                    {hourlyDetailTooltip.hour}:00 - {hourlyDetailTooltip.hour}
-                    :59
-                  </Text>
-                  <View style={styles.hourlyDetailTooltipRow}>
-                    <Text
-                      style={[
-                        styles.hourlyDetailTooltipLabel,
-                        { color: theme.textSecondary },
-                      ]}
-                    >
-                      歩数:
-                    </Text>
-                    <Text
-                      style={[
-                        styles.hourlyDetailTooltipValue,
-                        { color: theme.primary },
-                      ]}
-                    >
-                      {formatNumber(hourlySteps[hourlyDetailTooltip.hour] || 0)}{" "}
-                      歩
-                    </Text>
-                  </View>
-                  <View style={styles.hourlyDetailTooltipRow}>
-                    <Text
-                      style={[
-                        styles.hourlyDetailTooltipLabel,
-                        { color: theme.textSecondary },
-                      ]}
-                    >
-                      カロリー:
-                    </Text>
-                    <Text
-                      style={[
-                        styles.hourlyDetailTooltipValue,
-                        { color: theme.accent },
-                      ]}
-                    >
-                      {calculateCalories(
-                        hourlySteps[hourlyDetailTooltip.hour] || 0,
-                        profile.weight
-                      ).toFixed(1)}{" "}
-                      kcal
-                    </Text>
-                  </View>
-                  <View style={styles.hourlyDetailTooltipRow}>
-                    <Text
-                      style={[
-                        styles.hourlyDetailTooltipLabel,
-                        { color: theme.textSecondary },
-                      ]}
-                    >
-                      距離:
-                    </Text>
-                    <Text
-                      style={[
-                        styles.hourlyDetailTooltipValue,
-                        { color: theme.success },
-                      ]}
-                    >
-                      {calculateDistance(
-                        hourlySteps[hourlyDetailTooltip.hour] || 0,
-                        profile.stride
-                      ).toFixed(2)}{" "}
-                      km
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            )}
-
-            <View style={[styles.chartCard, { backgroundColor: theme.card }]}>
-              {/* Y軸のメモリ */}
-              <View style={styles.chartWithAxis}>
-                <View style={styles.yAxis}>
-                  {(() => {
-                    const maxSteps = Math.max(...hourlySteps, 1);
-                    const yLabels = [
-                      {
-                        value: maxSteps,
-                        label:
-                          maxSteps >= 1000
-                            ? `${(maxSteps / 1000).toFixed(1)}k`
-                            : maxSteps,
-                      },
-                      {
-                        value: maxSteps * 0.5,
-                        label:
-                          maxSteps >= 2000
-                            ? `${((maxSteps * 0.5) / 1000).toFixed(1)}k`
-                            : Math.round(maxSteps * 0.5),
-                      },
-                      { value: 0, label: "0" },
-                    ];
-                    return yLabels.map((item, i) => (
-                      <Text
-                        key={i}
-                        style={[
-                          styles.yAxisLabel,
-                          { color: theme.textSecondary },
-                        ]}
-                      >
-                        {item.label}
-                      </Text>
-                    ));
-                  })()}
-                </View>
-                <View style={styles.chartArea}>
-                  <View
-                    style={styles.chart}
-                    onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}
-                  >
-                    {hourlySteps.map((count, hour) => {
-                      const maxSteps = Math.max(...hourlySteps, 1);
-                      const barHeight = (count / maxSteps) * 100;
-                      const isSelectedToday =
-                        selectedDate.toDateString() ===
-                        new Date().toDateString();
-                      const currentHour = new Date().getHours();
-                      const isCurrentHour =
-                        isSelectedToday && hour === currentHour;
-                      const isMaxBar = count === maxSteps && count > 0;
-
-                      return (
-                        <View key={hour} style={styles.barContainer}>
-                          <TouchableOpacity
-                            activeOpacity={0.7}
-                            style={styles.barTouchable}
-                            hitSlop={{ top: 6, bottom: 10, left: 4, right: 4 }}
-                            onPress={() => {
-                              // ドリルダウン: 履歴画面風のツールチップ表示
-                              try {
-                                if (hourlyDetailTimerRef.current)
-                                  clearTimeout(hourlyDetailTimerRef.current);
-                              } catch (_) {}
-                              setHourlyDetailTooltip({
-                                visible: true,
-                                hour: hour,
-                              });
-                              hourlyDetailTimerRef.current = setTimeout(
-                                () =>
-                                  setHourlyDetailTooltip({
-                                    visible: false,
-                                    hour: -1,
-                                  }),
-                                3000
-                              );
-                              if (Haptics?.impactAsync) {
-                                Haptics.impactAsync(
-                                  Haptics.ImpactFeedbackStyle.Light
-                                ).catch(() => {});
-                              }
-                            }}
-                          >
-                            <View style={styles.barWrapper}>
-                              <View
-                                style={[
-                                  styles.bar,
-                                  {
-                                    height: `${barHeight}%`,
-                                    backgroundColor: isMaxBar
-                                      ? theme.accent
-                                      : isCurrentHour
-                                      ? theme.primary
-                                      : theme.chartBar,
-                                  },
-                                ]}
-                              />
-                            </View>
-                            {hour % 3 === 0 && (
-                              <Text
-                                style={[
-                                  styles.hourLabel,
-                                  { color: theme.textSecondary },
-                                ]}
-                              >
-                                {hour}
-                              </Text>
-                            )}
-                          </TouchableOpacity>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </View>
-              </View>
-            </View>
-          </View>
+          <HourlyChart
+            styles={styles}
+            theme={theme}
+            t={t}
+            isToday={isToday}
+            selectedDate={selectedDate}
+            formatMonthDay={formatMonthDay}
+            hourlyDetailTooltip={hourlyDetailTooltip}
+            setHourlyDetailTooltip={setHourlyDetailTooltip}
+            hourlyDetailTimerRef={hourlyDetailTimerRef}
+            hourlySteps={hourlySteps}
+            profile={profile}
+            setChartWidth={setChartWidth}
+          />
 
           {/* 今日の食べ物目標 */}
           <View style={styles.foodSection}>
@@ -3222,7 +2314,10 @@ export default function HomeScreen({ navigation, route }) {
   );
 }
 
-const styles = StyleSheet.create({
+// styles moved to separate module for readability
+// styles import moved to top-level imports (see top of file)
+
+/* const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
     alignItems: "center",
@@ -3798,16 +2893,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
   },
-});
-// チャート上のタッチ位置から時間帯を推定してツールチップ表示
-const handleChartTouch = (evt) => {
-  try {
-    const x = evt.nativeEvent?.locationX ?? 0;
-    const w = chartWidth || 1;
-    let idx = Math.floor((x / w) * 24);
-    if (!Number.isFinite(idx)) idx = 0;
-    idx = Math.max(0, Math.min(23, idx));
-    const val = hourlySteps[idx] || 0;
-    setHourlyTooltip({ index: idx, value: val });
-  } catch (_) {}
-};
+}); */
+// (obsolete) old chart touch handler removed; HourlyChart handles interactions internally
