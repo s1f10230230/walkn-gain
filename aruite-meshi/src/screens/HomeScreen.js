@@ -1125,9 +1125,13 @@ export default function HomeScreen({ navigation, route }) {
     // HealthKitとAsyncStorageの両方からマージして取得
     try {
       const storageData = await getAllDailyData();
+      console.log("📊 [AllTimeData] Storageデータ:", Object.keys(storageData).length, "日分");
 
       // HealthKitから過去90日分のデータを取得してマージ
-      if (await getHealthSyncEnabled()) {
+      const healthSyncEnabled = await getHealthSyncEnabled();
+      console.log("📊 [AllTimeData] HealthKit同期:", healthSyncEnabled ? "有効" : "無効");
+
+      if (healthSyncEnabled) {
         const now = new Date();
         const start = new Date(now);
         start.setDate(start.getDate() - 90);
@@ -1135,6 +1139,7 @@ export default function HomeScreen({ navigation, route }) {
         const end = new Date(now);
         end.setHours(23, 59, 59, 999);
 
+        console.log("📊 [AllTimeData] HealthKitからデータ取得開始...");
         const healthKitData = await getStepsInRange(start, end);
         console.log("📊 [AllTimeData] HealthKitデータ:", healthKitData.length, "日分");
 
@@ -1153,10 +1158,11 @@ export default function HomeScreen({ navigation, route }) {
         console.log("📊 [AllTimeData] マージ後:", Object.keys(merged).length, "日分");
         setAllTimeData(merged);
       } else {
+        console.log("📊 [AllTimeData] HealthKit無効のため、Storageデータのみ使用");
         setAllTimeData(storageData);
       }
     } catch (error) {
-      console.error("Error loading all-time data:", error);
+      console.error("❌ [AllTimeData] エラー:", error);
       // エラー時はストレージデータのみ使用
       const storageData = await getAllDailyData();
       setAllTimeData(storageData);
