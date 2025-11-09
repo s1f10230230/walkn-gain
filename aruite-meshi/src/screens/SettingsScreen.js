@@ -174,8 +174,21 @@ export default function SettingsScreen({ navigation }) {
   };
 
   const handleSaveSettings = async () => {
+    const MIN_DAILY_GOAL = 1000;
+    const MAX_DAILY_GOAL = 50000;
+    const dailyGoalNum = parseInt(settings.dailyGoal) || 10000;
+
+    // 目標歩数の範囲チェック
+    if (dailyGoalNum < MIN_DAILY_GOAL || dailyGoalNum > MAX_DAILY_GOAL) {
+      Alert.alert(
+        t('common.error'),
+        `目標歩数は${MIN_DAILY_GOAL}〜${MAX_DAILY_GOAL}の範囲で設定してください。`
+      );
+      return;
+    }
+
     const settingsData = {
-      dailyGoal: parseInt(settings.dailyGoal) || 10000,
+      dailyGoal: dailyGoalNum,
       defaultFood: settings.defaultFood,
       notifications: settings.notifications,
       unit: settings.unit,
@@ -185,7 +198,10 @@ export default function SettingsScreen({ navigation }) {
 
     const success = await saveSettings(settingsData);
     if (success) {
-      Alert.alert(t('common.success'), t('settings.alerts.settingsSaved'));
+      Alert.alert(
+        t('common.success'),
+        '設定を保存しました。\n\n目標歩数の変更は明日から反映されます。過去に獲得したトロフィーとストリークは変更されません。'
+      );
       try { logEvent('settings_changed', { field: 'daily_goal' }); } catch (_) {}
     } else {
       Alert.alert(t('common.error'), t('settings.alerts.saveError'));

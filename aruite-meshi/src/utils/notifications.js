@@ -221,11 +221,28 @@ export const sendMilestoneNotification = async (steps) => {
  */
 export const scheduleReminderNotification = async (hour = 20, minute = 30) => {
   try {
-    // 既存のリマインダーをキャンセル
+    // 既存のスケジュールを確認（既にある場合は再スケジュールしない）
+    const savedId = await AsyncStorage.getItem(STORAGE_KEYS.DAILY_REMINDER_ID);
+    if (savedId) {
+      // 既存のスケジュールが有効かチェック
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const existingReminder = scheduled.find(n => n.identifier === savedId);
+
+      if (existingReminder) {
+        // 既にスケジュール済みなので何もしない
+        return;
+      }
+    }
+
+    // 既存のリマインダーをキャンセル（念のため）
     await cancelReminderNotifications();
 
-    // 毎日指定時刻に通知（OSが次の該当時刻にスケジュール）
-    const trigger = { hour, minute, repeats: true };
+    // カレンダー形式のトリガー（毎日繰り返し、次の該当時刻から開始）
+    const trigger = {
+      hour,
+      minute,
+      repeats: true,
+    };
 
     const title = await tAsync('notifications.reminder.title');
     const body = await tAsync('notifications.reminder.body');
@@ -243,10 +260,6 @@ export const scheduleReminderNotification = async (hour = 20, minute = 30) => {
       content.interruptionLevel = Notifications.IOSInterruptionLevel.TimeSensitive;
     }
 
-    console.log(`📅 [DEBUG] リマインダー通知をスケジュール中...`);
-    console.log(`📅 [DEBUG] trigger:`, JSON.stringify(trigger));
-    console.log(`📅 [DEBUG] content:`, JSON.stringify(content));
-
     const identifier = await Notifications.scheduleNotificationAsync({
       content,
       trigger,
@@ -254,8 +267,6 @@ export const scheduleReminderNotification = async (hour = 20, minute = 30) => {
 
     // 後で確実にキャンセルできるようにIDを保存
     await AsyncStorage.setItem(STORAGE_KEYS.DAILY_REMINDER_ID, identifier);
-
-    console.log(`✅ リマインダー通知をスケジュールしました: ${hour}:${minute} (ID: ${identifier})`);
   } catch (error) {
     console.error('リマインダー通知の設定エラー:', error);
   }

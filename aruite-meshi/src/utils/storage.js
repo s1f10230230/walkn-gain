@@ -19,6 +19,7 @@ const KEYS = {
   USE_DEVICE_LOCATION: 'use_device_location',  // デバイスの位置情報を使用するか
   CURRENT_GOAL_LEVEL: 'current_goal_level',  // 現在の目標レベル
   CURRENT_GOAL_LEVEL_DATE: 'current_goal_level_date', // 最終リセット日（YYYY-MM-DD）
+  STATS_CACHE: 'stats_cache', // トロフィー・ストリーク計算結果のキャッシュ
 };
 
 // 型正規化ユーティリティ
@@ -152,7 +153,10 @@ export const getMultipleDaysData = async (dateStrings) => {
 export const getAllDailyStepsTotal = async () => {
   try {
     const keys = await AsyncStorage.getAllKeys();
-    const dayKeys = (keys || []).filter((k) => typeof k === 'string' && k.startsWith(KEYS.DAILY_DATA));
+    // サポート: 旧キー（例: '@app:daily_data_YYYY-MM-DD'）/ 新キー（'daily_data_YYYY-MM-DD'）の両方を対象
+    const dayKeys = (keys || []).filter(
+      (k) => typeof k === 'string' && k.includes(KEYS.DAILY_DATA)
+    );
     if (dayKeys.length === 0) return 0;
     const pairs = await AsyncStorage.multiGet(dayKeys);
     let sum = 0;
@@ -168,6 +172,48 @@ export const getAllDailyStepsTotal = async () => {
   } catch (error) {
     console.error('Error getting all daily steps total:', error);
     return 0;
+  }
+};
+
+// すべての日別データをオブジェクトとして取得（トロフィー・ストリーク計算用）
+export const getAllDailyData = async () => {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    // サポート: 旧キー（例: '@app:daily_data_YYYY-MM-DD'）/ 新キー（'daily_data_YYYY-MM-DD'）の両方を対象
+    const dayKeys = (keys || []).filter(
+      (k) => typeof k === 'string' && k.includes(KEYS.DAILY_DATA)
+    );
+    if (dayKeys.length === 0) return {};
+
+    const pairs = await AsyncStorage.multiGet(dayKeys);
+
+    const result = {};
+    const extractDate = (str) => {
+      try {
+        const m = String(str).match(/\b(\d{4}-\d{2}-\d{2})\b/);
+        return m ? m[1] : null;
+      } catch (_) {
+        return null;
+      }
+    };
+
+    for (const [key, value] of pairs) {
+      if (!value) continue;
+      try {
+        const obj = JSON.parse(value);
+        // 1) 保存オブジェクト内の日付が信頼できる場合はそれを優先
+        let dateKey = typeof obj?.date === 'string' ? extractDate(obj.date) : null;
+        // 2) キー名から YYYY-MM-DD を抽出（旧/新プレフィックス混在対応）
+        if (!dateKey) dateKey = extractDate(key);
+        if (!dateKey) continue; // 判別不能な場合はスキップ
+
+        result[dateKey] = obj;
+      } catch (_) {}
+    }
+    return result;
+  } catch (error) {
+    console.error('Error getting all daily data:', error);
+    return {};
   }
 };
 
@@ -546,6 +592,47 @@ export const saveCurrentGoalLevelDate = async (dateString) => {
     return true;
   } catch (error) {
     console.error('Error saving current goal level date:', error);
+    return false;
+  }
+};
+
+// ========================================
+// トロフィー・ストリーク計算結果のキャッシュ
+// ========================================
+
+/**
+ * 統計キャッシュを取得
+ * @returns {Promise<{totalTrophies: number, currentStreak: number, maxStreak: number, lastUpdated: string} | null>}
+ */
+export const getStatsCache = async () => {
+  try {
+    const raw = await AsyncStorage.getItem(KEYS.STATS_CACHE);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (error) {
+    console.error('Error getting stats cache:', error);
+    return null;
+  }
+};
+
+/**
+ * 統計キャッシュを保存
+ * @param {number} totalTrophies トロフィー総数
+ * @param {number} currentStreak 現在のストリーク
+ * @param {number} maxStreak 最大ストリーク
+ */
+export const saveStatsCache = async (totalTrophies, currentStreak, maxStreak) => {
+  try {
+    const cache = {
+      totalTrophies,
+      currentStreak,
+      maxStreak,
+      lastUpdated: new Date().toISOString(),
+    };
+    await AsyncStorage.setItem(KEYS.STATS_CACHE, JSON.stringify(cache));
+    return true;
+  } catch (error) {
+    console.error('Error saving stats cache:', error);
     return false;
   }
 };

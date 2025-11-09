@@ -35,88 +35,28 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
 
   const handleAllow = async () => {
     setIsLoading(true);
-    let debugInfo = '';
-
-    // react-native-health ライブラリの確認
-    try {
-      const { NativeModules } = require('react-native');
-      const RNHealth = require('react-native-health');
-
-      debugInfo += `📦 react-native-health: ${RNHealth ? 'loaded' : 'NOT LOADED'}\n`;
-      debugInfo += `📦 RNHealth.default: ${RNHealth.default ? 'exists' : 'missing'}\n`;
-      debugInfo += `📦 RNHealth.HealthKit: ${RNHealth.HealthKit ? 'exists' : 'missing'}\n`;
-
-      // RNHealthの中身を詳しく確認
-      if (RNHealth) {
-        const keys = Object.keys(RNHealth);
-        debugInfo += `📦 RNHealth keys: ${keys.slice(0, 5).join(', ')}${keys.length > 5 ? '...' : ''}\n`;
-      }
-
-      // NativeModulesから直接確認
-      if (NativeModules.AppleHealthKit) {
-        debugInfo += `✅ NativeModules.AppleHealthKit: exists\n`;
-        const methods = Object.keys(NativeModules.AppleHealthKit);
-        debugInfo += `📦 Native methods (${methods.length}): ${methods.slice(0, 5).join(', ')}...\n`;
-        debugInfo += `📦 Has initHealthKit: ${!!NativeModules.AppleHealthKit.initHealthKit}\n`;
-      } else {
-        debugInfo += `❌ NativeModules.AppleHealthKit: NOT FOUND\n`;
-        // すべてのNativeModulesをリスト
-        const allModules = Object.keys(NativeModules);
-        const healthRelated = allModules.filter(k => k.toLowerCase().includes('health'));
-        debugInfo += `📦 Total NativeModules: ${allModules.length}\n`;
-        debugInfo += `📦 Health-related modules: ${healthRelated.length > 0 ? healthRelated.join(', ') : 'none'}\n`;
-        debugInfo += `📦 Sample modules: ${allModules.slice(0, 10).join(', ')}...\n`;
-      }
-
-      // 最終的に使用されるモジュール
-      const AppleHealthKit = RNHealth.default || RNHealth.HealthKit || RNHealth;
-      if (AppleHealthKit) {
-        debugInfo += `📦 Final AppleHealthKit: exists\n`;
-        debugInfo += `📦 Type: ${typeof AppleHealthKit}\n`;
-        debugInfo += `📦 initHealthKit: ${typeof AppleHealthKit.initHealthKit}\n`;
-        debugInfo += `📦 isAvailable: ${typeof AppleHealthKit.isAvailable}\n`;
-        debugInfo += `📦 getStepCount: ${typeof AppleHealthKit.getStepCount}\n`;
-        debugInfo += `📦 Constants: ${AppleHealthKit.Constants ? 'exists' : 'missing'}\n`;
-
-        if (AppleHealthKit.Constants?.Permissions) {
-          const perms = Object.keys(AppleHealthKit.Constants.Permissions);
-          debugInfo += `📦 Permissions count: ${perms.length}\n`;
-          debugInfo += `📦 Has StepCount: ${!!AppleHealthKit.Constants.Permissions.StepCount}\n`;
-          debugInfo += `📦 Has Steps: ${!!AppleHealthKit.Constants.Permissions.Steps}\n`;
-        }
-      } else {
-        debugInfo += `❌ Final AppleHealthKit が存在しません\n`;
-      }
-    } catch (e) {
-      debugInfo += `❌ ライブラリエラー: ${e.message}\n`;
-      debugInfo += `❌ Stack: ${e.stack?.slice(0, 200)}\n`;
-      Alert.alert('デバッグ情報（ステップ1）', debugInfo);
-      setIsLoading(false);
-      return;
-    }
 
     try {
       const success = await initializeHealthKit();
-      debugInfo += `\n🔵 initHealthKit結果: ${success}\n`;
 
       if (success) {
         await saveHealthSyncEnabled(true);
         if (ENABLE_HEALTHKIT_IMPORT) {
           try {
-            console.log('📊 [HealthKitPermission] 過去データのサイレント取り込みを開始...');
+            console.log('📊 [HealthKitPermission] 過去データの取り込みを開始...');
             const result = await importHistoricalData(30);
-            console.log('📊 [HealthKitPermission] インポート結果:', JSON.stringify(result, null, 2));
+            console.log('📊 [HealthKitPermission] インポート完了:', JSON.stringify(result, null, 2));
           } catch (err) {
             console.error('❌ [HealthKitPermission] インポートエラー:', err);
             console.error('❌ [HealthKitPermission] エラー詳細:', err.message, err.stack);
           }
         }
-        // アラートは出さず次のステップへ
+        // インポート完了後に次のステップへ
         navigateToCalorieGoal();
       } else {
         Alert.alert(
-          '❌ 接続失敗',
-          'ヘルスケアへの接続に失敗しました。\n\n詳細:\n' + debugInfo,
+          t('common.error'),
+          'ヘルスケアへの接続に失敗しました。',
           [
             { text: 'スキップ', onPress: handleSkip },
             { text: '再試行', onPress: () => setIsLoading(false) },
@@ -124,9 +64,15 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
         );
       }
     } catch (error) {
-      debugInfo += `❌ エラー: ${error.message || error}\n`;
-      debugInfo += `❌ Stack: ${error.stack?.slice(0, 200)}\n`;
-      Alert.alert('エラー詳細', debugInfo);
+      console.error('HealthKit初期化エラー:', error);
+      Alert.alert(
+        t('common.error'),
+        'ヘルスケアの初期化中にエラーが発生しました。',
+        [
+          { text: 'スキップ', onPress: handleSkip },
+          { text: '再試行', onPress: () => setIsLoading(false) },
+        ]
+      );
     } finally {
       setIsLoading(false);
     }

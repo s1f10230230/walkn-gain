@@ -38,6 +38,8 @@ import {
   getHourlyStepsForDate,
   saveHourlyStepsForDate,
   getAllDailyData,
+  getStatsCache,
+  saveStatsCache,
 } from "../utils/storage";
 import {
   getCachedTodayData,
@@ -144,6 +146,12 @@ export default function HomeScreen({ navigation, route }) {
   const selectedDebounceTimerRef = useRef(null);
   const lastRefreshRef = useRef(0);
   const [todayEvents, setTodayEvents] = useState([]); // 今日のカレンダーイベント
+
+  // トロフィー・ストリーク用のstate（キャッシュから初期化）
+  const [totalTrophies, setTotalTrophies] = useState(0);
+  const [currentStreak, setCurrentStreak] = useState(0);
+  const [maxStreak, setMaxStreak] = useState(0);
+  const [isCalculatingStats, setIsCalculatingStats] = useState(false);
   // インライン通知は使用しない
   const [inlineNotice, setInlineNotice] = useState("");
   const [weeklyDisplayMode, setWeeklyDisplayMode] = useState("calories"); // 'calories' | 'steps'
@@ -1378,100 +1386,111 @@ export default function HomeScreen({ navigation, route }) {
   const isStepGoalAchieved = progress >= 1.0;
   const progressColor = isStepGoalAchieved ? theme.success : theme.accent;
 
-  // トロフィー（目標達成日数）をカウント
-  const totalTrophies = useMemo(() => {
-    const DEFAULT_GOAL = 10000; // 古いデータ用のデフォルト目標
-    const count = Object.entries(allTimeData).filter(([dateKey, dayData]) => {
-      if (!dayData) return false;
-      const stepsNum = Number(dayData.steps || 0);
-      // 各日の保存時目標を優先（なければデフォルト10000歩）
-      const dayGoal = Number(dayData.goal || DEFAULT_GOAL);
-      return (
-        Number.isFinite(stepsNum) &&
-        Number.isFinite(dayGoal) &&
-        stepsNum >= dayGoal
-      );
-    }).length;
-
-    return count;
-  }, [allTimeData, goal]);
-
-  // ストリーク（連続達成日数）をカウント
-  const currentStreak = useMemo(() => {
-    const DEFAULT_GOAL = 10000; // 古いデータ用のデフォルト目標
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    let streak = 0;
-    let currentDate = new Date(today);
-
-    // 今日が達成済みかチェック（各日の目標を使用）
-    const todayKey = today.toISOString().split("T")[0];
-    const todayData = allTimeData[todayKey];
-    const todaySteps = Number(todayData?.steps || 0);
-    const todayGoal = Number(todayData?.goal || DEFAULT_GOAL);
-    const todayAchieved =
-      Number.isFinite(todaySteps) &&
-      Number.isFinite(todayGoal) &&
-      todaySteps >= todayGoal;
-
-    // 今日が未達成なら昨日から開始
-    if (!todayAchieved) {
-      currentDate.setDate(currentDate.getDate() - 1);
-    }
-
-    // 連続達成日数をカウント
-    while (true) {
-      const dateKey = currentDate.toISOString().split("T")[0];
-      const dayData = allTimeData[dateKey];
-      const stepsNum = Number(dayData?.steps || 0);
-      const dayGoal = Number(dayData?.goal || DEFAULT_GOAL);
-
-      if (
-        Number.isFinite(stepsNum) &&
-        Number.isFinite(dayGoal) &&
-        stepsNum >= dayGoal
-      ) {
-        streak++;
-        currentDate.setDate(currentDate.getDate() - 1);
-      } else {
-        break;
+  // トロフィー・ストリーク計算（バックグラウンドで実行）
+  useEffect(() => {
+    const calculateStats = async () => {
+      // キャッシュから読み込み
+      const cached = await getStatsCache();
+      if (cached) {
+        setTotalTrophies(cached.totalTrophies);
+        setCurrentStreak(cached.currentStreak);
+        setMaxStreak(cached.maxStreak);
       }
-    }
 
-    return streak;
-  }, [allTimeData]);
+      // allTimeDataがあればバックグラウンドで再計算
+      if (Object.keys(allTimeData).length > 0) {
+        setIsCalculatingStats(true);
 
-  // 最大ストリーク（連続達成日数の過去最高記録）をカウント
-  const maxStreak = useMemo(() => {
-    const DEFAULT_GOAL = 10000; // 古いデータ用のデフォルト目標
+        // 少し待ってから計算開始（UI優先）
+        setTimeout(() => {
+          const DEFAULT_GOAL = 10000;
 
-    let max = 0;
-    let current = 0;
+          // トロフィー計算
+          const trophyCount = Object.entries(allTimeData).filter(([dateKey, dayData]) => {
+            if (!dayData) return false;
+            const stepsNum = Number(dayData.steps || 0);
+            const dayGoal = Number(dayData.goal || DEFAULT_GOAL);
+            return (
+              Number.isFinite(stepsNum) &&
+              Number.isFinite(dayGoal) &&
+              stepsNum >= dayGoal
+            );
+          }).length;
 
-    // 全データを日付順にソート（古い順）
-    const sortedDates = Object.keys(allTimeData).sort();
+          // 現在のストリーク計算
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          let streak = 0;
+          let currentDate = new Date(today);
 
-    for (const dateKey of sortedDates) {
-      const dayData = allTimeData[dateKey];
-      const stepsNum = Number(dayData?.steps || 0);
-      const dayGoal = Number(dayData?.goal || DEFAULT_GOAL);
-      const achieved =
-        Number.isFinite(stepsNum) &&
-        Number.isFinite(dayGoal) &&
-        stepsNum >= dayGoal;
+          const todayKey = today.toISOString().split("T")[0];
+          const todayData = allTimeData[todayKey];
+          const todaySteps = Number(todayData?.steps || 0);
+          const todayGoal = Number(todayData?.goal || DEFAULT_GOAL);
+          const todayAchieved =
+            Number.isFinite(todaySteps) &&
+            Number.isFinite(todayGoal) &&
+            todaySteps >= todayGoal;
 
-      if (achieved) {
-        current++;
-        if (current > max) {
-          max = current;
-        }
-      } else {
-        current = 0;
+          if (!todayAchieved) {
+            currentDate.setDate(currentDate.getDate() - 1);
+          }
+
+          while (true) {
+            const dateKey = currentDate.toISOString().split("T")[0];
+            const dayData = allTimeData[dateKey];
+            const stepsNum = Number(dayData?.steps || 0);
+            const dayGoal = Number(dayData?.goal || DEFAULT_GOAL);
+
+            if (
+              Number.isFinite(stepsNum) &&
+              Number.isFinite(dayGoal) &&
+              stepsNum >= dayGoal
+            ) {
+              streak++;
+              currentDate.setDate(currentDate.getDate() - 1);
+            } else {
+              break;
+            }
+          }
+
+          // 最大ストリーク計算
+          let max = 0;
+          let current = 0;
+          const sortedDates = Object.keys(allTimeData).sort();
+
+          for (const dateKey of sortedDates) {
+            const dayData = allTimeData[dateKey];
+            const stepsNum = Number(dayData?.steps || 0);
+            const dayGoal = Number(dayData?.goal || DEFAULT_GOAL);
+            const achieved =
+              Number.isFinite(stepsNum) &&
+              Number.isFinite(dayGoal) &&
+              stepsNum >= dayGoal;
+
+            if (achieved) {
+              current++;
+              if (current > max) {
+                max = current;
+              }
+            } else {
+              current = 0;
+            }
+          }
+
+          // 結果を反映
+          setTotalTrophies(trophyCount);
+          setCurrentStreak(streak);
+          setMaxStreak(max);
+          setIsCalculatingStats(false);
+
+          // キャッシュに保存
+          saveStatsCache(trophyCount, streak, max);
+        }, 100);
       }
-    }
+    };
 
-    return max;
+    calculateStats();
   }, [allTimeData]);
 
   // シェア画面用の集計データ（選択日基準）

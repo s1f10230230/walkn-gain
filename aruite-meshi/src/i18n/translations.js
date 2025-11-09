@@ -287,6 +287,7 @@ export const TRANSLATIONS = {
       health: {
         title: 'ヘルスケアと連携',
         subtitle: 'より正確な歩数とカロリーを\n取得するために、\nヘルスケアとの連携を\nおすすめします',
+        cardTitle: 'ヘルスケア連携',
         benefit1: '高精度な歩数計測',
         benefit2: '正確なカロリー計算',
         benefit3: 'バックグラウンド記録',
@@ -320,6 +321,7 @@ export const TRANSLATIONS = {
     home: {
       tabs: { steps: '歩数', calories: 'カロリー' },
       labels: { goal: '目標' },
+      trophies: { achieved: '{count}日達成', streak: '{count}日連続' },
       activity: { today: '今日の活動', onDate: '{date}の活動' },
       stats: {
         steps: '歩数',
@@ -725,6 +727,7 @@ export const TRANSLATIONS = {
       health: {
         title: 'Connect with Health',
         subtitle: 'For more accurate steps and calories,\nwe recommend connecting with Health',
+        cardTitle: 'Health Integration',
         benefit1: 'High-accuracy step tracking',
         benefit2: 'Accurate calorie calculation',
         benefit3: 'Background recording',
@@ -758,6 +761,7 @@ export const TRANSLATIONS = {
     home: {
       tabs: { steps: 'Steps', calories: 'Calories' },
       labels: { goal: 'Goal' },
+      trophies: { achieved: '{count} days', streak: '{count} streak' },
       activity: { today: "Today's activity", onDate: 'Activity on {date}' },
       stats: {
         steps: 'Steps',
@@ -1208,6 +1212,7 @@ export const TRANSLATIONS = {
       health: {
         title: '连接到健康',
         subtitle: '为了更准确的步数和热量，\n建议连接到健康应用',
+        cardTitle: '健康连接',
         benefit1: '高精度步数统计',
         benefit2: '准确的热量计算',
         benefit3: '后台记录',
@@ -1241,6 +1246,7 @@ export const TRANSLATIONS = {
     home: {
       tabs: { steps: '步数', calories: '卡路里' },
       labels: { goal: '目标' },
+      trophies: { achieved: '{count}天达成', streak: '{count}天连续' },
       activity: { today: '今日活动', onDate: '{date}的活动' },
       stats: {
         steps: '步数',

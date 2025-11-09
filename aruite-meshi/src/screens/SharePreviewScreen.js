@@ -106,15 +106,16 @@ export default function SharePreviewScreen({ navigation, route }) {
   }, [selectedDateStr]);
   const steps = route?.params?.steps ?? 0;
   const goal = route?.params?.goal ?? 10000;
-  const [streakDays, setStreakDays] = useState(route?.params?.streakDays ?? 0);
+  const streakDays = route?.params?.streakDays ?? 0;
+  const totalTrophies = route?.params?.totalTrophies ?? 0;
+  const maxStreak = route?.params?.maxStreak ?? 0;
+  const weekTotal = route?.params?.weekTotal ?? 0;
+  const monthTotal = route?.params?.monthTotal ?? 0;
+  const allTimeTotal = route?.params?.allTimeTotal ?? 0;
 
   // Fixed to 'Stoic Sport' template
   const [aspect] = useState("9:16");
-  const [consistency, setConsistency] = useState(0); // 0-7
   const [foodLine, setFoodLine] = useState(null); // "🍜 0.8杯"（今は未表示）
-  const [weekTotal, setWeekTotal] = useState(0);
-  const [monthTotal, setMonthTotal] = useState(0);
-  const [allTimeTotal, setAllTimeTotal] = useState(0);
   const [stride, setStride] = useState(72); // cm
   const [dayNote, setDayNote] = useState(""); // その日のひとこと
   const achieved = steps >= goal;
@@ -148,89 +149,8 @@ export default function SharePreviewScreen({ navigation, route }) {
 
   useEffect(() => {
     (async () => {
-      // Consistency（直近7日間の目標達成日数） & 週合計（選択日から直近）
-      try {
-        const s = await getSettings();
-        const base = new Date(selectedDate);
-        base.setHours(12, 0, 0, 0);
-
-        // 選択日を含む直近7日を範囲取得
-        const rangeEnd = new Date(base);
-        const rangeStart = new Date(base);
-        rangeStart.setDate(base.getDate() - 6);
-        rangeStart.setHours(0,0,0,0);
-        if (rangeEnd.toDateString() === new Date().toDateString()) {
-          rangeEnd.setTime(Date.now());
-        } else {
-          rangeEnd.setHours(23,59,59,999);
-        }
-        const weekList = await getStepsInRange(rangeStart, rangeEnd);
-        const wTotal = Array.isArray(weekList) ? weekList.reduce((acc, d) => acc + (Number(d?.steps)||0), 0) : 0;
-
-        // 直近7日分の達成日数
-        let count = 0;
-        if (Array.isArray(weekList)) {
-          for (const d of weekList) {
-            if ((Number(d?.steps)||0) >= (s?.dailyGoal || 10000)) count++;
-          }
-        }
-        console.log('📊 WEEK total:', wTotal, 'days achieved:', count);
-        setConsistency(count);
-        setWeekTotal(wTotal);
-
-        // その日時点のストリーク（選択日までの連続達成日数）
-        const streak = await calculateStreakUpToDate(displayDate, s?.dailyGoal || 10000);
-        setStreakDays(streak);
-      } catch (_) {}
-
-      // Month (その日から過去30日) - 範囲APIで安定取得
-      try {
-        const targetDate = new Date(selectedDate); targetDate.setHours(12,0,0,0);
-        const rangeEnd = new Date(targetDate);
-        const rangeStart = new Date(targetDate);
-        rangeStart.setDate(targetDate.getDate() - 29);
-        rangeStart.setHours(0,0,0,0);
-        if (rangeEnd.toDateString() === new Date().toDateString()) {
-          rangeEnd.setTime(Date.now());
-        } else {
-          rangeEnd.setHours(23,59,59,999);
-        }
-        const monthList = await getStepsInRange(rangeStart, rangeEnd);
-        const mTotal = Array.isArray(monthList) ? monthList.reduce((acc, d) => acc + (Number(d?.steps)||0), 0) : 0;
-        console.log('📊 MONTH total:', mTotal);
-        setMonthTotal(mTotal);
-      } catch (_) {}
-
-      // All-time（全期間）: まずローカル保存分（このアプリの範囲）を優先し、0なら範囲APIで補完
-      try {
-        // 1) ローカル保存（インポート済み＋アプリ内計測）の合計
-        let allTotal = 0;
-        try {
-          const storedSum = await getAllDailyStepsTotal();
-          if (Number.isFinite(storedSum)) allTotal = storedSum;
-        } catch (_) {}
-
-        // 2) まだ0なら範囲APIで補完（最大1年分程度に留める）
-        if (!allTotal || allTotal <= 0) {
-          try {
-            const end = new Date(selectedDate);
-            if (end.toDateString() !== new Date().toDateString()) {
-              end.setHours(23, 59, 59, 999);
-            }
-            const start = new Date(end);
-            start.setFullYear(end.getFullYear() - 1); // 1年分を上限に取得（安定性重視）
-            start.setHours(0, 0, 0, 0);
-            const daily = await getStepsInRange(start, end);
-            if (Array.isArray(daily) && daily.length > 0) {
-              const s = daily.reduce((acc, d) => acc + (Number(d?.steps) || 0), 0);
-              if (s > 0) allTotal = s;
-            }
-          } catch (_) {}
-        }
-
-        console.log('📊 ALL total (all-time):', allTotal);
-        setAllTimeTotal(allTotal);
-      } catch (_) {}
+      // WEEK、MONTH、ALL TIME、ストリーク、トロフィー、最大ストリークは
+      // route paramsから取得（HomeScreenで計算済み）
 
       // Meshi行は現在非表示（将来用に計算のみ保持）
       try {
@@ -358,8 +278,22 @@ export default function SharePreviewScreen({ navigation, route }) {
           </View>
         </View>
 
-        {/* Subline: STREAK with FIRE • CONSISTENCY */}
+        {/* Subline: TROPHIES • STREAK • GOAL */}
         <View style={styles.metricsRow}>
+          <View style={styles.metricItem}>
+            <View style={styles.metricWithIcon}>
+              <Text style={[styles.fireIcon]}>🏆</Text>
+              <Text style={[styles.metricValue, { color: theme.primary }]}>
+                {totalTrophies}
+              </Text>
+            </View>
+            <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
+              TROPHIES
+            </Text>
+          </View>
+          <View
+            style={[styles.metricDivider, { backgroundColor: theme.border }]}
+          />
           <View style={styles.metricItem}>
             <View style={styles.metricWithIcon}>
               <Text style={[styles.fireIcon]}>🔥</Text>
@@ -367,20 +301,10 @@ export default function SharePreviewScreen({ navigation, route }) {
                 {streakDays}
               </Text>
             </View>
-            <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
-              STREAK
-            </Text>
-          </View>
-          <View
-            style={[styles.metricDivider, { backgroundColor: theme.border }]}
-          />
-          <View style={styles.metricItem}>
-            <Text style={[styles.metricValue, { color: theme.text }]}>
-              {consistency}/7
-            </Text>
-            <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
-              CONSISTENCY
-            </Text>
+            <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>STREAK</Text>
+            {maxStreak > streakDays ? (
+              <Text style={[styles.metricSubLabel, { color: theme.textSecondary }]}>MAX STREAK {maxStreak}</Text>
+            ) : null}
           </View>
           <View
             style={[styles.metricDivider, { backgroundColor: theme.border }]}
@@ -688,6 +612,14 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     textTransform: "uppercase",
   },
+  metricSubLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
+    marginTop: 2,
+    opacity: 0.8,
+  },
   metricDivider: {
     width: 1,
     height: 40,
@@ -938,30 +870,135 @@ async function calculateStreakUpToDate(targetDateStr, goalSteps) {
     const targetDate = new Date(targetDateStr + 'T00:00:00');
     targetDate.setHours(0, 0, 0, 0);
 
+    const end = new Date(targetDate);
+    if (end.toDateString() === new Date().toDateString()) {
+      end.setTime(Date.now());
+    } else {
+      end.setHours(23, 59, 59, 999);
+    }
+    const start = new Date(end);
+    start.setDate(end.getDate() - 364); // 最大1年
+    start.setHours(0, 0, 0, 0);
+
+    const list = await getStepsInRange(start, end);
+    const map = new Map();
+    if (Array.isArray(list)) {
+      for (const it of list) {
+        if (!it?.date) continue;
+        map.set(it.date, Number(it.steps || 0));
+      }
+    }
+
     let streak = 0;
-    let currentDate = new Date(targetDate);
+    let cur = new Date(targetDate);
 
-    // targetDateから過去に遡って連続達成日数をカウント（ローカル日付で評価）
+    // 選択日が達成済みかチェック
+    const targetKey = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
+    const targetSteps = Number(map.get(targetKey) || 0);
+    const targetAchieved = targetSteps >= (goalSteps || 0);
+
+    // 選択日が未達成なら前日から開始
+    if (!targetAchieved) {
+      cur.setDate(cur.getDate() - 1);
+    }
+
+    // 過去に遡って連続達成日数をカウント
     for (let i = 0; i < 365; i++) {
-      const y = currentDate.getFullYear();
-      const m = String(currentDate.getMonth() + 1).padStart(2, '0');
-      const d = String(currentDate.getDate()).padStart(2, '0');
-      const dateKey = `${y}-${m}-${d}`; // ローカル日付のキー
-
-      const dayData = await getMultipleDaysData([dateKey]);
-      const steps = Number(dayData?.[0]?.steps || 0);
-      if (steps >= goalSteps) {
-        streak++;
-        // 前日に移動
-        currentDate.setDate(currentDate.getDate() - 1);
+      const y = cur.getFullYear();
+      const m = String(cur.getMonth() + 1).padStart(2, '0');
+      const d = String(cur.getDate()).padStart(2, '0');
+      const key = `${y}-${m}-${d}`;
+      const steps = Number(map.get(key) || 0);
+      if (steps >= (goalSteps || 0)) {
+        streak += 1;
+        cur.setDate(cur.getDate() - 1);
       } else {
         break;
       }
     }
-
     return streak;
   } catch (error) {
     console.error('Streak calculation error:', error);
+    return 0;
+  }
+}
+
+// 全期間（targetDateまで）のトロフィー数（達成日数）を計算
+async function calculateTrophiesUpToDate(targetDateStr, goalSteps) {
+  try {
+    const targetDate = new Date(targetDateStr + 'T00:00:00');
+    targetDate.setHours(0, 0, 0, 0);
+
+    const end = new Date(targetDate);
+    if (end.toDateString() === new Date().toDateString()) {
+      end.setTime(Date.now());
+    } else {
+      end.setHours(23, 59, 59, 999);
+    }
+    const start = new Date(end);
+    start.setDate(end.getDate() - 364); // 最大1年
+    start.setHours(0, 0, 0, 0);
+
+    const list = await getStepsInRange(start, end);
+    if (!Array.isArray(list)) return 0;
+    const count = list.reduce((acc, it) => acc + (Number(it?.steps || 0) >= (goalSteps || 0) ? 1 : 0), 0);
+    return count;
+  } catch (e) {
+    console.error('Trophies calculation error:', e);
+    return 0;
+  }
+}
+
+// 全期間の最大ストリーク（targetDateまで）を計算
+async function calculateMaxStreakUpToDate(targetDateStr, goalSteps) {
+  try {
+    const targetDate = new Date(targetDateStr + 'T00:00:00');
+    targetDate.setHours(0, 0, 0, 0);
+
+    const end = new Date(targetDate);
+    // 今日なら現在時刻まで、それ以外はその日の終わり
+    if (end.toDateString() === new Date().toDateString()) {
+      end.setTime(Date.now());
+    } else {
+      end.setHours(23, 59, 59, 999);
+    }
+    const start = new Date(end);
+    start.setDate(end.getDate() - 364); // 最大1年分
+    start.setHours(0, 0, 0, 0);
+
+    const list = await getStepsInRange(start, end);
+    if (!Array.isArray(list) || list.length === 0) return 0;
+
+    // 日付->歩数マップ
+    const map = new Map();
+    for (const d of list) {
+      if (!d?.date) continue;
+      map.set(d.date, Number(d.steps || 0));
+    }
+
+    let maxStreak = 0;
+    let current = 0;
+    const cur = new Date(start);
+    cur.setHours(0, 0, 0, 0);
+    while (cur <= end) {
+      const y = cur.getFullYear();
+      const m = String(cur.getMonth() + 1).padStart(2, '0');
+      const da = String(cur.getDate()).padStart(2, '0');
+      const key = `${y}-${m}-${da}`;
+      const steps = Number(map.get(key) || 0);
+      if (steps >= (goalSteps || 0)) {
+        current += 1;
+        if (current > maxStreak) maxStreak = current;
+      } else {
+        current = 0;
+      }
+      cur.setDate(cur.getDate() + 1);
+      cur.setHours(0, 0, 0, 0);
+    }
+
+    return maxStreak;
+  } catch (e) {
+    console.error('Max streak calculation error:', e);
     return 0;
   }
 }

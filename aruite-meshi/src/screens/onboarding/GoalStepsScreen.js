@@ -36,7 +36,16 @@ export default function GoalStepsScreen({ navigation, route }) {
   const recommendedSteps = getRecommendedSteps();
 
   const handleNext = () => {
+    const MIN_DAILY_GOAL = 1000;
+    const MAX_DAILY_GOAL = 50000;
     const steps = parseInt(goalSteps) || 8000;
+
+    // 目標歩数の範囲チェック
+    if (steps < MIN_DAILY_GOAL || steps > MAX_DAILY_GOAL) {
+      alert(`目標歩数は${MIN_DAILY_GOAL}〜${MAX_DAILY_GOAL}の範囲で設定してください。`);
+      return;
+    }
+
     navigation.navigate('Permissions', {
       gender,
       age,

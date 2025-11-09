@@ -7,9 +7,6 @@ import { I18nProvider } from './src/i18n/I18nProvider';
 import { initAnalytics, logEvent } from './src/utils/analytics';
 // HealthKitの初期化はオンボーディング/設定で行う
 import { getTheme } from './src/utils/theme';
-import { getReminderEnabled } from './src/utils/storage';
-import { scheduleReminderNotification } from './src/utils/notifications';
-import * as Notifications from 'expo-notifications';
 
 // React Native Screensを完全に無効化
 try {
@@ -38,23 +35,8 @@ export default function App() {
     });
   }, []);
 
-  // 起動時のリマインダー健全性チェック（存在しなければ再スケジュール）
-  useEffect(() => {
-    (async () => {
-      try {
-        const on = await getReminderEnabled();
-        if (on) {
-          const list = await Notifications.getAllScheduledNotificationsAsync();
-          const hasDaily = (list || []).some((n) => n?.content?.data?.type === 'reminder');
-          if (!hasDaily) {
-            await scheduleReminderNotification(20, 30);
-          }
-        }
-      } catch (_) {
-        // no-op
-      }
-    })();
-  }, []);
+  // リマインダーは設定画面とオンボーディングでのみスケジュールする
+  // アプリ起動時の再スケジュールは意図しない通知発火を防ぐため削除
 
   // HealthKit初期化はオンボーディング/設定で実施し、起動直後の許可ダイアログは出さない
 
