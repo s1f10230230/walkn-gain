@@ -141,6 +141,7 @@ export default function HomeScreen({ navigation, route }) {
   const [todayGoals, setTodayGoals] = useState([]);
   const [isPedometerAvailable, setIsPedometerAvailable] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingSteps, setIsLoadingSteps] = useState(false); // 歩数データ読み込み中
   const [hourlySteps, setHourlySteps] = useState(Array(24).fill(0));
   const selectedLoadTokenRef = useRef(0);
   const selectedDebounceTimerRef = useRef(null);
@@ -721,10 +722,12 @@ export default function HomeScreen({ navigation, route }) {
 
   // 選択された日付のデータを取得
   const loadSelectedDateData = async () => {
+    setIsLoadingSteps(true);
     try {
       const isAvailable = await Pedometer.isAvailableAsync();
       if (!isAvailable) {
         console.log("Pedometer is not available");
+        setIsLoadingSteps(false);
         return;
       }
 
@@ -863,6 +866,8 @@ export default function HomeScreen({ navigation, route }) {
       }
     } catch (error) {
       console.error("Error loading selected date data:", error);
+    } finally {
+      setIsLoadingSteps(false);
     }
   };
 
@@ -2162,7 +2167,9 @@ export default function HomeScreen({ navigation, route }) {
                   </Animated.View>
                 </Animated.View>
                 <View style={styles.circleCenter}>
-                  {activeTab === "steps" ? (
+                  {isLoadingSteps ? (
+                    <ActivityIndicator size="large" color={theme.accent} />
+                  ) : activeTab === "steps" ? (
                     <>
                       <Text style={[styles.percentText, { color: theme.text }]}>
                         {formatNumber(steps)}
