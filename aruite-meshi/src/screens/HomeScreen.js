@@ -41,6 +41,7 @@ import {
   getStatsCache,
   saveStatsCache,
   getDailyData,
+  saveDailyData,
 } from "../utils/storage";
 import {
   getCachedTodayData,
@@ -1122,11 +1123,51 @@ export default function HomeScreen({ navigation, route }) {
     }
 
     // 全期間データを取得（トロフィー・ストリーク計算用）
-    // AsyncStorageから取得（HistoryScreenがHealthKitデータを保存済み）
+    // HealthKitから取得してAsyncStorageに保存（バックグラウンド）
     try {
-      const allData = await getAllDailyData();
-      console.log("📊 [AllTimeData] データ件数:", Object.keys(allData).length, "日分");
-      setAllTimeData(allData);
+      // まずAsyncStorageから即座に読み込み
+      const storageData = await getAllDailyData();
+      console.log("📊 [AllTimeData] Storageデータ:", Object.keys(storageData).length, "日分");
+      setAllTimeData(storageData);
+
+      // バックグラウンドでHealthKitから過去90日分を取得・保存
+      if (await getHealthSyncEnabled()) {
+        setTimeout(async () => {
+          try {
+            const now = new Date();
+            const start = new Date(now);
+            start.setDate(start.getDate() - 90);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(now);
+            end.setHours(23, 59, 59, 999);
+
+            console.log("📊 [AllTimeData] HealthKitからバックグラウンドで取得開始...");
+            const healthKitData = await getStepsInRange(start, end);
+            console.log("📊 [AllTimeData] HealthKitデータ:", healthKitData.length, "日分");
+
+            // AsyncStorageに保存してマージ
+            const merged = { ...storageData };
+            for (const item of healthKitData) {
+              if (item.steps > 0) {
+                const dayData = {
+                  date: item.date,
+                  steps: item.steps,
+                  calories: calculateCalories(item.steps, profile?.weight || 70),
+                  distance: calculateDistance(item.steps, profile?.stride || 0.72),
+                  goal: 10000,
+                };
+                await saveDailyData(item.date, dayData);
+                merged[item.date] = dayData;
+              }
+            }
+
+            console.log("📊 [AllTimeData] 保存完了。マージ後:", Object.keys(merged).length, "日分");
+            setAllTimeData(merged);
+          } catch (error) {
+            console.error("❌ [AllTimeData] バックグラウンド取得エラー:", error);
+          }
+        }, 1000); // UI優先のため1秒待機
+      }
     } catch (error) {
       console.error("Error loading all-time data:", error);
     }
