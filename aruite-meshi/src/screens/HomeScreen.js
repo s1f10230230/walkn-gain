@@ -1122,12 +1122,44 @@ export default function HomeScreen({ navigation, route }) {
     }
 
     // 全期間データを取得（トロフィー・ストリーク計算用）
-    // HealthKitを使わずAsyncStorageから取得（高速）
+    // HealthKitとAsyncStorageの両方からマージして取得
     try {
-      const allData = await getAllDailyData();
-      setAllTimeData(allData);
+      const storageData = await getAllDailyData();
+
+      // HealthKitから過去90日分のデータを取得してマージ
+      if (await getHealthSyncEnabled()) {
+        const now = new Date();
+        const start = new Date(now);
+        start.setDate(start.getDate() - 90);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(now);
+        end.setHours(23, 59, 59, 999);
+
+        const healthKitData = await getStepsInRange(start, end);
+        console.log("📊 [AllTimeData] HealthKitデータ:", healthKitData.length, "日分");
+
+        // マージ: HealthKitデータで不足分を補完
+        const merged = { ...storageData };
+        for (const item of healthKitData) {
+          if (!merged[item.date] && item.steps > 0) {
+            merged[item.date] = {
+              date: item.date,
+              steps: item.steps,
+              goal: 10000,
+            };
+          }
+        }
+
+        console.log("📊 [AllTimeData] マージ後:", Object.keys(merged).length, "日分");
+        setAllTimeData(merged);
+      } else {
+        setAllTimeData(storageData);
+      }
     } catch (error) {
       console.error("Error loading all-time data:", error);
+      // エラー時はストレージデータのみ使用
+      const storageData = await getAllDailyData();
+      setAllTimeData(storageData);
     }
 
     // 以下は旧コード（HealthKitから取得・遅い）をコメントアウト
