@@ -2271,11 +2271,26 @@ export default function HomeScreen({ navigation, route }) {
             }}
           >
             <TouchableOpacity
-              onPress={() => {
+              onPress={async () => {
                 const dateStr = selectedDate.toISOString().split("T")[0];
+                const today = getTodayDateString();
+
+                // 選択された日付のデータを取得
+                let dateSteps = steps;
+                let dateGoal = goal;
+
+                if (dateStr !== today) {
+                  // 過去の日付の場合はストレージから取得
+                  const dayData = await getDailyData(dateStr);
+                  if (dayData) {
+                    dateSteps = dayData.steps || 0;
+                    dateGoal = dayData.goal || goal;
+                  }
+                }
+
                 console.log("🚀 Navigating to SharePreview with:", {
-                  steps,
-                  goal,
+                  steps: dateSteps,
+                  goal: dateGoal,
                   selectedDate: dateStr,
                   totalTrophies,
                   streakDays: currentStreak,
@@ -2285,8 +2300,8 @@ export default function HomeScreen({ navigation, route }) {
                   allTimeTotal: shareStats.allTotal,
                 });
                 navigation.navigate("SharePreview", {
-                  steps,
-                  goal,
+                  steps: dateSteps,
+                  goal: dateGoal,
                   selectedDate: dateStr,
                   totalTrophies,
                   streakDays: currentStreak,
