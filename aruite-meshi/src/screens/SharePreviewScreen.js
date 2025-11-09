@@ -340,13 +340,14 @@ export default function SharePreviewScreen({ navigation, route }) {
         </View>
 
         {/* Subline: TROPHIES • STREAK • GOAL */}
-        <View style={styles.metricsRow}>
-          <View style={styles.metricItem}>
-            <View style={styles.metricWithIcon}>
-              <Text style={[styles.fireIcon]}>🏆</Text>
-              <Text style={[styles.metricValue, { color: theme.primary }]}>
-                {totalTrophies}
-              </Text>
+        {!isLoading && (
+          <View style={styles.metricsRow}>
+            <View style={styles.metricItem}>
+              <View style={styles.metricWithIcon}>
+                <Text style={[styles.fireIcon]}>🏆</Text>
+                <Text style={[styles.metricValue, { color: theme.primary }]}>
+                  {totalTrophies}
+                </Text>
             </View>
             <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
               TROPHIES
@@ -379,6 +380,7 @@ export default function SharePreviewScreen({ navigation, route }) {
             </Text>
           </View>
         </View>
+        )}
 
         {/* Stats grid: WEEK / MONTH / ALL-TIME - Vertical stack */}
         <View style={styles.statsGrid}>

@@ -1029,7 +1029,7 @@ export default function HomeScreen({ navigation, route }) {
   const loadCachedData = async () => {
     try {
       const cached = await getCachedTodayData();
-      if (cached) {
+      if (cached && cached.steps > 0) {
         setSteps(cached.steps);
         setCalories(cached.calories);
         setDistance(cached.distance);
@@ -1037,9 +1037,16 @@ export default function HomeScreen({ navigation, route }) {
           calculateGoalProgress(cached.steps, cached.goal || 10000) / 100
         );
         console.log("✅ キャッシュからデータを表示しました");
+        // キャッシュデータがあるので、ローディング表示不要
+        setIsLoadingSteps(false);
+      } else {
+        // キャッシュがない場合は、ローディング表示
+        console.log("⏳ キャッシュなし - ローディング表示");
+        setIsLoadingSteps(true);
       }
     } catch (error) {
       console.error("キャッシュの読み込みに失敗:", error);
+      setIsLoadingSteps(true);
     } finally {
       setIsLoading(false);
     }
@@ -1252,6 +1259,7 @@ export default function HomeScreen({ navigation, route }) {
 
       if (isAvailable) {
         // Pedometerから直接取得（高速）
+        setIsLoadingSteps(true);
         const end = new Date();
         const start = new Date();
         start.setHours(0, 0, 0, 0);
@@ -1263,6 +1271,7 @@ export default function HomeScreen({ navigation, route }) {
           if (result.steps > 0) {
             updateSteps(result.steps);
           }
+          setIsLoadingSteps(false);
         } else {
           // HealthKitハイブリッド取得（遅い）
           const result = await getStepsHybrid(start, end);
@@ -1270,6 +1279,7 @@ export default function HomeScreen({ navigation, route }) {
           if (result.steps > 0 || result.source !== "none") {
             updateSteps(result.steps);
           }
+          setIsLoadingSteps(false);
         }
 
         // Subscribe to real-time updates
