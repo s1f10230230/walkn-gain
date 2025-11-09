@@ -22,7 +22,9 @@ import {
   getUserProfile,
   getMultipleDaysData,
   getAllDailyStepsTotal,
+  getTodayData,
 } from "../utils/storage";
+import { getCachedTodayData } from "../utils/cache";
 import {
   calculateCalories,
   calculateDistance,
@@ -104,8 +106,10 @@ export default function SharePreviewScreen({ navigation, route }) {
     date.setHours(12, 0, 0, 0);
     return date;
   }, [selectedDateStr]);
-  const steps = route?.params?.steps ?? 0;
-  const goal = route?.params?.goal ?? 10000;
+  // データをstateで管理（起動時は0、ロード後に更新）
+  const [steps, setSteps] = useState(route?.params?.steps ?? 0);
+  const [goal, setGoal] = useState(route?.params?.goal ?? 10000);
+  const [isLoading, setIsLoading] = useState(true);
   const streakDays = route?.params?.streakDays ?? 0;
   const totalTrophies = route?.params?.totalTrophies ?? 0;
   const maxStreak = route?.params?.maxStreak ?? 0;
@@ -147,6 +151,55 @@ export default function SharePreviewScreen({ navigation, route }) {
     }
   }, []);
 
+  // 歩数データを取得（paramsが0の場合はキャッシュから取得）
+  useEffect(() => {
+    (async () => {
+      setIsLoading(true);
+      try {
+        const isToday = displayDate === getTodayDateString();
+
+        // route paramsにデータがあればそれを使う
+        if (route?.params?.steps && route.params.steps > 0) {
+          setSteps(route.params.steps);
+          setGoal(route.params.goal || 10000);
+          setIsLoading(false);
+          return;
+        }
+
+        // 今日の場合はキャッシュから即座に取得
+        if (isToday) {
+          const cached = await getCachedTodayData();
+          if (cached && cached.steps > 0) {
+            setSteps(cached.steps);
+            setGoal(cached.goal || 10000);
+          } else {
+            // キャッシュがなければストレージから取得
+            const data = await getTodayData();
+            if (data && data.steps > 0) {
+              setSteps(data.steps);
+              setGoal(data.goal || 10000);
+            }
+          }
+        } else {
+          // 過去の日付はストレージから取得
+          const s = await getSettings();
+          const result = await getStepsHybrid(
+            new Date(selectedDate.setHours(0, 0, 0, 0)),
+            new Date(selectedDate.setHours(23, 59, 59, 999))
+          );
+          if (result && result.steps > 0) {
+            setSteps(result.steps);
+            setGoal(s?.dailyGoal || 10000);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load steps for SharePreview:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+  }, [displayDate, selectedDate]);
+
   useEffect(() => {
     (async () => {
       // WEEK、MONTH、ALL TIME、ストリーク、トロフィー、最大ストリークは
@@ -172,7 +225,7 @@ export default function SharePreviewScreen({ navigation, route }) {
         setDayNote(note);
       } catch (_) {}
     })();
-  }, [displayDate]);
+  }, [displayDate, steps]);
 
   return (
     <View
@@ -247,15 +300,25 @@ export default function SharePreviewScreen({ navigation, route }) {
 
         {/* Main steps - BIGGER & BOLDER with ORANGE */}
         <View style={styles.stepsContainer}>
-          <Text style={[styles.steps, { color: theme.primary }]}>
-            {formatNumber(steps)}
-          </Text>
-          <Text style={[styles.achievementRate, { color: theme.textSecondary }]}>
-            {goal > 0 ? Math.round((steps / goal) * 100) : 0}%
-          </Text>
-          <View
-            style={[styles.glowEffect, { backgroundColor: theme.primary }]}
-          />
+          {isLoading ? (
+            <>
+              <Text style={[styles.steps, { color: theme.textSecondary, fontSize: 32 }]}>
+                読み込み中...
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.steps, { color: theme.primary }]}>
+                {formatNumber(steps)}
+              </Text>
+              <Text style={[styles.achievementRate, { color: theme.textSecondary }]}>
+                {goal > 0 ? Math.round((steps / goal) * 100) : 0}%
+              </Text>
+              <View
+                style={[styles.glowEffect, { backgroundColor: theme.primary }]}
+              />
+            </>
+          )}
         </View>
 
         {/* Goal progress bar with gradient effect */}
