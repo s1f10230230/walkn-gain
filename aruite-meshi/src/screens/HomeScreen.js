@@ -1449,6 +1449,8 @@ export default function HomeScreen({ navigation, route }) {
         // 少し待ってから計算開始（UI優先）
         setTimeout(() => {
           const DEFAULT_GOAL = 10000;
+          console.log("📊 [Stats] allTimeDataのキー数:", Object.keys(allTimeData).length);
+          console.log("📊 [Stats] allTimeDataサンプル:", JSON.stringify(Object.entries(allTimeData).slice(0, 3)));
 
           // トロフィー計算
           const trophyCount = Object.entries(allTimeData).filter(([dateKey, dayData]) => {
@@ -1524,6 +1526,7 @@ export default function HomeScreen({ navigation, route }) {
           }
 
           // 結果を反映
+          console.log("📊 [Stats] 計算結果 - トロフィー:", trophyCount, "ストリーク:", streak, "最大:", max);
           setTotalTrophies(trophyCount);
           setCurrentStreak(streak);
           setMaxStreak(max);
