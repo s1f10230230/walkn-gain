@@ -11,6 +11,7 @@ import {
   Modal,
   ActivityIndicator,
   Animated,
+  Easing,
   PanResponder,
   RefreshControl,
 } from "react-native";
@@ -36,6 +37,7 @@ import {
   getHealthSyncEnabled,
   getHourlyStepsForDate,
   saveHourlyStepsForDate,
+  getAllDailyData,
 } from "../utils/storage";
 import {
   getCachedTodayData,
@@ -74,6 +76,7 @@ import {
   startStepsBackgroundUpdates,
   isHistoricalImportCompleted,
   importHistoricalData,
+  getStepsInRange,
 } from "../utils/healthKit";
 import { registerBackgroundStepsTask } from "../tasks/backgroundStepsTask";
 import { CalendarIcon } from "../components/SettingsIcons";
@@ -110,6 +113,7 @@ export default function HomeScreen({ navigation, route }) {
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [weeklyData, setWeeklyData] = useState({}); // 週間データ { 'YYYY-MM-DD': { steps, calories } }
   const [monthlyData, setMonthlyData] = useState({}); // 月間データ { 'YYYY-MM-DD': { steps, calories } }
+  const [allTimeData, setAllTimeData] = useState({}); // 全期間データ（トロフィー・ストリーク計算用）
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const d = new Date();
     d.setDate(1);
@@ -241,7 +245,7 @@ export default function HomeScreen({ navigation, route }) {
         onMoveShouldSetPanResponder: (evt, gestureState) => {
           // 画面端60px以内ではPanResponderを無効化（戻るジェスチャー優先）
           const touchX = evt.nativeEvent.pageX;
-          const edgeThreshold = 60;
+          const edgeThreshold = 30;
           if (touchX < edgeThreshold || touchX > width - edgeThreshold) {
             return false;
           }
@@ -251,8 +255,8 @@ export default function HomeScreen({ navigation, route }) {
             Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.1 ||
             Math.abs(gestureState.vx) > Math.abs(gestureState.vy);
           return (
-            (Math.abs(gestureState.dx) > 10 ||
-              Math.abs(gestureState.vx) > 0.15) &&
+            (Math.abs(gestureState.dx) > 1 || // 超軽量設定
+              Math.abs(gestureState.vx) > 0.01) && // 超軽量設定
             horizontalBias
           );
         },
@@ -270,8 +274,8 @@ export default function HomeScreen({ navigation, route }) {
         onPanResponderRelease: (evt, gestureState) => {
           // インジケーターを非表示
           setMainSwipeIndicator({ left: false, right: false });
-          const distThreshold = 30; // 距離の閾値
-          const velocityThreshold = 0.1; // 超低速度閾値：超一瞬の速いスワイプで反応
+          const distThreshold = 3; // 距離の閾値（超軽量設定）
+          const velocityThreshold = 0.01; // 速度閾値（超軽量設定）
           const dx = gestureState.dx;
           const vx = gestureState.vx;
           const absVx = Math.abs(vx);
@@ -350,7 +354,15 @@ export default function HomeScreen({ navigation, route }) {
               tryChange(1); // 左スワイプ: 次の日
             }
           }
-          // else: どちらも閾値未満の場合は何もしない（画面を戻さない）
+          // 3. どちらも閾値未満の場合は元の位置に戻す
+          else {
+            Animated.spring(slideAnim, {
+              toValue: 0,
+              tension: 100,
+              friction: 10,
+              useNativeDriver: true,
+            }).start();
+          }
         },
         onPanResponderTerminationRequest: () => true,
         onPanResponderTerminate: () => {
@@ -374,6 +386,7 @@ export default function HomeScreen({ navigation, route }) {
     // 未来の日付には進めない
     const today = new Date();
     today.setHours(23, 59, 59, 999);
+
     if (candidate > today) {
       return;
     }
@@ -567,19 +580,22 @@ export default function HomeScreen({ navigation, route }) {
 
   // カレンダーカードのアニメーション
   const animateCalendarCards = (direction) => {
-    // 各カードを順番にアニメーション
-    const animations = calendarAnimValues.map((anim, index) => {
-      // まず縮小＋移動
-      anim.setValue(0);
-      return Animated.timing(anim, {
-        toValue: 1,
-        duration: 250,
-        delay: index * 30, // 順番にアニメーション
-        useNativeDriver: true,
-      });
+    // アニメーション無効化（パフォーマンス優先）
+    calendarAnimValues.forEach((anim) => {
+      anim.setValue(1);
     });
 
-    Animated.parallel(animations).start();
+    // 元のアニメーション（重い場合はコメントアウト）
+    // const animations = calendarAnimValues.map((anim, index) => {
+    //   anim.setValue(0);
+    //   return Animated.timing(anim, {
+    //     toValue: 1,
+    //     duration: 250,
+    //     delay: index * 30,
+    //     useNativeDriver: true,
+    //   });
+    // });
+    // Animated.parallel(animations).start();
   };
 
   // 週を前後に移動
@@ -610,9 +626,9 @@ export default function HomeScreen({ navigation, route }) {
     const contentWidth = contentSize.width;
     const viewWidth = layoutMeasurement.width;
 
-    const threshold = 15;
-    const leftPulling = scrollX < -15; // 左に引っ張り始めた
-    const rightPulling = scrollX + viewWidth > contentWidth + 15; // 右に引っ張り始めた
+    const threshold = 10;
+    const leftPulling = scrollX < -10; // 左に引っ張り始めた
+    const rightPulling = scrollX + viewWidth > contentWidth + 10; // 右に引っ張り始めた
 
     setCalendarPullIndicator({
       left: leftPulling,
@@ -633,8 +649,8 @@ export default function HomeScreen({ navigation, route }) {
     const viewWidth = layoutMeasurement.width;
 
     // 閾値: より強く引っ張らないと切り替わらないように
-    const edgeThreshold = -15; // 左端から50px以上オーバースクロール
-    const rightEdgeThreshold = 15; // 右端から50px以上オーバースクロール
+    const edgeThreshold = -10; // 左端から50px以上オーバースクロール
+    const rightEdgeThreshold = 10; // 右端から50px以上オーバースクロール
 
     // 左端に到達（前の週へ）- 意図的に引っ張って止める必要がある
     if (scrollX < edgeThreshold) {
@@ -1071,6 +1087,43 @@ export default function HomeScreen({ navigation, route }) {
 
       // 毎日リセット方針のため、前日達成による持ち越しは行わない
     }
+
+    // 全期間データを取得（トロフィー・ストリーク計算用）
+    // AsyncStorageからではなく、getStepsInRangeで過去365日分を取得
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() - 364); // 365日分
+      startDate.setHours(0, 0, 0, 0);
+
+      const endDate = new Date(today);
+      endDate.setHours(23, 59, 59, 999);
+
+      const rangeData = await getStepsInRange(startDate, endDate);
+      const allData = {};
+
+      if (Array.isArray(rangeData)) {
+        for (const item of rangeData) {
+          if (item?.date) {
+            allData[item.date] = {
+              steps: item.steps || 0,
+              calories: item.calories || 0,
+              goal: settings.dailyGoal, // 過去データは現在の目標を使用
+            };
+          }
+        }
+      }
+
+      setAllTimeData(allData);
+      console.log(
+        "📊 All-time data loaded:",
+        Object.keys(allData).length,
+        "days"
+      );
+    } catch (error) {
+      console.error("Error loading all-time data:", error);
+    }
   };
 
   // プルトゥリフレッシュ: データを再読み込み
@@ -1325,6 +1378,136 @@ export default function HomeScreen({ navigation, route }) {
   const isStepGoalAchieved = progress >= 1.0;
   const progressColor = isStepGoalAchieved ? theme.success : theme.accent;
 
+  // トロフィー（目標達成日数）をカウント
+  const totalTrophies = useMemo(() => {
+    const DEFAULT_GOAL = 10000; // 古いデータ用のデフォルト目標
+    const count = Object.entries(allTimeData).filter(([dateKey, dayData]) => {
+      if (!dayData) return false;
+      const stepsNum = Number(dayData.steps || 0);
+      // 各日の保存時目標を優先（なければデフォルト10000歩）
+      const dayGoal = Number(dayData.goal || DEFAULT_GOAL);
+      return (
+        Number.isFinite(stepsNum) &&
+        Number.isFinite(dayGoal) &&
+        stepsNum >= dayGoal
+      );
+    }).length;
+
+    return count;
+  }, [allTimeData, goal]);
+
+  // ストリーク（連続達成日数）をカウント
+  const currentStreak = useMemo(() => {
+    const DEFAULT_GOAL = 10000; // 古いデータ用のデフォルト目標
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let streak = 0;
+    let currentDate = new Date(today);
+
+    // 今日が達成済みかチェック（各日の目標を使用）
+    const todayKey = today.toISOString().split("T")[0];
+    const todayData = allTimeData[todayKey];
+    const todaySteps = Number(todayData?.steps || 0);
+    const todayGoal = Number(todayData?.goal || DEFAULT_GOAL);
+    const todayAchieved =
+      Number.isFinite(todaySteps) &&
+      Number.isFinite(todayGoal) &&
+      todaySteps >= todayGoal;
+
+    // 今日が未達成なら昨日から開始
+    if (!todayAchieved) {
+      currentDate.setDate(currentDate.getDate() - 1);
+    }
+
+    // 連続達成日数をカウント
+    while (true) {
+      const dateKey = currentDate.toISOString().split("T")[0];
+      const dayData = allTimeData[dateKey];
+      const stepsNum = Number(dayData?.steps || 0);
+      const dayGoal = Number(dayData?.goal || DEFAULT_GOAL);
+
+      if (
+        Number.isFinite(stepsNum) &&
+        Number.isFinite(dayGoal) &&
+        stepsNum >= dayGoal
+      ) {
+        streak++;
+        currentDate.setDate(currentDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+
+    return streak;
+  }, [allTimeData]);
+
+  // 最大ストリーク（連続達成日数の過去最高記録）をカウント
+  const maxStreak = useMemo(() => {
+    const DEFAULT_GOAL = 10000; // 古いデータ用のデフォルト目標
+
+    let max = 0;
+    let current = 0;
+
+    // 全データを日付順にソート（古い順）
+    const sortedDates = Object.keys(allTimeData).sort();
+
+    for (const dateKey of sortedDates) {
+      const dayData = allTimeData[dateKey];
+      const stepsNum = Number(dayData?.steps || 0);
+      const dayGoal = Number(dayData?.goal || DEFAULT_GOAL);
+      const achieved =
+        Number.isFinite(stepsNum) &&
+        Number.isFinite(dayGoal) &&
+        stepsNum >= dayGoal;
+
+      if (achieved) {
+        current++;
+        if (current > max) {
+          max = current;
+        }
+      } else {
+        current = 0;
+      }
+    }
+
+    return max;
+  }, [allTimeData]);
+
+  // シェア画面用の集計データ（選択日基準）
+  const shareStats = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const selected = new Date(selectedDate);
+    selected.setHours(0, 0, 0, 0);
+
+    // WEEK: 選択日の前日までの7日分
+    let weekTotal = 0;
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(selected);
+      d.setDate(selected.getDate() - i);
+      const key = d.toISOString().split("T")[0];
+      weekTotal += allTimeData[key]?.steps || 0;
+    }
+
+    // MONTH: 選択日から過去30日分（選択日を含む）
+    let monthTotal = 0;
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(selected);
+      d.setDate(selected.getDate() - i);
+      const key = d.toISOString().split("T")[0];
+      monthTotal += allTimeData[key]?.steps || 0;
+    }
+
+    // ALL TIME: 全データの合計
+    const allTotal = Object.values(allTimeData).reduce(
+      (sum, data) => sum + (data?.steps || 0),
+      0
+    );
+
+    return { weekTotal, monthTotal, allTotal };
+  }, [allTimeData, selectedDate]);
+
   // ロケールに応じた日付表示（M/DまたはM月D日）
   const formatMonthDay = (date) => {
     const m = date.getMonth() + 1;
@@ -1478,14 +1661,42 @@ export default function HomeScreen({ navigation, route }) {
         )}
         {/* 週のナビゲーション */}
         <View style={[styles.dateNavigation, { paddingTop: insets.top + 20 }]}>
+          {/* トロフィー数とストリーク（縦2行） */}
+          <View
+            style={{
+              position: "absolute",
+              left: 16,
+              top: insets.top + 16,
+              gap: 2,
+            }}
+          >
+            <Text
+              style={{ color: theme.text, fontSize: 12, fontWeight: "600" }}
+            >
+              🏆 {t("home.trophies.achieved", { count: totalTrophies })}
+            </Text>
+            <Text
+              style={{ color: theme.text, fontSize: 12, fontWeight: "600" }}
+            >
+              🔥 {t("home.trophies.streak", { count: currentStreak })}
+            </Text>
+          </View>
+
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel={t("home.a11y.prevWeek")}
-            hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
             onPress={() => changeWeek(-1)}
-            style={styles.navButton}
+            style={[styles.navButton, { paddingHorizontal: 8 }]}
           >
-            <Text style={[styles.navButtonText, { color: theme.text }]}>◀</Text>
+            <Text
+              style={[
+                styles.navButtonText,
+                { color: theme.text, fontSize: 16 },
+              ]}
+            >
+              ◀
+            </Text>
           </TouchableOpacity>
           <Text style={[styles.dateText, { color: theme.text }]}>
             {i18nFormatWeekRange(weekStartDate)}
@@ -1493,11 +1704,18 @@ export default function HomeScreen({ navigation, route }) {
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel={t("home.a11y.nextWeek")}
-            hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
             onPress={() => changeWeek(1)}
-            style={styles.navButton}
+            style={[styles.navButton, { paddingHorizontal: 8 }]}
           >
-            <Text style={[styles.navButtonText, { color: theme.text }]}>▶</Text>
+            <Text
+              style={[
+                styles.navButtonText,
+                { color: theme.text, fontSize: 16 },
+              ]}
+            >
+              ▶
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -1627,9 +1845,21 @@ export default function HomeScreen({ navigation, route }) {
                     style={[
                       styles.calendarItem,
                       selected && styles.calendarItemSelected,
-                      today && styles.calendarItemToday,
+                      today &&
+                        !selected && {
+                          borderWidth: 2,
+                          borderColor: theme.isDark ? "#2DD4BF" : "#14B8A6",
+                        },
                       {
-                        backgroundColor: selected ? theme.primary : theme.card,
+                        backgroundColor: theme.card,
+                        borderWidth: selected ? 2 : today ? 2 : 0,
+                        borderColor: selected
+                          ? "#FF9E57"
+                          : today
+                          ? theme.isDark
+                            ? "#2DD4BF"
+                            : "#14B8A6"
+                          : "transparent",
                       },
                     ]}
                     disabled={future}
@@ -1649,10 +1879,9 @@ export default function HomeScreen({ navigation, route }) {
                             const denom = goalCalories || 1;
                             return Math.max(0, Math.min(1, calVal / denom));
                           }
-                          return Math.max(
-                            0,
-                            Math.min(1, stepsVal / (goal || 1))
-                          );
+                          // 各日の保存時目標を優先（なければ現在の目標を使用）
+                          const dayGoal = dayData?.goal || goal || 1;
+                          return Math.max(0, Math.min(1, stepsVal / dayGoal));
                         })();
                         const ringColor =
                           ratio >= 1 ? theme.success : theme.accent;
@@ -1666,7 +1895,9 @@ export default function HomeScreen({ navigation, route }) {
                             {(() => {
                               const full = ratio >= 0.999;
                               const unfilled = selected
-                                ? "rgba(255,255,255,0.25)"
+                                ? theme.isDark
+                                  ? "rgba(255,255,255,0.25)"
+                                  : "rgba(51,51,51,0.15)"
                                 : theme.circleUnfilled;
                               return (
                                 <Progress.Circle
@@ -1674,10 +1905,11 @@ export default function HomeScreen({ navigation, route }) {
                                   progress={ratio}
                                   thickness={3}
                                   borderWidth={0}
-                                  color={selected ? "#FFF" : ringColor}
+                                  color={ringColor}
                                   unfilledColor={
                                     full ? "transparent" : unfilled
                                   }
+                                  animated={false}
                                 />
                               );
                             })()}
@@ -1687,7 +1919,7 @@ export default function HomeScreen({ navigation, route }) {
                                 {
                                   position: "absolute",
                                   color: selected
-                                    ? "#FFF"
+                                    ? theme.text
                                     : future
                                     ? theme.textTertiary
                                     : theme.textSecondary,
@@ -1696,6 +1928,19 @@ export default function HomeScreen({ navigation, route }) {
                             >
                               {date.getDate()}
                             </Text>
+                            {/* 目標達成トロフィー */}
+                            {ratio >= 1 && (
+                              <Text
+                                style={{
+                                  position: "absolute",
+                                  top: -8,
+                                  left: -8,
+                                  fontSize: 12,
+                                }}
+                              >
+                                🏆
+                              </Text>
+                            )}
                           </View>
                         );
                       })()}
@@ -1705,7 +1950,7 @@ export default function HomeScreen({ navigation, route }) {
                         styles.calendarWeekday,
                         {
                           color: selected
-                            ? "#FFF"
+                            ? theme.text
                             : future
                             ? theme.textTertiary
                             : theme.textSecondary,
@@ -1733,7 +1978,9 @@ export default function HomeScreen({ navigation, route }) {
                             style={[
                               styles.calendarCalories,
                               {
-                                color: selected ? "#FFF" : theme.textSecondary,
+                                color: selected
+                                  ? theme.text
+                                  : theme.textSecondary,
                               },
                             ]}
                           >
@@ -1744,7 +1991,9 @@ export default function HomeScreen({ navigation, route }) {
                             style={[
                               styles.calendarCalories,
                               {
-                                color: selected ? "#FFF" : theme.textSecondary,
+                                color: selected
+                                  ? theme.text
+                                  : theme.textSecondary,
                               },
                             ]}
                           >
@@ -1761,7 +2010,11 @@ export default function HomeScreen({ navigation, route }) {
                         <Text
                           style={[
                             styles.calendarCalories,
-                            { color: selected ? "#FFF" : theme.textSecondary },
+                            {
+                              color: selected
+                                ? theme.text
+                                : theme.textSecondary,
+                            },
                           ]}
                         >
                           -
@@ -1877,7 +2130,7 @@ export default function HomeScreen({ navigation, route }) {
                           size={200}
                           progress={ringP}
                           showsText={false}
-                          animated={!isChangingWeekRef.current}
+                          animated={false}
                           color={ringColor}
                           unfilledColor={
                             isFull ? "transparent" : theme.circleUnfilled
@@ -1959,11 +2212,23 @@ export default function HomeScreen({ navigation, route }) {
                   steps,
                   goal,
                   selectedDate: dateStr,
+                  totalTrophies,
+                  streakDays: currentStreak,
+                  maxStreak,
+                  weekTotal: shareStats.weekTotal,
+                  monthTotal: shareStats.monthTotal,
+                  allTimeTotal: shareStats.allTotal,
                 });
                 navigation.navigate("SharePreview", {
                   steps,
                   goal,
                   selectedDate: dateStr,
+                  totalTrophies,
+                  streakDays: currentStreak,
+                  maxStreak,
+                  weekTotal: shareStats.weekTotal,
+                  monthTotal: shareStats.monthTotal,
+                  allTimeTotal: shareStats.allTotal,
                 });
               }}
               style={{
@@ -2459,7 +2724,7 @@ export default function HomeScreen({ navigation, route }) {
           }}
           onPress={() => changeDate(-1)}
         />
-        {/* 右端：「今日へ」とShare buttonを避けて分割 */}
+        {/* 右端：「今日へ」とShare buttonを避けて3分割 */}
         {/* 右端上部：反応エリア（「今日へ」の上） */}
         <TouchableOpacity
           activeOpacity={1}
@@ -2467,13 +2732,25 @@ export default function HomeScreen({ navigation, route }) {
             position: "absolute",
             right: 0,
             top: 100,
-            height: 60,
+            height: 80,
             width: 60,
             zIndex: 1,
           }}
           onPress={() => changeDate(1)}
         />
-        {/* 右端中部：未反応エリア（「今日へ」～Share button） 160-300px */}
+        {/* 右端中部：反応エリア（「今日へ」とShare buttonの間） */}
+        <TouchableOpacity
+          activeOpacity={1}
+          style={{
+            position: "absolute",
+            right: 0,
+            top: 220,
+            height: 30,
+            width: 60,
+            zIndex: 1,
+          }}
+          onPress={() => changeDate(1)}
+        />
         {/* 右端下部：反応エリア（Share buttonの下） */}
         <TouchableOpacity
           activeOpacity={1}
@@ -2658,7 +2935,20 @@ export default function HomeScreen({ navigation, route }) {
                         key={day}
                         style={[
                           styles.calendarModalDayCell,
-                          isSelected && { backgroundColor: theme.primary },
+                          // 目標達成時の背景色（選択中でも維持）
+                          !isFutureDate &&
+                            dayData &&
+                            dayData.steps >= goal && {
+                              backgroundColor: theme.isDark
+                                ? "#402820"
+                                : "#A0EFFF",
+                            },
+                          // 選択中（背景色は上書きせず、枠だけ追加）
+                          isSelected && {
+                            borderWidth: 2,
+                            borderColor: "#FF9E57",
+                          },
+                          // 今日（選択中でない場合）
                           isTodayDate &&
                             !isSelected && {
                               borderWidth: 2,
@@ -2680,17 +2970,37 @@ export default function HomeScreen({ navigation, route }) {
                         }}
                         disabled={isFutureDate}
                       >
-                        <Text
-                          style={[
-                            styles.calendarModalDayText,
-                            isSelected && { color: "#FFF", fontWeight: "700" },
-                            isFutureDate && { color: theme.textTertiary },
-                            !isSelected &&
-                              !isFutureDate && { color: theme.text },
-                          ]}
-                        >
-                          {day}
-                        </Text>
+                        <View style={{ position: "relative" }}>
+                          <Text
+                            style={[
+                              styles.calendarModalDayText,
+                              isSelected && {
+                                color: theme.isDark ? "#EAF7EF" : "#333333",
+                                fontWeight: "700",
+                              },
+                              isFutureDate && { color: theme.textTertiary },
+                              !isSelected &&
+                                !isFutureDate && { color: theme.text },
+                            ]}
+                          >
+                            {day}
+                          </Text>
+                          {/* 目標達成トロフィー */}
+                          {!isFutureDate &&
+                            dayData &&
+                            dayData.steps >= (dayData.goal || goal) && (
+                              <Text
+                                style={{
+                                  position: "absolute",
+                                  top: -6,
+                                  left: -10,
+                                  fontSize: 10,
+                                }}
+                              >
+                                🏆
+                              </Text>
+                            )}
+                        </View>
                         {/* コメントドット */}
                         {notesMap[dateKey] && (
                           <View
@@ -2699,7 +3009,9 @@ export default function HomeScreen({ navigation, route }) {
                               height: 4,
                               borderRadius: 2,
                               backgroundColor: isSelected
-                                ? "#FFF"
+                                ? theme.isDark
+                                  ? "#00D3A7"
+                                  : "#FF9E57"
                                 : theme.primary,
                               marginTop: 2,
                             }}
@@ -2710,7 +3022,13 @@ export default function HomeScreen({ navigation, route }) {
                             <Text
                               style={[
                                 styles.calendarModalSteps,
-                                { color: isSelected ? "#FFF" : theme.accent },
+                                {
+                                  color: isSelected
+                                    ? theme.isDark
+                                      ? "#00D3A7"
+                                      : "#FF9E57"
+                                    : theme.accent,
+                                },
                               ]}
                             >
                               {dayData.steps >= 1000
@@ -2722,7 +3040,9 @@ export default function HomeScreen({ navigation, route }) {
                                 styles.calendarModalCalories,
                                 {
                                   color: isSelected
-                                    ? "rgba(255,255,255,0.8)"
+                                    ? theme.isDark
+                                      ? "rgba(234,247,239,0.7)"
+                                      : "rgba(51,51,51,0.7)"
                                     : theme.textSecondary,
                                 },
                               ]}
