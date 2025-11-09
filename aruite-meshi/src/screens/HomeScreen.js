@@ -2289,27 +2289,82 @@ export default function HomeScreen({ navigation, route }) {
                   }
                 }
 
+                // 全データを取得して集計を計算
+                const allData = await getAllDailyData();
+
+                // トロフィー計算
+                let trophyCount = 0;
+                Object.values(allData).forEach((data) => {
+                  if (data.steps >= (data.goal || 10000)) {
+                    trophyCount++;
+                  }
+                });
+
+                // ストリーク計算
+                const sortedDates = Object.keys(allData).sort().reverse();
+                let streak = 0;
+                let maxStreakCalc = 0;
+                let currentStreakCalc = 0;
+
+                for (let i = 0; i < sortedDates.length; i++) {
+                  const dateKey = sortedDates[i];
+                  const data = allData[dateKey];
+                  if (data.steps >= (data.goal || 10000)) {
+                    currentStreakCalc++;
+                    maxStreakCalc = Math.max(maxStreakCalc, currentStreakCalc);
+                    if (i === 0) streak = currentStreakCalc;
+                  } else {
+                    if (i === 0) streak = 0;
+                    currentStreakCalc = 0;
+                  }
+                }
+
+                // WEEK/MONTH/ALL計算
+                const selected = new Date(selectedDate);
+                selected.setHours(0, 0, 0, 0);
+
+                let weekTotal = 0;
+                for (let i = 1; i <= 7; i++) {
+                  const d = new Date(selected);
+                  d.setDate(selected.getDate() - i);
+                  const key = d.toISOString().split("T")[0];
+                  weekTotal += allData[key]?.steps || 0;
+                }
+
+                let monthTotal = 0;
+                for (let i = 0; i < 30; i++) {
+                  const d = new Date(selected);
+                  d.setDate(selected.getDate() - i);
+                  const key = d.toISOString().split("T")[0];
+                  monthTotal += allData[key]?.steps || 0;
+                }
+
+                const allTotal = Object.values(allData).reduce(
+                  (sum, data) => sum + (data?.steps || 0),
+                  0
+                );
+
                 console.log("🚀 Navigating to SharePreview with:", {
                   steps: dateSteps,
                   goal: dateGoal,
                   selectedDate: dateStr,
-                  totalTrophies,
-                  streakDays: currentStreak,
-                  maxStreak,
-                  weekTotal: shareStats.weekTotal,
-                  monthTotal: shareStats.monthTotal,
-                  allTimeTotal: shareStats.allTotal,
+                  totalTrophies: trophyCount,
+                  streakDays: streak,
+                  maxStreak: maxStreakCalc,
+                  weekTotal,
+                  monthTotal,
+                  allTimeTotal: allTotal,
                 });
                 navigation.navigate("SharePreview", {
                   steps: dateSteps,
                   goal: dateGoal,
                   selectedDate: dateStr,
-                  totalTrophies,
-                  streakDays: currentStreak,
-                  maxStreak,
-                  weekTotal: shareStats.weekTotal,
-                  monthTotal: shareStats.monthTotal,
-                  allTimeTotal: shareStats.allTotal,
+                  totalTrophies: trophyCount,
+                  streakDays: streak,
+                  maxStreak: maxStreakCalc,
+                  weekTotal,
+                  monthTotal,
+                  allTimeTotal: allTotal,
                 });
               }}
               style={{
