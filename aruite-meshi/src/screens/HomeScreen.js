@@ -92,6 +92,9 @@ const { width } = Dimensions.get("window");
 // Dev flag: Pedometer の取り込みを一時停止（HealthKit取り込みの切り分け用）
 const DISABLE_PEDOMETER_DEV = false;
 
+// HealthKitを背景配信のみに使用（通常の歩数取得はPedometerを使用）
+const USE_HEALTHKIT_BACKGROUND_ONLY = true;
+
 // 永続化用キー: 最後に選択した日付（YYYY-MM-DD）
 const LAST_SELECTED_DATE_KEY = "ui_last_selected_date";
 
@@ -992,17 +995,26 @@ export default function HomeScreen({ navigation, route }) {
       const nowTs = Date.now();
       if (nowTs - (lastRefreshRef.current || 0) < 2000) return;
       lastRefreshRef.current = nowTs;
-      // 今日の場合は updateSteps で更新（ハイブリッド取得）
+      // 今日の場合は updateSteps で更新（Pedometerから取得）
       try {
         const end = new Date();
         const start = new Date();
         start.setHours(0, 0, 0, 0);
 
-        const result = await getStepsHybrid(start, end);
-        console.log(`🔄 更新: ${result.steps}歩 (ソース: ${result.source})`);
-
-        if (result.steps > 0 || result.source !== "none") {
-          updateSteps(result.steps);
+        if (USE_HEALTHKIT_BACKGROUND_ONLY) {
+          // Pedometerから直接取得（高速）
+          const result = await Pedometer.getStepCountAsync(start, end);
+          console.log(`🔄 更新: ${result.steps}歩 (ソース: Pedometer)`);
+          if (result.steps > 0) {
+            updateSteps(result.steps);
+          }
+        } else {
+          // HealthKitハイブリッド取得（遅い）
+          const result = await getStepsHybrid(start, end);
+          console.log(`🔄 更新: ${result.steps}歩 (ソース: ${result.source})`);
+          if (result.steps > 0 || result.source !== "none") {
+            updateSteps(result.steps);
+          }
         }
       } catch (error) {
         console.error("歩数データ更新に失敗:", error);
@@ -1102,7 +1114,16 @@ export default function HomeScreen({ navigation, route }) {
     }
 
     // 全期間データを取得（トロフィー・ストリーク計算用）
-    // AsyncStorageからではなく、getStepsInRangeで過去365日分を取得
+    // HealthKitを使わずAsyncStorageから取得（高速）
+    try {
+      const allData = await getAllDailyData();
+      setAllTimeData(allData);
+    } catch (error) {
+      console.error("Error loading all-time data:", error);
+    }
+
+    // 以下は旧コード（HealthKitから取得・遅い）をコメントアウト
+    /*
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -1137,6 +1158,7 @@ export default function HomeScreen({ navigation, route }) {
     } catch (error) {
       console.error("Error loading all-time data:", error);
     }
+    */
   };
 
   // プルトゥリフレッシュ: データを再読み込み
@@ -1229,18 +1251,25 @@ export default function HomeScreen({ navigation, route }) {
       setIsPedometerAvailable(isAvailable);
 
       if (isAvailable) {
-        // ハイブリッド取得: HealthKit優先、Pedometerフォールバック
+        // Pedometerから直接取得（高速）
         const end = new Date();
         const start = new Date();
         start.setHours(0, 0, 0, 0);
 
-        const result = await getStepsHybrid(start, end);
-        console.log(
-          `📊 歩数取得: ${result.steps}歩 (ソース: ${result.source})`
-        );
-
-        if (result.steps > 0 || result.source !== "none") {
-          updateSteps(result.steps);
+        if (USE_HEALTHKIT_BACKGROUND_ONLY) {
+          // Pedometerから取得（高速）
+          const result = await Pedometer.getStepCountAsync(start, end);
+          console.log(`📊 歩数取得: ${result.steps}歩 (ソース: Pedometer)`);
+          if (result.steps > 0) {
+            updateSteps(result.steps);
+          }
+        } else {
+          // HealthKitハイブリッド取得（遅い）
+          const result = await getStepsHybrid(start, end);
+          console.log(`📊 歩数取得: ${result.steps}歩 (ソース: ${result.source})`);
+          if (result.steps > 0 || result.source !== "none") {
+            updateSteps(result.steps);
+          }
         }
 
         // Subscribe to real-time updates

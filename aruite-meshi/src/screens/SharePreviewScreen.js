@@ -23,13 +23,13 @@ import {
   getMultipleDaysData,
   getAllDailyStepsTotal,
   getTodayData,
+  getDailyData,
 } from "../utils/storage";
 import { getCachedTodayData } from "../utils/cache";
 import {
   calculateCalories,
   calculateDistance,
 } from "../utils/calculations";
-import { getStepsHybrid, getStepsInRange } from "../utils/healthKit";
 import { calculateFoodAmount, getFoodById } from "../data/foodDatabase";
 import { getDayNote } from "../utils/dayNotes";
 
@@ -181,15 +181,13 @@ export default function SharePreviewScreen({ navigation, route }) {
             }
           }
         } else {
-          // 過去の日付はストレージから取得
+          // 過去の日付はストレージから取得（AsyncStorage経由で高速）
           const s = await getSettings();
-          const result = await getStepsHybrid(
-            new Date(selectedDate.setHours(0, 0, 0, 0)),
-            new Date(selectedDate.setHours(23, 59, 59, 999))
-          );
-          if (result && result.steps > 0) {
-            setSteps(result.steps);
-            setGoal(s?.dailyGoal || 10000);
+          const dateKey = displayDate;
+          const dayData = await getDailyData(dateKey);
+          if (dayData && dayData.steps > 0) {
+            setSteps(dayData.steps);
+            setGoal(dayData.goal || s?.dailyGoal || 10000);
           }
         }
       } catch (error) {
