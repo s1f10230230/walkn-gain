@@ -1122,50 +1122,13 @@ export default function HomeScreen({ navigation, route }) {
     }
 
     // 全期間データを取得（トロフィー・ストリーク計算用）
-    // HealthKitとAsyncStorageの両方からマージして取得
+    // AsyncStorageから取得（HistoryScreenがHealthKitデータを保存済み）
     try {
-      const storageData = await getAllDailyData();
-      console.log("📊 [AllTimeData] Storageデータ:", Object.keys(storageData).length, "日分");
-
-      // HealthKitから過去90日分のデータを取得してマージ
-      const healthSyncEnabled = await getHealthSyncEnabled();
-      console.log("📊 [AllTimeData] HealthKit同期:", healthSyncEnabled ? "有効" : "無効");
-
-      if (healthSyncEnabled) {
-        const now = new Date();
-        const start = new Date(now);
-        start.setDate(start.getDate() - 90);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(now);
-        end.setHours(23, 59, 59, 999);
-
-        console.log("📊 [AllTimeData] HealthKitからデータ取得開始...");
-        const healthKitData = await getStepsInRange(start, end);
-        console.log("📊 [AllTimeData] HealthKitデータ:", healthKitData.length, "日分");
-
-        // マージ: HealthKitデータで不足分を補完
-        const merged = { ...storageData };
-        for (const item of healthKitData) {
-          if (!merged[item.date] && item.steps > 0) {
-            merged[item.date] = {
-              date: item.date,
-              steps: item.steps,
-              goal: 10000,
-            };
-          }
-        }
-
-        console.log("📊 [AllTimeData] マージ後:", Object.keys(merged).length, "日分");
-        setAllTimeData(merged);
-      } else {
-        console.log("📊 [AllTimeData] HealthKit無効のため、Storageデータのみ使用");
-        setAllTimeData(storageData);
-      }
+      const allData = await getAllDailyData();
+      console.log("📊 [AllTimeData] データ件数:", Object.keys(allData).length, "日分");
+      setAllTimeData(allData);
     } catch (error) {
-      console.error("❌ [AllTimeData] エラー:", error);
-      // エラー時はストレージデータのみ使用
-      const storageData = await getAllDailyData();
-      setAllTimeData(storageData);
+      console.error("Error loading all-time data:", error);
     }
 
     // 以下は旧コード（HealthKitから取得・遅い）をコメントアウト

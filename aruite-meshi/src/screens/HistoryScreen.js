@@ -31,7 +31,7 @@ import {
   calculateCalories,
 } from '../utils/calculations';
 import { getStepsHybrid, getStepsInRange } from '../utils/healthKit';
-import { getMultipleDaysData, getSettings, getUserProfile } from '../utils/storage';
+import { getMultipleDaysData, getSettings, getUserProfile, saveDailyData } from '../utils/storage';
 import { calculateFoodAmount, getFoodById } from '../data/foodDatabase';
 import { useI18n } from '../i18n/I18nProvider';
 import { getTheme } from '../utils/theme';
@@ -131,13 +131,19 @@ export default function HistoryScreen({ navigation }) {
         if (date > today) continue; // 未来日は除外
         const stepsVal = byDate.get(dateStr) || 0;
         const caloriesVal = calculateCalories(stepsVal, userProfile.weight);
-        data.push({
+        const dayData = {
           date: dateStr,
           steps: stepsVal,
           calories: caloriesVal,
           distance: 0,
           goal: settings.dailyGoal,
-        });
+        };
+        data.push(dayData);
+
+        // AsyncStorageに保存（トロフィー・ストリーク計算用）
+        if (stepsVal > 0) {
+          await saveDailyData(dateStr, dayData);
+        }
       }
 
       const stepsList = data.map(d => d.steps);
@@ -198,7 +204,13 @@ export default function HistoryScreen({ navigation }) {
         if (date > today) continue;
         const stepsVal = byDate.get(dateStr) || 0;
         const caloriesVal = calculateCalories(stepsVal, userProfile.weight);
-        data.push({ date: dateStr, steps: stepsVal, calories: caloriesVal, distance: 0, goal: settings.dailyGoal });
+        const dayData = { date: dateStr, steps: stepsVal, calories: caloriesVal, distance: 0, goal: settings.dailyGoal };
+        data.push(dayData);
+
+        // AsyncStorageに保存（トロフィー・ストリーク計算用）
+        if (stepsVal > 0) {
+          await saveDailyData(dateStr, dayData);
+        }
       }
       const stepsList = data.map(d => d.steps);
       const caloriesList = data.map(d => d.calories);
