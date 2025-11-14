@@ -68,6 +68,16 @@ export const getTodayDateString = () => {
   return `${year}-${month}-${day}`;
 };
 
+// 任意の日付をローカルタイムでYYYY-MM-DD形式に整形
+export const toDateKeyLocal = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 // 日付文字列を整形（表示用）
 export const formatDate = (dateString) => {
   const date = new Date(dateString);

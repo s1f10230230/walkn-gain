@@ -1,0 +1,10 @@
+{
+  "NSHealthShareUsageDescription": "歩数データを読み取り、アプリ内で表示します。",
+  "NSHealthUpdateUsageDescription": "アプリ内で歩数データを書き込みます（任意）",
+  "NSMotionUsageDescription": "歩数を計測するために、モーションセンサーにアクセスします。",
+  "NSCalendarsUsageDescription": "履歴にカレンダーの予定を表示します。",
+  "NSCalendarsFullAccessUsageDescription": "履歴にカレンダーの予定を表示します。",
+  "NSPhotoLibraryAddUsageDescription": "画像を写真ライブラリに保存します。",
+  "NSPhotoLibraryUsageDescription": "画像を保存するために写真ライブラリへアクセスします。"
+}
+

@@ -1,6 +1,6 @@
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { calculateCalories, calculateDistance } from './calculations';
+import { calculateCalories, calculateDistance, toDateKeyLocal } from './calculations';
 import { getUserProfile, getSettings, saveDailyData } from './storage';
 
 const SEED_FLAG_KEY = 'pedometer_initial_import_v1';
@@ -32,7 +32,7 @@ export async function seedPastDaysPedometer(days = 7) {
       const res = await Pedometer.getStepCountAsync(start, end);
       const stepsVal = Number(res?.steps || 0);
       if (stepsVal > 0) {
-        const dateKey = d.toISOString().split('T')[0];
+        const dateKey = toDateKeyLocal(d);
         const cal = calculateCalories(stepsVal, weight);
         const dist = calculateDistance(stepsVal, stride);
         await saveDailyData(dateKey, {
@@ -50,4 +50,3 @@ export async function seedPastDaysPedometer(days = 7) {
   await AsyncStorage.setItem(SEED_FLAG_KEY, 'true').catch(() => {});
   return true;
 }
-

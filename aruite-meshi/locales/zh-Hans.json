@@ -1,0 +1,10 @@
+{
+  "NSHealthShareUsageDescription": "读取您的步数数据并在应用中显示。",
+  "NSHealthUpdateUsageDescription": "从应用写入步数数据（可选）。",
+  "NSMotionUsageDescription": "访问运动与健身数据以统计步数。",
+  "NSCalendarsUsageDescription": "在应用内显示您的日历事件。",
+  "NSCalendarsFullAccessUsageDescription": "在应用内显示您的日历事件。",
+  "NSPhotoLibraryAddUsageDescription": "将图片保存到照片库。",
+  "NSPhotoLibraryUsageDescription": "访问照片库以保存图片。"
+}
+

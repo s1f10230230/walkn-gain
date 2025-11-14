@@ -42,14 +42,18 @@ export function computeTrophiesStreak(allData, defaultGoal = 10000, todayDate = 
   base.setHours(0, 0, 0, 0);
   const todayKey = toKey(base);
   const todayAchieved = isAchieved(allData, todayKey, defaultGoal);
-  if (!todayAchieved) base.setDate(base.getDate() - 1); // 未達成なら昨日から
 
+  // 現在ストリーク: 今日が達成なら今日を含めて、未達成なら昨日から過去へ
   let currentStreak = 0;
+  const scanDate = new Date(base);
+  if (!todayAchieved) {
+    scanDate.setDate(scanDate.getDate() - 1);
+  }
   for (let i = 0; i < 365; i++) {
-    const k = toKey(base);
+    const k = toKey(scanDate);
     if (isAchieved(allData, k, defaultGoal)) {
       currentStreak += 1;
-      base.setDate(base.getDate() - 1);
+      scanDate.setDate(scanDate.getDate() - 1);
     } else {
       break;
     }
@@ -58,13 +62,13 @@ export function computeTrophiesStreak(allData, defaultGoal = 10000, todayDate = 
   // 最大ストリーク（全期間）
   const sorted = Object.keys(allData || {}).sort();
   let maxStreak = 0;
-  let cur = 0;
+  let run = 0;
   for (const k of sorted) {
     if (isAchieved(allData, k, defaultGoal)) {
-      cur += 1;
-      if (cur > maxStreak) maxStreak = cur;
+      run += 1;
+      if (run > maxStreak) maxStreak = run;
     } else {
-      cur = 0;
+      run = 0;
     }
   }
 
@@ -96,4 +100,3 @@ export function computeShareStreak(allData, defaultGoal = 10000, selectedDateKey
   }
   return streak;
 }
-

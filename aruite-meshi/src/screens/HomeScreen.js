@@ -25,6 +25,7 @@ import {
   calculateDistance,
   calculateGoalProgress,
   getTodayDateString,
+  toDateKeyLocal,
 } from "../utils/calculations";
 import {
   getTodayData,
@@ -477,7 +478,7 @@ export default function HomeScreen({ navigation, route }) {
     const checkNotes = async () => {
       const map = {};
       for (const date of dates) {
-        const dateKey = date.toISOString().split("T")[0];
+        const dateKey = toDateKeyLocal(date);
         map[dateKey] = await hasNote(dateKey);
       }
       setNotesMap(map);
@@ -525,7 +526,7 @@ export default function HomeScreen({ navigation, route }) {
 
         try {
           const result = await Pedometer.getStepCountAsync(start, end);
-          const dateKey = date.toISOString().split("T")[0];
+          const dateKey = toDateKeyLocal(date);
 
           data[dateKey] = {
             steps: result.steps,
@@ -574,10 +575,10 @@ export default function HomeScreen({ navigation, route }) {
             end.setTime(Date.now());
           try {
             const res = await Pedometer.getStepCountAsync(start, end);
-            return { key: date.toISOString().split("T")[0], steps: res.steps };
+            return { key: toDateKeyLocal(date), steps: res.steps };
           } catch (e) {
             console.error(`Failed to get steps for ${date.toDateString()}:`, e);
-            return { key: date.toISOString().split("T")[0], steps: 0 };
+            return { key: toDateKeyLocal(date), steps: 0 };
           }
         })
       );
@@ -739,7 +740,7 @@ export default function HomeScreen({ navigation, route }) {
       }
 
       const currentSelected = selectedDateRef.current || selectedDate;
-      const dateKey = currentSelected.toISOString().split("T")[0];
+      const dateKey = toDateKeyLocal(currentSelected);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const selectedStart = new Date(currentSelected);
@@ -1405,7 +1406,17 @@ export default function HomeScreen({ navigation, route }) {
 
         // 少し待ってから計算開始（UI優先）
         setTimeout(() => {
-          const { totalTrophies, currentStreak, maxStreak } = computeTrophiesStreak(allTimeData, 10000, new Date());
+          // 今日の最新歩数・目標を allTimeData に反映してから計算（リアルタイム追従）
+          const todayKey = getTodayDateString();
+          const mergedAllData = {
+            ...allTimeData,
+            [todayKey]: {
+              ...(allTimeData[todayKey] || {}),
+              steps: steps,
+              goal: goal,
+            },
+          };
+          const { totalTrophies, currentStreak, maxStreak } = computeTrophiesStreak(mergedAllData, 10000, new Date());
           setTotalTrophies(totalTrophies);
           setCurrentStreak(currentStreak);
           setMaxStreak(maxStreak);
@@ -1418,7 +1429,7 @@ export default function HomeScreen({ navigation, route }) {
     };
 
     calculateStats();
-  }, [allTimeData]);
+  }, [allTimeData, steps]);
 
   // シェア画面用の集計データ（選択日基準）
   const shareStats = useMemo(() => {
@@ -1871,14 +1882,14 @@ export default function HomeScreen({ navigation, route }) {
           {/* 今日のひとこと */}
           <TodayNote
             theme={theme}
-            date={selectedDate.toISOString().split("T")[0]}
+            date={toDateKeyLocal(selectedDate)}
             onNoteChange={async (text) => {
               // 最近のひとこと一覧を更新
               if (recentNotesRef.current) {
                 recentNotesRef.current.reload();
               }
               // コメントマップを更新
-              const dateKey = selectedDate.toISOString().split("T")[0];
+              const dateKey = toDateKeyLocal(selectedDate);
               setNotesMap((prev) => ({ ...prev, [dateKey]: !!text }));
             }}
           />
@@ -2062,7 +2073,7 @@ export default function HomeScreen({ navigation, route }) {
                     const map = {};
                     for (let day = 1; day <= daysInMonth; day++) {
                       const date = new Date(year, month, day);
-                      const dateKey = date.toISOString().split("T")[0];
+                      const dateKey = toDateKeyLocal(date);
                       map[dateKey] = await hasNote(dateKey);
                     }
                     setNotesMap((prev) => ({ ...prev, ...map }));
@@ -2093,7 +2104,7 @@ export default function HomeScreen({ navigation, route }) {
                     const map = {};
                     for (let day = 1; day <= daysInMonth; day++) {
                       const date = new Date(year, month, day);
-                      const dateKey = date.toISOString().split("T")[0];
+                      const dateKey = toDateKeyLocal(date);
                       map[dateKey] = await hasNote(dateKey);
                     }
                     setNotesMap((prev) => ({ ...prev, ...map }));
@@ -2165,7 +2176,7 @@ export default function HomeScreen({ navigation, route }) {
                     const isTodayDate =
                       date.toDateString() === today.toDateString();
                     const isFutureDate = date > today;
-                    const dateKey = date.toISOString().split("T")[0];
+                    const dateKey = toDateKeyLocal(date);
                     const dayData = monthlyData[dateKey];
 
                     days.push(

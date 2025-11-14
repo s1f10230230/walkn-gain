@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getTodayDateString } from './calculations';
 
 /**
  * キャッシュキー
@@ -35,7 +36,7 @@ export const getCachedTodayData = async () => {
     if (!cached) return null;
 
     const data = JSON.parse(cached);
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayDateString();
 
     // キャッシュの日付が今日でなければ無効
     if (data.date !== today) {

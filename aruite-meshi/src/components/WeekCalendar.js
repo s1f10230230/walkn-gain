@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Animated } from 'react-native';
 import * as Progress from 'react-native-progress';
+import { toDateKeyLocal } from '../utils/calculations';
 
 export default function WeekCalendar({
   theme,
@@ -42,7 +43,7 @@ export default function WeekCalendar({
           const selected = date.toDateString() === selectedDate.toDateString();
           const today = isToday(date);
           const future = isFuture(date);
-          const dateKey = date.toISOString().split('T')[0];
+          const dateKey = toDateKeyLocal(date);
           const dayData = weeklyData[dateKey];
 
           const animValue = calendarAnimValues[index] || new Animated.Value(1);

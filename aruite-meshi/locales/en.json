@@ -1,0 +1,10 @@
+{
+  "NSHealthShareUsageDescription": "Read your step data to display in the app.",
+  "NSHealthUpdateUsageDescription": "Write step data from the app (optional).",
+  "NSMotionUsageDescription": "Access motion sensors to count your steps.",
+  "NSCalendarsUsageDescription": "Show your calendar events in the app.",
+  "NSCalendarsFullAccessUsageDescription": "Show your calendar events in the app.",
+  "NSPhotoLibraryAddUsageDescription": "Save images to your photo library.",
+  "NSPhotoLibraryUsageDescription": "Access your photo library to save images."
+}
+

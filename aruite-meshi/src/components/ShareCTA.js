@@ -1,14 +1,14 @@
 import React from 'react';
 import { TouchableOpacity, Text } from 'react-native';
 import { getAllDailyData, getDailyData } from '../utils/storage';
-import { getTodayDateString } from '../utils/calculations';
+import { getTodayDateString, toDateKeyLocal } from '../utils/calculations';
 import { computeTrophiesStreak, computeShareStreak } from '../utils/stats';
 
 export default function ShareCTA({ selectedDate, steps, goal, navigation, theme, t, formatNumber }) {
   return (
     <TouchableOpacity
       onPress={async () => {
-        const dateStr = selectedDate.toISOString().split('T')[0];
+        const dateStr = toDateKeyLocal(selectedDate);
         const today = getTodayDateString();
 
         // 選択日の歩数/目標
@@ -33,13 +33,13 @@ export default function ShareCTA({ selectedDate, steps, goal, navigation, theme,
         let weekTotal = 0;
         for (let i=1;i<=7;i++){
           const d = new Date(selected); d.setDate(selected.getDate()-i);
-          const key = d.toISOString().split('T')[0];
+          const key = toDateKeyLocal(d);
           weekTotal += allData[key]?.steps || 0;
         }
         let monthTotal = 0;
         for (let i=0;i<30;i++){
           const d = new Date(selected); d.setDate(selected.getDate()-i);
-          const key = d.toISOString().split('T')[0];
+          const key = toDateKeyLocal(d);
           monthTotal += allData[key]?.steps || 0;
         }
         const allTotal = Object.values(allData).reduce((sum, data) => sum + (data?.steps || 0), 0);
@@ -84,4 +84,3 @@ export default function ShareCTA({ selectedDate, steps, goal, navigation, theme,
     </TouchableOpacity>
   );
 }
-

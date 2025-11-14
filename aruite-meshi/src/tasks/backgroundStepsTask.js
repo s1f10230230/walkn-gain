@@ -4,6 +4,7 @@ import * as BackgroundFetch from 'expo-background-fetch';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getStepsToday } from '../utils/healthKit';
+import { getTodayDateString } from '../utils/calculations';
 import { sendImmediateNotification, getEncouragementMessage } from '../utils/notifications';
 import { getUserProfile, getSettings } from '../utils/storage';
 import { calculateCalories } from '../utils/calculations';
@@ -65,7 +66,7 @@ TaskManager.defineTask(BACKGROUND_STEPS_TASK, async () => {
     // 進捗に応じた励ましの通知（50%, 75%, 90%）
     const milestones = [50, 75, 90];
     for (const milestone of milestones) {
-      const milestoneKey = `milestone_${milestone}_${new Date().toISOString().split('T')[0]}`;
+      const milestoneKey = `milestone_${milestone}_${getTodayDateString()}`;
       const alreadySent = await AsyncStorage.getItem(milestoneKey);
 
       if (progress >= milestone && !alreadySent) {

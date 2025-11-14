@@ -78,9 +78,6 @@ export default function RootNavigator() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const colorScheme = useColorScheme();
-  const theme = getTheme(colorScheme);
 
   useEffect(() => {
     const checkOnboardingStatus = async () => {
@@ -88,17 +85,11 @@ export default function RootNavigator() {
         const completed = await getOnboardingComplete();
         setHasCompletedOnboarding(completed);
 
-        // オンボーディング済みの場合のみスプラッシュを表示
+        // オンボーディング済みの場合のみアニメーション付きスプラッシュを表示
         if (completed) {
           setTimeout(() => {
-            Animated.timing(fadeAnim, {
-              toValue: 0,
-              duration: 300,
-              useNativeDriver: true,
-            }).start(() => {
-              setShowSplash(false);
-              setIsLoading(false);
-            });
+            setShowSplash(false);
+            setIsLoading(false);
           }, 1200);
         } else {
           setShowSplash(false);
@@ -111,25 +102,16 @@ export default function RootNavigator() {
       }
     };
 
-    // 初回マウント時に一度だけ状態を取得して初期ルートを決める
     checkOnboardingStatus();
   }, []);
 
-  // スプラッシュ表示中は他の画面を完全に隠す
-  if (showSplash) {
-    return (
-      <Animated.View style={[styles.splashContainer, { backgroundColor: theme.background, opacity: fadeAnim }]}>
-        <Image
-          source={require('../../assets/splash-icon.png')}
-          style={styles.splashLogo}
-          resizeMode="contain"
-        />
-      </Animated.View>
-    );
+  // アニメーション付きスプラッシュ表示中
+  if (showSplash && hasCompletedOnboarding) {
+    return <AppSplashScreen navigation={{ replace: () => {} }} />;
   }
 
   if (isLoading) {
-    return null; // スプラッシュ後のローディングは不要
+    return null;
   }
 
   return (

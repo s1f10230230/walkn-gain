@@ -1,5 +1,6 @@
 // 歩数計ユーティリティ（Expo Pedometer使用）
 import { Pedometer } from 'expo-sensors';
+import { toDateKeyLocal } from './calculations';
 import { Platform, PermissionsAndroid } from 'react-native';
 
 /**
@@ -124,13 +125,13 @@ export const getStepsInRange = async (startDate, endDate) => {
       try {
         const result = await Pedometer.getStepCountAsync(dayStart, dayEnd);
         data.push({
-          date: currentDate.toISOString().split('T')[0],
+          date: toDateKeyLocal(currentDate),
           steps: result.steps || 0,
         });
       } catch (error) {
         console.error(`${currentDate.toDateString()}の歩数取得エラー:`, error);
         data.push({
-          date: currentDate.toISOString().split('T')[0],
+          date: toDateKeyLocal(currentDate),
           steps: 0,
         });
       }

@@ -10,12 +10,14 @@ import { getTodayDateString } from './calculations';
 const STORAGE_KEYS = {
   DAILY_REMINDER_ID: 'notifications_daily_reminder_id',
   PROGRESS_STATE: 'notifications_progress_state', // { date: 'YYYY-MM-DD', count: number, lastTs: number }
+  PERSISTENT_ID: 'persistent_widget_notification_id',
 };
 
 // 通知の動作設定
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowBanner: true, // shouldShowAlert は非推奨
+    // Expo SDKの仕様に従い、フォアグラウンドでもアラートを表示
+    shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
@@ -126,11 +128,7 @@ export const sendImmediateNotification = async (title, body, data = {}) => {
       sound: true,
     };
 
-    // iOS 15+: フォーカス/要約中でも通す（Time Sensitive）
-    // Expo Goでは使えないため、存在チェック
-    if (Notifications.IOSInterruptionLevel?.TimeSensitive) {
-      content.interruptionLevel = Notifications.IOSInterruptionLevel.TimeSensitive;
-    }
+    // Time Sensitiveは使用しない（審査リスク回避）
 
     await Notifications.scheduleNotificationAsync({
       content,
@@ -254,11 +252,7 @@ export const scheduleReminderNotification = async (hour = 20, minute = 30) => {
       sound: true,
     };
 
-    // iOS 15+: フォーカス/要約中でも通す（Time Sensitive）
-    // Expo Goでは使えないため、存在チェック
-    if (Notifications.IOSInterruptionLevel?.TimeSensitive) {
-      content.interruptionLevel = Notifications.IOSInterruptionLevel.TimeSensitive;
-    }
+    // Time Sensitiveは使用しない（審査リスク回避）
 
     const identifier = await Notifications.scheduleNotificationAsync({
       content,
@@ -362,12 +356,11 @@ export const sendProgressNotification = async (steps, goal) => {
   const message = await tAsync(bodyKey);
 
   // バランスポリシー：80%のみ（50%は送らない）。100%は別途 sendGoalAchievedNotification で通知。
-  if (progress >= 80 && progress < 81) {
+  if (progress >= 80) {
     if (await canSendProgressNotification()) {
       await sendImmediateNotification(await tAsync('notifications.progress.nearTitle'), message, { type: 'progress', progress: 80 });
       await markProgressNotificationSent();
     }
-    // 80%達成時
   }
 };
 
@@ -401,10 +394,14 @@ export const updatePersistentWidget = async (steps, goal, calories, nextFoodName
     const body = `${progressBar} ${progress}%\n${steps.toLocaleString()} / ${goal.toLocaleString()}歩\n🔥 ${Math.round(calories)} kcal消費${nextGoalText}`;
 
     // 既存の常駐通知を更新（音なし）
-    await Notifications.dismissNotificationAsync(PERSISTENT_NOTIFICATION_ID);
+    try {
+      const savedId = await AsyncStorage.getItem(STORAGE_KEYS.PERSISTENT_ID);
+      if (savedId) {
+        await Notifications.dismissNotificationAsync(savedId);
+      }
+    } catch (_) {}
 
-    await Notifications.scheduleNotificationAsync({
-      identifier: PERSISTENT_NOTIFICATION_ID,
+    const newId = await Notifications.scheduleNotificationAsync({
       content: {
         title,
         body,
@@ -422,7 +419,7 @@ export const updatePersistentWidget = async (steps, goal, calories, nextFoodName
       },
       trigger: null, // 即座に表示
     });
-
+    try { await AsyncStorage.setItem(STORAGE_KEYS.PERSISTENT_ID, newId); } catch (_) {}
     console.log(`📊 ウィジェット更新: ${steps}歩 (${progress}%)`);
   } catch (error) {
     console.error('常駐型通知の更新エラー:', error);
@@ -434,7 +431,11 @@ export const updatePersistentWidget = async (steps, goal, calories, nextFoodName
  */
 export const dismissPersistentWidget = async () => {
   try {
-    await Notifications.dismissNotificationAsync(PERSISTENT_NOTIFICATION_ID);
+    const savedId = await AsyncStorage.getItem(STORAGE_KEYS.PERSISTENT_ID);
+    if (savedId) {
+      await Notifications.dismissNotificationAsync(savedId);
+      await AsyncStorage.removeItem(STORAGE_KEYS.PERSISTENT_ID);
+    }
     console.log('📊 ウィジェットを削除しました');
   } catch (error) {
     console.error('常駐型通知の削除エラー:', error);
