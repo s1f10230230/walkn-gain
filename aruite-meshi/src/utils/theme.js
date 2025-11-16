@@ -5,8 +5,8 @@
 
 export const COLORS = {
   // メインカラー（Calm × Cute）
-  primary: '#FF7043',            // 祝祭・強CTA（控えめに使用）
-  primaryDark: '#FF8A65',
+  primary: '#FF8050',            // 祝祭・強CTA（控えめに使用）
+  primaryDark: '#FF936A',
   accent: '#14B8A6',             // Teal 500（落ち着き＋少し可愛い）
   accentDark: '#2DD4BF',         // ダーク用ティール
   success: '#16A34A',            // Green 600

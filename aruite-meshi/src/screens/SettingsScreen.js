@@ -27,7 +27,7 @@ import {
   getReminderEnabled,
 } from '../utils/storage';
 import { estimateStrideLength } from '../utils/calculations';
-import { initializeHealthKit, startStepsBackgroundUpdates, stopStepsBackgroundUpdates, isHistoricalImportCompleted, importHistoricalData } from '../utils/healthKit';
+import { initializeHealthKit, startStepsBackgroundUpdates, stopStepsBackgroundUpdates, isHistoricalImportCompleted, importHistoricalData, getHealthKitAuthorizationState, syncPastDaysToStorage, getHealthKitAvailability } from '../utils/healthKit';
 import { registerBackgroundStepsTask, unregisterBackgroundStepsTask } from '../tasks/backgroundStepsTask';
 import { scheduleReminderNotification, cancelReminderNotifications } from '../utils/notifications';
 import { UserIcon, TargetIcon, HeartIcon, PenIcon, InfoIcon } from '../components/SettingsIcons';
@@ -118,6 +118,11 @@ export default function SettingsScreen({ navigation }) {
     const userSettings = await getSettings();
     const healthSyncEnabled = await getHealthSyncEnabled();
     const reminderOn = await getReminderEnabled();
+    let healthAuthorized = false;
+    try {
+      const status = await getHealthKitAuthorizationState();
+      healthAuthorized = !!status?.authorized;
+    } catch (_) {}
 
     setProfile({
       height: String(userProfile.height),
@@ -134,7 +139,7 @@ export default function SettingsScreen({ navigation }) {
       language: userSettings.language ?? 'auto',
     });
 
-    setHealthSync(toBoolean(healthSyncEnabled));
+    setHealthSync(toBoolean(healthSyncEnabled) && healthAuthorized);
     setReminderEnabled(!!reminderOn);
     // 位置情報関連は読み込まない（非表示）
 
@@ -315,9 +320,16 @@ export default function SettingsScreen({ navigation }) {
   const handleHealthSyncToggle = async (value) => {
     if (value) {
       console.log('🔵 [SettingsScreen] HealthKit連携トグルON');
+      const availability = getHealthKitAvailability();
+      if (!availability.available || !availability.stepType) {
+        Alert.alert('HealthKit', 'このデバイスではHealthKitを利用できません。');
+        setHealthSync(false);
+        await saveHealthSyncEnabled(false);
+        return;
+      }
       // ヘルスケアの権限をリクエスト
       console.log('🔵 [SettingsScreen] initializeHealthKit() を呼び出します...');
-      const initialized = await initializeHealthKit();
+      const initialized = await initializeHealthKit(true);
       console.log('🔵 [SettingsScreen] initializeHealthKit() の結果:', initialized);
       if (initialized) {
         setHealthSync(true);
@@ -328,11 +340,13 @@ export default function SettingsScreen({ navigation }) {
         try { if (toBoolean(settings.notifications)) await registerBackgroundStepsTask(); } catch (_) {}
         console.log('✅ [SettingsScreen] HealthKit連携成功');
         Alert.alert(t('settings.alerts.healthEnabledTitle'), t('settings.alerts.healthEnabledMessage'));
+        // 過去30日を同期してストレージをHK優先で更新
+        try { await syncPastDaysToStorage(30); } catch (_) {}
 
         // 背景配信用に限定: 自動の過去取り込みやキャッチアップは実行しない
       } else {
         console.log('❌ [SettingsScreen] HealthKit連携失敗');
-        Alert.alert(t('common.error'), t('settings.alerts.healthPermissionFail'));
+        Alert.alert(t('common.error'), t('settings.alerts.healthPermissionFail') || '設定アプリで健康データアクセスを許可してください。');
       }
     } else {
       console.log('🔵 [SettingsScreen] HealthKit連携トグルOFF');
@@ -341,7 +355,6 @@ export default function SettingsScreen({ navigation }) {
       // 背景更新を停止
       await stopStepsBackgroundUpdates();
       try { await unregisterBackgroundStepsTask(); } catch (_) {}
-      Alert.alert(t('settings.alerts.healthDisabledTitle'), t('settings.alerts.healthDisabledMessage'));
     }
     try { logEvent('settings_changed', { field: 'health_sync' }); } catch (_) {}
   };

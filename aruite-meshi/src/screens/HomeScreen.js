@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
 import {
   View,
   Text,
@@ -13,6 +19,7 @@ import {
   Easing,
   PanResponder,
   RefreshControl,
+  Image,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -74,10 +81,7 @@ import {
 } from "../utils/notifications";
 import { saveReminderEnabled } from "../utils/storage";
 import { logEvent } from "../utils/analytics";
-// HealthKitは歩数取得に使用しない（Pedometerのみ）
-// import { getStepsHybrid } from "../utils/healthKit"; // 不使用
-// import { startStepsBackgroundUpdates } from "../utils/healthKit"; // 不使用（歩数取得はPedometer）
-// import { isHistoricalImportCompleted, importHistoricalData, getStepsInRange } from "../utils/healthKit"; // 不使用
+import { getStepsInRange, syncPastDaysToStorage } from "../utils/healthKit";
 import { registerBackgroundStepsTask } from "../tasks/backgroundStepsTask";
 import { CalendarIcon } from "../components/SettingsIcons";
 import { getEventsForDate, getEventsSummary } from "../utils/calendar";
@@ -95,15 +99,26 @@ import EventsCard from "../components/EventsCard";
 import { computeTrophiesStreak } from "../utils/stats";
 import { seedPastDaysPedometer } from "../utils/pedometerSeed";
 import styles from "./home/styles";
-import { isToday as isTodayHelper, isFuture as isFutureHelper, formatMonthDay as formatMonthDayHelper, formatMonthYear as formatMonthYearHelper } from "./home/utils";
+import {
+  isToday as isTodayHelper,
+  isFuture as isFutureHelper,
+  formatMonthDay as formatMonthDayHelper,
+  formatMonthYear as formatMonthYearHelper,
+} from "./home/utils";
+import {
+  getDailyFeedbackMessage,
+  getFeedbackMessageForDate,
+  maybeSaveFeedbackSnapshot,
+  backfillFeedbackHistory,
+} from "../utils/feedback";
 
 const { width } = Dimensions.get("window");
 
 // Dev flag: Pedometer の取り込みを一時停止（HealthKit取り込みの切り分け用）
 const DISABLE_PEDOMETER_DEV = false;
 
-// 歩数取得はPedometerのみを使用
-const USE_PEDOMETER_ONLY = true;
+// 歩数取得はHealthKit優先（フォールバックでPedometer/ストレージ）
+const USE_PEDOMETER_ONLY = false;
 
 // 永続化用キー: 最後に選択した日付（YYYY-MM-DD）
 const LAST_SELECTED_DATE_KEY = "ui_last_selected_date";
@@ -140,6 +155,7 @@ export default function HomeScreen({ navigation, route }) {
 
   const [activeTab, setActiveTab] = useState("steps"); // 'steps' or 'calories'
   const [steps, setSteps] = useState(0);
+  const [todayStepsSnapshot, setTodayStepsSnapshot] = useState(0);
   const [calories, setCalories] = useState(0);
   const [distance, setDistance] = useState(0);
   const [goal, setGoal] = useState(10000);
@@ -198,10 +214,52 @@ export default function HomeScreen({ navigation, route }) {
   const bumpAnim = useRef(new Animated.Value(1)).current; // 値更新時のワンショット弾む演出
   // 円アニメ用（近接パルス/値更新バンプ）のみ維持
   const pulseLoopRef = useRef(null);
+  const [dailyFeedback, setDailyFeedback] = useState("");
+  const [feedbackTargetDate, setFeedbackTargetDate] = useState(null);
+  const selectedDateRef = useRef(selectedDate); // PanResponder内で最新日付を参照
+
+  // 起動時に直近7日をHealthKit優先でストレージに同期
+  useEffect(() => {
+    (async () => {
+      try {
+        await syncPastDaysToStorage(7);
+      } catch (_) {}
+    })();
+  }, []);
+
+  const loadFeedbackMessage = useCallback(
+    async (targetDate) => {
+      try {
+        const baseDate = targetDate || selectedDateRef.current || selectedDate;
+        if (!baseDate) return;
+        const previousDate = new Date(baseDate);
+        previousDate.setDate(previousDate.getDate() - 1);
+        const requestKey = toDateKeyLocal(previousDate);
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayKey = toDateKeyLocal(yesterday);
+        let message = "";
+        if (requestKey === yesterdayKey) {
+          message = await getDailyFeedbackMessage();
+        } else {
+          message = await getFeedbackMessageForDate(requestKey);
+        }
+        if (message) {
+          setDailyFeedback(message);
+          setFeedbackTargetDate(requestKey);
+        } else {
+          setDailyFeedback("");
+          setFeedbackTargetDate(null);
+        }
+      } catch (error) {
+        console.error("Failed to load feedback message:", error);
+      }
+    },
+    [selectedDate]
+  );
   const goalReachedRef = useRef({ steps: false, calories: false });
   const levelUpLockRef = useRef(false); // レベルアップの同時実行防止
   const slideAnim = useRef(new Animated.Value(0)).current; // 日付切替のスライド
-  const selectedDateRef = useRef(selectedDate); // PanResponder内で最新日付を参照
   const weekStartDateRef = useRef(weekStartDate); // PanResponder内で最新週開始日を参照
   const calendarScrollRef = useRef(null); // カレンダースクロールのref
   const isChangingWeekRef = useRef(false); // 週切り替え中フラグ
@@ -224,6 +282,27 @@ export default function HomeScreen({ navigation, route }) {
   // 🌙 ダークモード対応
   const systemColorScheme = useColorScheme();
   const theme = getTheme(systemColorScheme);
+  const glowSizesLight = [290, 320, 360, 430, 510, 590, 700];
+  const glowSizesDark = [290, 320, 380]; // ダークはやや少なめで控えめ
+
+  const glowColorsLight = [
+    "rgba(255, 255, 255, 0.57)",
+    "rgba(250, 192, 106, 0.12)",
+    "rgba(255, 225, 180, 0.26)",
+    "rgba(255, 200, 150, 0.08)",
+    "rgba(255, 180, 130, 0.06)",
+    "rgba(255, 160, 115, 0.035)",
+    "rgba(255, 140, 100, 0.02)",
+  ];
+
+  const glowColorsDark = [
+    "rgba(255, 210, 255, 0.06)",
+    "rgba(255, 210, 255, 0.035)",
+    "rgba(255, 210, 255, 0.02)",
+  ];
+
+  const selectedGlowSizes = theme.isDark ? glowSizesDark : glowSizesLight;
+  const selectedGlowColors = theme.isDark ? glowColorsDark : glowColorsLight;
 
   // セーフエリア対応
   const insets = useSafeAreaInsets();
@@ -489,57 +568,22 @@ export default function HomeScreen({ navigation, route }) {
   // 月データを取得
   const loadMonthlyData = async (baseDate = new Date()) => {
     try {
-      const isAvailable = await Pedometer.isAvailableAsync();
-      if (!isAvailable) {
-        console.log("Pedometer is not available");
-        return;
-      }
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
       const year = baseDate.getFullYear();
       const month = baseDate.getMonth();
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-      const data = {};
+      const start = new Date(year, month, 1, 0, 0, 0, 0);
+      const end = new Date(year, month + 1, 0, 23, 59, 59, 999);
       const userProfile = await getUserProfile();
-
-      for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month, day);
-        const todayDate = new Date();
-        todayDate.setHours(0, 0, 0, 0);
-
-        // 未来の日付はスキップ
-        if (date > todayDate) {
-          continue;
-        }
-
-        const start = new Date(date);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(date);
-        end.setHours(23, 59, 59, 999);
-
-        // 今日の場合は現在時刻まで
-        if (date.toDateString() === todayDate.toDateString()) {
-          end.setTime(Date.now());
-        }
-
-        try {
-          const result = await Pedometer.getStepCountAsync(start, end);
-          const dateKey = toDateKeyLocal(date);
-
-          data[dateKey] = {
-            steps: result.steps,
-            calories: calculateCalories(result.steps, userProfile.weight),
-          };
-        } catch (error) {
-          console.error(
-            `Failed to get steps for ${date.toDateString()}:`,
-            error
-          );
-        }
+      const list = await getStepsInRange(start, end);
+      const data = {};
+      for (const item of list || []) {
+        const dateKey = item?.date;
+        if (!dateKey) continue;
+        const stepsVal = Number(item.steps || 0);
+        data[dateKey] = {
+          steps: stepsVal,
+          calories: calculateCalories(stepsVal, userProfile.weight),
+        };
       }
-
       setMonthlyData(data);
     } catch (error) {
       console.error("Error loading monthly data:", error);
@@ -550,49 +594,23 @@ export default function HomeScreen({ navigation, route }) {
   const weekLoadTokenRef = useRef(0);
   const loadWeeklyData = async (dates) => {
     try {
-      const isAvailable = await Pedometer.isAvailableAsync();
-      if (!isAvailable) {
-        console.log("Pedometer is not available");
-        return;
-      }
-
-      const data = {};
-      const userProfile = await getUserProfile();
-
       const token = ++weekLoadTokenRef.current;
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const results = await Promise.all(
-        dates.map(async (date) => {
-          if (date > today) return null;
-          const start = new Date(date);
-          start.setHours(0, 0, 0, 0);
-          const end = new Date(date);
-          end.setHours(23, 59, 59, 999);
-          if (date.toDateString() === today.toDateString())
-            end.setTime(Date.now());
-          try {
-            const res = await Pedometer.getStepCountAsync(start, end);
-            return { key: toDateKeyLocal(date), steps: res.steps };
-          } catch (e) {
-            console.error(`Failed to get steps for ${date.toDateString()}:`, e);
-            return { key: toDateKeyLocal(date), steps: 0 };
-          }
-        })
-      );
-
-      if (weekLoadTokenRef.current !== token) return; // 新しいリクエストに負けたら破棄
-
-      for (const r of results) {
-        if (!r) continue;
-        data[r.key] = {
-          steps: r.steps,
-          calories: calculateCalories(r.steps, userProfile.weight),
+      const userProfile = await getUserProfile();
+      const start = new Date(dates[dates.length - 1]);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(dates[0]);
+      end.setHours(23, 59, 59, 999);
+      const list = await getStepsInRange(start, end);
+      if (weekLoadTokenRef.current !== token) return;
+      const data = {};
+      for (const item of list || []) {
+        if (!item?.date) continue;
+        const stepsVal = Number(item.steps || 0);
+        data[item.date] = {
+          steps: stepsVal,
+          calories: calculateCalories(stepsVal, userProfile.weight),
         };
       }
-
       setWeeklyData(data);
     } catch (error) {
       console.error("Error loading weekly data:", error);
@@ -728,6 +746,10 @@ export default function HomeScreen({ navigation, route }) {
     };
   }, [selectedDate]);
 
+  useEffect(() => {
+    loadFeedbackMessage(selectedDate);
+  }, [selectedDate, loadFeedbackMessage]);
+
   // 選択された日付のデータを取得
   const loadSelectedDateData = async () => {
     setIsLoadingSteps(true);
@@ -756,24 +778,18 @@ export default function HomeScreen({ navigation, route }) {
         return;
       }
 
-      // その日の開始と終了時刻
+      // その日の開始と終了時刻（HKに合わせて一日区切り）
       const start = new Date(currentSelected);
       start.setHours(0, 0, 0, 0);
       const end = new Date(currentSelected);
       end.setHours(23, 59, 59, 999);
 
-      // 今日の場合は現在時刻まで
-      const isSelectedToday =
-        selectedStart.toDateString() === today.toDateString();
-      if (isSelectedToday) {
-        end.setTime(Date.now());
-      }
-
-      const result = await Pedometer.getStepCountAsync(start, end);
       const userProfile = await getUserProfile();
       const settings = await getSettings();
 
-      const daySteps = result.steps;
+      const range = await getStepsInRange(start, end);
+      const dayEntry = (range || []).find((item) => item?.date === dateKey);
+      const daySteps = Number(dayEntry?.steps || 0);
       const dayCalories = calculateCalories(daySteps, userProfile.weight);
       const dayDistance = calculateDistance(daySteps, userProfile.stride);
       const dayProgress = calculateGoalProgress(daySteps, settings.dailyGoal);
@@ -823,6 +839,8 @@ export default function HomeScreen({ navigation, route }) {
         } else {
           // キャッシュがないか空の場合、Pedometerで取得
           const hourlyData = Array(24).fill(0);
+          const isSelectedToday =
+            currentSelected.toDateString() === today.toDateString();
           const maxHour = isSelectedToday ? new Date().getHours() : 23;
           for (let hour = 0; hour <= maxHour; hour++) {
             const hourStart = new Date(selectedDate);
@@ -968,7 +986,8 @@ export default function HomeScreen({ navigation, route }) {
       };
       reloadFavorites();
       reloadSettings();
-    }, [])
+      loadFeedbackMessage(selectedDateRef.current || selectedDate);
+    }, [loadFeedbackMessage, selectedDate])
   );
 
   // アプリの状態が変わった時の処理
@@ -977,12 +996,16 @@ export default function HomeScreen({ navigation, route }) {
       appState.current.match(/inactive|background/) &&
       nextAppState === "active"
     ) {
+      try {
+        await syncPastDaysToStorage(3);
+      } catch (_) {}
       console.log("⚡ アプリがフォアグラウンドに復帰 - データを自動更新");
       await ensureTodayGoalLevelStart();
       try {
         setTodayGoals(await getOrCreateTodayGoals());
       } catch (_) {}
       await refreshData();
+      await loadFeedbackMessage(selectedDateRef.current || selectedDate);
     }
     appState.current = nextAppState;
   };
@@ -1000,17 +1023,19 @@ export default function HomeScreen({ navigation, route }) {
       const nowTs = Date.now();
       if (nowTs - (lastRefreshRef.current || 0) < 2000) return;
       lastRefreshRef.current = nowTs;
-      // 今日の場合は updateSteps で更新（Pedometerから取得）
+      // 今日の場合はHK優先で日区切りを再取得
       try {
-        const end = new Date();
         const start = new Date();
         start.setHours(0, 0, 0, 0);
-
-        // Pedometerから直接取得（高速）
-        const result = await Pedometer.getStepCountAsync(start, end);
-        console.log(`🔄 更新: ${result.steps}歩 (ソース: Pedometer)`);
-        if (result.steps > 0) {
-          updateSteps(result.steps);
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
+        const list = await getStepsInRange(start, end);
+        const todayKey = toDateKeyLocal(start);
+        const record = (list || []).find((it) => it?.date === todayKey);
+        const stepsVal = Number(record?.steps || 0);
+        console.log(`🔄 更新: ${stepsVal}歩 (ソース: HealthKit優先)`);
+        if (stepsVal > 0) {
+          updateSteps(stepsVal);
         }
       } catch (error) {
         console.error("歩数データ更新に失敗:", error);
@@ -1025,18 +1050,16 @@ export default function HomeScreen({ navigation, route }) {
   const loadCachedData = async () => {
     try {
       const cached = await getCachedTodayData();
-      if (cached && cached.steps > 0) {
-        setSteps(cached.steps);
-        setCalories(cached.calories);
-        setDistance(cached.distance);
+      if (cached) {
+        setSteps(cached.steps || 0);
+        setCalories(cached.calories || 0);
+        setDistance(cached.distance || 0);
         setProgress(
-          calculateGoalProgress(cached.steps, cached.goal || 10000) / 100
+          calculateGoalProgress(cached.steps || 0, cached.goal || 10000) / 100
         );
         console.log("✅ キャッシュからデータを表示しました");
-        // キャッシュデータがあるので、ローディング表示不要
         setIsLoadingSteps(false);
       } else {
-        // キャッシュがない場合は、ローディング表示
         console.log("⏳ キャッシュなし - ローディング表示");
         setIsLoadingSteps(true);
       }
@@ -1091,6 +1114,7 @@ export default function HomeScreen({ navigation, route }) {
 
     if (todayData) {
       setSteps(todayData.steps);
+      setTodayStepsSnapshot(todayData.steps || 0);
       setCalories(todayData.calories);
       setDistance(todayData.distance);
       // プログレスは0-1で保持
@@ -1114,13 +1138,22 @@ export default function HomeScreen({ navigation, route }) {
     // AsyncStorageから取得（Pedometerは今日のみ、過去は保存済みデータを使用）
     try {
       const allData = await getAllDailyData();
-      console.log("📊 [AllTimeData] データ件数:", Object.keys(allData).length, "日分");
+      console.log(
+        "📊 [AllTimeData] データ件数:",
+        Object.keys(allData).length,
+        "日分"
+      );
 
       // 初回のみ: HealthKitから過去データをインポート（オンボーディングで実行済み）
       // 日々の歩数はPedometerで取得してsaveTodayDataで保存される
       // HistoryScreenはHealthKitから表示するが、トロフィー計算はStorageのみ使用
 
       setAllTimeData(allData);
+      try {
+        await backfillFeedbackHistory(7);
+      } catch (error) {
+        console.error("Feedback backfill failed:", error);
+      }
     } catch (error) {
       console.error("Error loading all-time data:", error);
     }
@@ -1254,17 +1287,7 @@ export default function HomeScreen({ navigation, route }) {
       setIsPedometerAvailable(isAvailable);
 
       if (isAvailable) {
-        // Pedometerから直接取得（高速）
-        setIsLoadingSteps(true);
-        const end = new Date();
-        const start = new Date();
-        start.setHours(0, 0, 0, 0);
-
-        // Pedometerから取得（HealthKitは使わない）
-        const result = await Pedometer.getStepCountAsync(start, end);
-        if (typeof result?.steps === 'number' && result.steps >= 0) {
-          updateSteps(result.steps);
-        }
+        // HealthKit優先なので初回の直接上書きは行わず、watchでrefreshDataを呼ぶ
         setIsLoadingSteps(false);
 
         // Subscribe to real-time updates
@@ -1319,8 +1342,11 @@ export default function HomeScreen({ navigation, route }) {
     // Save to storage
     await saveTodayData(data);
 
+    setTodayStepsSnapshot(newSteps);
+
     // 🚀 キャッシュにも保存（起動高速化）
     await cacheTodayData(data);
+    await maybeSaveFeedbackSnapshot(newSteps);
 
     // 食べ物目標達成チェック - その日中にレベルアップ
     await checkFoodGoalAchievement(cal);
@@ -1412,11 +1438,12 @@ export default function HomeScreen({ navigation, route }) {
             ...allTimeData,
             [todayKey]: {
               ...(allTimeData[todayKey] || {}),
-              steps: steps,
+              steps: todayStepsSnapshot,
               goal: goal,
             },
           };
-          const { totalTrophies, currentStreak, maxStreak } = computeTrophiesStreak(mergedAllData, 10000, new Date());
+          const { totalTrophies, currentStreak, maxStreak } =
+            computeTrophiesStreak(mergedAllData, 10000, new Date());
           setTotalTrophies(totalTrophies);
           setCurrentStreak(currentStreak);
           setMaxStreak(maxStreak);
@@ -1429,7 +1456,7 @@ export default function HomeScreen({ navigation, route }) {
     };
 
     calculateStats();
-  }, [allTimeData, steps]);
+  }, [allTimeData, todayStepsSnapshot, goal]);
 
   // シェア画面用の集計データ（選択日基準）
   const shareStats = useMemo(() => {
@@ -1469,6 +1496,24 @@ export default function HomeScreen({ navigation, route }) {
   const formatMonthDay = (date) => formatMonthDayHelper(date, locale);
 
   const formatMonthYear = (date) => formatMonthYearHelper(date, locale);
+
+  const feedbackTitle = useMemo(() => {
+    if (!feedbackTargetDate) {
+      return t("home.feedback.title");
+    }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const yesterdayKey = toDateKeyLocal(yesterday);
+    if (feedbackTargetDate === yesterdayKey && isToday(selectedDate)) {
+      return t("home.feedback.title");
+    }
+    const parsed = new Date(`${feedbackTargetDate}T00:00:00`);
+    return t("home.feedback.forDate", {
+      date: formatMonthDay(parsed),
+    });
+  }, [feedbackTargetDate, selectedDate, t, formatMonthDay]);
 
   // 80%でやさしいパルス、100%でハプティクス（対応端末）: 今日のみ
   useEffect(() => {
@@ -1567,8 +1612,8 @@ export default function HomeScreen({ navigation, route }) {
               padding: 12,
               shadowColor: "#000",
               shadowOffset: { width: 0, height: 3 },
-              shadowOpacity: 0.3,
-              shadowRadius: 6,
+              shadowOpacity: 1,
+              shadowRadius: 12,
               elevation: 8,
             }}
           >
@@ -1596,7 +1641,9 @@ export default function HomeScreen({ navigation, route }) {
         {/* 週のナビゲーション */}
         <View style={[styles.dateNavigation, { paddingTop: insets.top + 20 }]}>
           {/* トロフィー数とストリーク（縦2行） */}
-          <View style={{ position: 'absolute', left: 16, top: insets.top + 16 }}>
+          <View
+            style={{ position: "absolute", left: 16, top: insets.top + 16 }}
+          >
             <HeaderStats
               totalTrophies={totalTrophies}
               currentStreak={currentStreak}
@@ -1751,6 +1798,30 @@ export default function HomeScreen({ navigation, route }) {
         >
           {/* 円形プログレス（タブ切替） */}
           <View style={styles.circleContainer}>
+            {/* 背面グロー（段階グラデーション） */}
+            <View style={styles.glowWrapper} pointerEvents="none">
+              {selectedGlowSizes
+                .map((size, index) => ({
+                  size,
+                  color: selectedGlowColors[index],
+                }))
+                .sort((a, b) => b.size - a.size) // 大きいものを背面、小さいものを前面
+                .map(({ size, color }, idx) => (
+                  <View
+                    key={`glow-${size}-${idx}`}
+                    style={[
+                      styles.glow,
+                      {
+                        width: size,
+                        height: size,
+                        borderRadius: size / 2,
+                        backgroundColor:
+                          color || selectedGlowColors[selectedGlowColors.length - 1],
+                      },
+                    ]}
+                  />
+                ))}
+            </View>
             <TouchableOpacity
               activeOpacity={1}
               onLongPress={() => {
@@ -1769,7 +1840,7 @@ export default function HomeScreen({ navigation, route }) {
               <View
                 style={[
                   styles.circleBackground,
-                  { backgroundColor: theme.card },
+                  { backgroundColor: theme.card, shadowColor: theme.shadow },
                 ]}
               >
                 {(() => {
@@ -1791,7 +1862,9 @@ export default function HomeScreen({ navigation, route }) {
                       size={200}
                       progress={ringP}
                       color={ringColor}
-                      unfilledColor={isFull ? 'transparent' : theme.circleUnfilled}
+                      unfilledColor={
+                        isFull ? "transparent" : theme.circleUnfilled
+                      }
                       thickness={12}
                       bumpAnim={bumpAnim}
                       pulseAnim={pulseAnim}
@@ -1851,7 +1924,16 @@ export default function HomeScreen({ navigation, route }) {
           </View>
 
           {/* Share CTA */}
-          <View style={{ alignItems: 'flex-end', paddingHorizontal: 20, marginTop: 8, marginBottom: 8, zIndex: 10, position: 'relative' }}>
+          <View
+            style={{
+              alignItems: "flex-end",
+              paddingHorizontal: 20,
+              marginTop: 8,
+              marginBottom: 8,
+              zIndex: 10,
+              position: "relative",
+            }}
+          >
             <ShareCTA
               selectedDate={selectedDate}
               steps={steps}
@@ -1861,6 +1943,33 @@ export default function HomeScreen({ navigation, route }) {
               t={t}
             />
           </View>
+
+          {dailyFeedback ? (
+            <View style={styles.feedbackWrapper}>
+              <View style={styles.feedbackPointerContainer}>
+                <Image
+                  source={require("../../assets/finger.png")}
+                  style={styles.feedbackPointerImage}
+                  resizeMode="contain"
+                />
+              </View>
+              <View
+                style={[
+                  styles.feedbackCard,
+                  { backgroundColor: theme.card, borderColor: theme.border },
+                ]}
+              >
+                <Text
+                  style={[styles.feedbackLabel, { color: theme.textSecondary }]}
+                >
+                  {feedbackTitle}
+                </Text>
+                <Text style={[styles.feedbackMessage, { color: theme.text }]}>
+                  {dailyFeedback}
+                </Text>
+              </View>
+            </View>
+          ) : null}
 
           {/* Stats カード（タブ切替） */}
           <StatsCards
@@ -1877,7 +1986,12 @@ export default function HomeScreen({ navigation, route }) {
           />
 
           {/* 今日の予定（常に表示） */}
-          <EventsCard styles={styles} theme={theme} t={t} todayEvents={todayEvents} />
+          <EventsCard
+            styles={styles}
+            theme={theme}
+            t={t}
+            todayEvents={todayEvents}
+          />
 
           {/* 今日のひとこと */}
           <TodayNote

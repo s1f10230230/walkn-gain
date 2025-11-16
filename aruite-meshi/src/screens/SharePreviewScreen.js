@@ -630,12 +630,12 @@ const styles = StyleSheet.create({
   },
   steps: {
     fontSize: 72,
-    fontWeight: "900",
+    fontWeight: "800",
     letterSpacing: -2,
   },
   achievementRate: {
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "400",
     marginTop: 4,
     opacity: 0.6,
   },

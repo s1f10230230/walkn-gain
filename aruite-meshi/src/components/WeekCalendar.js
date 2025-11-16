@@ -24,7 +24,7 @@ export default function WeekCalendar({
   handleCalendarScrollEnd,
 }) {
   return (
-    <View style={{ position: 'relative' }}>
+    <View style={{ position: 'relative', zIndex: 20, elevation: 20 }}>
       <ScrollView
         ref={calendarScrollRef}
         horizontal

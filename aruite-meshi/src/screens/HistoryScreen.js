@@ -19,7 +19,7 @@ try {
 }
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Pedometer } from 'expo-sensors';
+import { getStepsInRange } from '../utils/healthKit';
 import { LineChart } from 'react-native-chart-kit';
 import {
   getWeekDates,
@@ -121,36 +121,14 @@ export default function HistoryScreen({ navigation }) {
         rangeEnd.setHours(23,59,59,999);
       }
 
-      // Pedometerで日ごとに取得（過去7日間のみ対応）
+      const hkList = await getStepsInRange(rangeStart, rangeEnd);
+      const map = new Map();
+      (hkList || []).forEach((item) => {
+        if (item?.date) map.set(item.date, Number(item.steps || 0));
+      });
+
       for (const dateStr of dates) {
-        const [y, m, d] = dateStr.split('-').map(Number);
-        const date = new Date(y, m - 1, d);
-        if (date > today) continue; // 未来日は除外
-
-        let stepsVal = 0;
-        try {
-          // Pedometerは過去7日分のみ取得可能
-          const now = new Date();
-          const daysAgo = Math.floor((now - date) / (1000 * 60 * 60 * 24));
-
-          if (daysAgo <= 7) {
-            // Pedometerで取得
-            const dayStart = new Date(y, m - 1, d, 0, 0, 0, 0);
-            const dayEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
-            const result = await Pedometer.getStepCountAsync(dayStart, dayEnd);
-            stepsVal = result.steps || 0;
-          } else {
-            // 7日以上前はAsyncStorageから取得
-            const stored = await getDailyData(dateStr);
-            stepsVal = stored?.steps || 0;
-          }
-        } catch (error) {
-          console.error(`Pedometer取得エラー (${dateStr}):`, error);
-          // エラー時はAsyncStorageから取得
-          const stored = await getDailyData(dateStr);
-          stepsVal = stored?.steps || 0;
-        }
-
+        const stepsVal = Number(map.get(dateStr) || 0);
         const caloriesVal = calculateCalories(stepsVal, userProfile.weight);
         const dayData = {
           date: dateStr,
@@ -216,31 +194,15 @@ export default function HistoryScreen({ navigation }) {
       if (rangeEnd.toDateString() === new Date().toDateString()) rangeEnd.setTime(Date.now());
       else rangeEnd.setHours(23,59,59,999);
       const today = new Date(); today.setHours(0,0,0,0);
+      const rangeList = await getStepsInRange(rangeStart, rangeEnd);
+      const map = new Map();
+      (rangeList || []).forEach((item) => {
+        if (item?.date) map.set(item.date, Number(item.steps || 0));
+      });
+
       const data = [];
       for (const dateStr of dates) {
-        const [y, m, d] = dateStr.split('-').map(Number);
-        const date = new Date(y, m - 1, d);
-        if (date > today) continue;
-
-        let stepsVal = 0;
-        try {
-          const now = new Date();
-          const daysAgo = Math.floor((now - date) / (1000 * 60 * 60 * 24));
-
-          if (daysAgo <= 7) {
-            const dayStart = new Date(y, m - 1, d, 0, 0, 0, 0);
-            const dayEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
-            const result = await Pedometer.getStepCountAsync(dayStart, dayEnd);
-            stepsVal = result.steps || 0;
-          } else {
-            const stored = await getDailyData(dateStr);
-            stepsVal = stored?.steps || 0;
-          }
-        } catch (error) {
-          const stored = await getDailyData(dateStr);
-          stepsVal = stored?.steps || 0;
-        }
-
+        const stepsVal = Number(map.get(dateStr) || 0);
         const caloriesVal = calculateCalories(stepsVal, userProfile.weight);
         const dayData = { date: dateStr, steps: stepsVal, calories: caloriesVal, distance: 0, goal: settings.dailyGoal };
         data.push(dayData);
@@ -278,7 +240,7 @@ export default function HistoryScreen({ navigation }) {
       datasets: [
         {
           data: data.length > 0 ? data : [0],
-          color: (opacity = 1) => `rgba(0, 191, 165, ${opacity})`, // #00BFA5 アクセントカラー
+          color: (opacity = 1) => `rgba(255, 128, 80, ${opacity})`, // メインオレンジ
           strokeWidth: 3, // 線を太く
         },
       ],
@@ -289,7 +251,7 @@ export default function HistoryScreen({ navigation }) {
       backgroundGradientFrom: theme.card,
       backgroundGradientTo: theme.card,
       decimalPlaces: 0,
-      color: (opacity = 1) => `rgba(0, 191, 165, ${opacity})`,
+      color: (opacity = 1) => `rgba(255, 128, 80, ${opacity})`,
       labelColor: (opacity = 1) => theme.textSecondary,
       style: {
         borderRadius: 16,
@@ -297,8 +259,8 @@ export default function HistoryScreen({ navigation }) {
       propsForDots: {
         r: 6,
         strokeWidth: 3,
-        stroke: theme.card,
-        fill: '#00BFA5',
+        stroke: '#FFFFFF',
+        fill: theme.primary,
       },
       propsForBackgroundLines: {
         strokeWidth: 1,
@@ -308,6 +270,12 @@ export default function HistoryScreen({ navigation }) {
       propsForLabels: {
         fontSize: 10,
       },
+      fillShadowGradient: theme.primary,
+      fillShadowGradientOpacity: 0.08,
+      fillShadowGradientFrom: theme.primary,
+      fillShadowGradientFromOpacity: 0.1,
+      fillShadowGradientTo: theme.primary,
+      fillShadowGradientToOpacity: 0.02,
     };
 
     return (

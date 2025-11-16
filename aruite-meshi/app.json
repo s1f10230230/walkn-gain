@@ -7,25 +7,12 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF",
-      "dark": {
-        "image": "./assets/splash-icon.png",
-        "resizeMode": "contain",
-        "backgroundColor": "#121212"
-      }
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+
     "plugins": [
       [
-        "react-native-health",
+        "@kingstinct/react-native-healthkit",
         {
-          "healthSharePermission": "歩数データを読み取り、アプリ内で表示します。",
-          "isClinicalDataEnabled": false
+          "background-delivery": true
         }
       ],
       [
@@ -37,20 +24,16 @@
         }
       ]
     ],
+
     "ios": {
       "bundleIdentifier": "com.walkngain.app",
       "supportsTablet": false,
       "requireFullScreen": true,
-      "icon": "./assets/icon.png",
-      "buildNumber": "2",
-      "splash": {
-        "backgroundColor": "#FFFFFF",
-        "dark": {
-          "backgroundColor": "#121212"
-        }
-      },
+      "buildNumber": "55",
+
       "infoPlist": {
         "NSHealthShareUsageDescription": "歩数データを読み取り、アプリ内で表示します。",
+        "NSHealthUpdateUsageDescription": "歩数データを記録します。",
         "NSMotionUsageDescription": "歩数を計測するために、モーションセンサーにアクセスします。",
         "NSCalendarsUsageDescription": "履歴にカレンダーの予定を表示します。",
         "NSCalendarsFullAccessUsageDescription": "履歴にカレンダーの予定を表示します。",
@@ -59,12 +42,13 @@
         "UIBackgroundModes": ["fetch"],
         "ITSAppUsesNonExemptEncryption": false
       },
+
       "entitlements": {
         "com.apple.developer.healthkit": true,
-        "com.apple.developer.healthkit.access": [],
         "com.apple.developer.healthkit.background-delivery": true
       }
     },
+
     "locales": {
       "en": "./locales/en.json",
       "ja": "./locales/ja.json",
@@ -74,18 +58,6 @@
     "extra": {
       "eas": {
         "projectId": "7c14de9c-dcd2-4217-980e-eeb9eac22a7b"
-      }
-    },
-    "updates": {
-      "url": "https://u.expo.dev/7c14de9c-dcd2-4217-980e-eeb9eac22a7b"
-    },
-    "android": {
-      "versionCode": 2,
-      "splash": {
-        "backgroundColor": "#FFFFFF",
-        "dark": {
-          "backgroundColor": "#121212"
-        }
       }
     }
   }

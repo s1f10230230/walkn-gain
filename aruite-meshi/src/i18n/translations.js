@@ -240,11 +240,20 @@ export const TRANSLATIONS = {
           title: 'カレンダー',
           description: 'ホーム画面に今日の予定を表示できます',
         },
+        notifications: {
+          title: '通知',
+          description: '目標達成やリマインダーをお知らせします',
+        },
+        motion: {
+          title: 'モーションとフィットネス',
+          description: '歩数の計測に必要です（端末の設定でいつでも変更できます）',
+        },
         location: {
           title: '位置情報',
           description: '歩いた距離をより正確に計測できます（将来機能）',
         },
         granted: '✓ 許可済み',
+        pending: '未許可',
         allow: '許可する',
         note: '※ これらの権限は後から設定アプリで変更できます',
         skip: 'スキップ',
@@ -350,6 +359,7 @@ export const TRANSLATIONS = {
         pedometerChecking: '歩数計: 確認中...'
       },
       modal: { selectDate: '日付を選択' },
+      feedback: { title: '昨日のフィードバック', forDate: '{date}のフィードバック' },
     },
     history: {
       tabs: { week: '週', month: '月' },
@@ -680,11 +690,20 @@ export const TRANSLATIONS = {
           title: 'Calendar',
           description: 'Show today’s events on the Home screen',
         },
+        notifications: {
+          title: 'Notifications',
+          description: 'Receive reminders and goal progress alerts',
+        },
+        motion: {
+          title: 'Motion & Fitness',
+          description: 'Required for step tracking (can be changed anytime)',
+        },
         location: {
           title: 'Location',
           description: 'Improve distance accuracy (future feature)',
         },
         granted: '✓ Granted',
+        pending: 'Pending',
         allow: 'Allow',
         note: 'You can change these later in Settings app',
         skip: 'Skip',
@@ -790,6 +809,7 @@ export const TRANSLATIONS = {
         pedometerChecking: 'Pedometer: checking...'
       },
       modal: { selectDate: 'Select date' },
+      feedback: { title: "Yesterday's feedback", forDate: "Feedback for {date}" },
     },
     history: {
       tabs: { week: 'Week', month: 'Month' },
@@ -1165,11 +1185,20 @@ export const TRANSLATIONS = {
           title: '日历',
           description: '在首页显示今天的日程',
         },
+        notifications: {
+          title: '通知',
+          description: '接收目标提醒与每日提示',
+        },
+        motion: {
+          title: '运动与健康',
+          description: '步数统计所需，可随时在系统设置中更改',
+        },
         location: {
           title: '位置',
           description: '提升距离统计的准确性（未来功能）',
         },
         granted: '✓ 已允许',
+        pending: '尚未授权',
         allow: '允许',
         note: '稍后可在系统设置中更改这些权限',
         skip: '跳过',
@@ -1275,6 +1304,7 @@ export const TRANSLATIONS = {
         pedometerChecking: '计步器：检查中...'
       },
       modal: { selectDate: '选择日期' },
+      feedback: { title: '昨日的反馈', forDate: '{date}的反馈' },
     },
     history: {
       tabs: { week: '周', month: '月' },
