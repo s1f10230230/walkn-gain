@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   ScrollView,
   useWindowDimensions,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../../i18n/I18nProvider';
@@ -38,33 +39,46 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
 
   const handleContinue = async () => {
     setIsLoading(true);
-    let enabled = false;
-    try {
-      const success = await initializeHealthKit();
 
-      if (success) {
-        await saveHealthSyncEnabled(true);
-        enabled = true;
-        if (ENABLE_HEALTHKIT_IMPORT) {
-          try {
-            console.log('📊 [HealthKitPermission] 過去データの取り込みを開始...');
-            const result = await importHistoricalData(30);
-            console.log('📊 [HealthKitPermission] インポート完了:', JSON.stringify(result, null, 2));
-          } catch (err) {
-            console.error('❌ [HealthKitPermission] インポートエラー:', err);
-            console.error('❌ [HealthKitPermission] エラー詳細:', err.message, err.stack);
-          }
+    try {
+      // ❶ 権限要求（availabilityチェックは削除 - TestFlightで誤判定されるため）
+      const success = await initializeHealthKit(true);
+      if (!success) {
+        Alert.alert(
+          'HealthKit',
+          'ヘルスケア権限を有効にできませんでした。設定アプリで許可してください。'
+        );
+        setIsLoading(false);
+        return;   // ⬅ 成功しなければ絶対に進ませない
+      }
+
+      // ❷ HK有効化フラグ
+      await saveHealthSyncEnabled(true);
+
+      // ❸ 二重 initialize（HK反映の遅延対策）
+      await initializeHealthKit(false);
+
+      // ❹ 過去データインポート
+      if (ENABLE_HEALTHKIT_IMPORT) {
+        try {
+          console.log('📊 [HealthKitPermission] 過去データの取り込みを開始...');
+          const result = await importHistoricalData(30);
+          console.log('📊 [HealthKitPermission] インポート完了:', JSON.stringify(result, null, 2));
+        } catch (err) {
+          console.error('❌ [HealthKitPermission] インポートエラー:', err);
+          console.error('❌ [HealthKitPermission] エラー詳細:', err.message, err.stack);
         }
       }
+
     } catch (error) {
       console.error('HealthKit初期化エラー:', error);
-    } finally {
-      if (!enabled) {
-        await saveHealthSyncEnabled(false);
-      }
       setIsLoading(false);
-      navigateToCalorieGoal();
+      return;  // エラーでも遷移しない
     }
+
+    // ❺ 次へ
+    setIsLoading(false);
+    navigateToCalorieGoal();
   };
 
   return (

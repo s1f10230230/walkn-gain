@@ -27,7 +27,7 @@ import {
   getReminderEnabled,
 } from '../utils/storage';
 import { estimateStrideLength } from '../utils/calculations';
-import { initializeHealthKit, startStepsBackgroundUpdates, stopStepsBackgroundUpdates, isHistoricalImportCompleted, importHistoricalData, getHealthKitAuthorizationState, syncPastDaysToStorage, getHealthKitAvailability } from '../utils/healthKit';
+import { initializeHealthKit, startStepsBackgroundUpdates, stopStepsBackgroundUpdates, isHistoricalImportCompleted, importHistoricalData, getHealthKitAuthorizationState, syncPastDaysToStorage } from '../utils/healthKit';
 import { registerBackgroundStepsTask, unregisterBackgroundStepsTask } from '../tasks/backgroundStepsTask';
 import { scheduleReminderNotification, cancelReminderNotifications } from '../utils/notifications';
 import { UserIcon, TargetIcon, HeartIcon, PenIcon, InfoIcon } from '../components/SettingsIcons';
@@ -320,13 +320,23 @@ export default function SettingsScreen({ navigation }) {
   const handleHealthSyncToggle = async (value) => {
     if (value) {
       console.log('🔵 [SettingsScreen] HealthKit連携トグルON');
-      const availability = getHealthKitAvailability();
-      if (!availability.available || !availability.stepType) {
-        Alert.alert('HealthKit', 'このデバイスではHealthKitを利用できません。');
+
+      // iOS以外では実行しない
+      if (Platform.OS !== 'ios') {
+        Alert.alert('HealthKit', 'この機能はiOS専用です。');
         setHealthSync(false);
         await saveHealthSyncEnabled(false);
         return;
       }
+
+      // TestFlightで誤判定されるのでavailabilityチェックを削除
+      // const availability = getHealthKitAvailability();
+      // if (!availability.available) {
+      //   Alert.alert('HealthKit', 'このデバイスではHealthKitを利用できません。');
+      //   setHealthSync(false);
+      //   await saveHealthSyncEnabled(false);
+      //   return;
+      // }
       // ヘルスケアの権限をリクエスト
       console.log('🔵 [SettingsScreen] initializeHealthKit() を呼び出します...');
       const initialized = await initializeHealthKit(true);
@@ -336,8 +346,12 @@ export default function SettingsScreen({ navigation }) {
         await saveHealthSyncEnabled(true);
         // 背景更新を開始
         await startStepsBackgroundUpdates();
-        // フォールバック：BackgroundFetch（通知ON時のみ）
-        try { if (toBoolean(settings.notifications)) await registerBackgroundStepsTask(); } catch (_) {}
+        // フォールバック：BackgroundFetch（通知ONかつOS通知許可済みの時のみ）
+        try {
+          if (toBoolean(settings.notifications) && notifOSGranted) {
+            await registerBackgroundStepsTask();
+          }
+        } catch (_) {}
         console.log('✅ [SettingsScreen] HealthKit連携成功');
         Alert.alert(t('settings.alerts.healthEnabledTitle'), t('settings.alerts.healthEnabledMessage'));
         // 過去30日を同期してストレージをHK優先で更新

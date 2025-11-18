@@ -42,18 +42,33 @@ const toDateKey = (value) => {
   return null;
 };
 
-const hasModernHealthKit = () => isIOS && KingstinctHealthKit && typeof KingstinctHealthKit.requestAuthorization === 'function';
+const hasModernHealthKit = () => isIOS && KingstinctHealthKit;
 
-const readQuantityTypes = () => [STEP_TYPE, DISTANCE_TYPE, ENERGY_TYPE].filter(Boolean);
+// STEP_TYPE が null でも HealthKit を初期化できるようにする
+const readQuantityTypes = () => {
+  const types = [
+    KingstinctHealthKit?.HKQuantityTypeIdentifier?.stepCount,
+    KingstinctHealthKit?.HKQuantityTypeIdentifier?.distanceWalkingRunning,
+    KingstinctHealthKit?.HKQuantityTypeIdentifier?.activeEnergyBurned,
+  ].filter(Boolean);
 
+  // fallback: TestFlightでnullを返す現象対策
+  if (!types.length && KingstinctHealthKit?.HKQuantityTypeIdentifier?.stepCount) {
+    return [KingstinctHealthKit.HKQuantityTypeIdentifier.stepCount];
+  }
+  return types;
+};
+
+// HealthKit 利用可否チェックを緩くする
 export const getHealthKitAvailability = () => ({
-  available: hasModernHealthKit(),
-  stepType: !!STEP_TYPE,
+  available: true,   // ← TestFlightで誤判定されるので常にtrue扱い
+  stepType: true,   // ← TestFlight で false になるバグ回避
 });
 
 export const getHealthKitAuthorizationState = async () => {
-  if (!hasModernHealthKit() || !STEP_TYPE) return { available: false, authorized: false };
-  if (typeof KingstinctHealthKit.getAuthorizationStatus === 'function') {
+  if (!hasModernHealthKit()) return { available: false, authorized: false };
+
+  if (typeof KingstinctHealthKit.getAuthorizationStatus === 'function' && STEP_TYPE) {
     try {
       const status = await KingstinctHealthKit.getAuthorizationStatus(STEP_TYPE);
       return { available: true, authorized: status === 'sharingAuthorized' || status === 'authorized' };
@@ -61,7 +76,8 @@ export const getHealthKitAuthorizationState = async () => {
       console.warn('[healthKit] getAuthorizationStatus failed:', error);
     }
   }
-  // Fallback: assume authorized only after ensureAuthorized succeeds
+
+  // fallback: initializeHealthKit が成功していれば authorized とみなす
   try {
     await ensureAuthorized();
     return { available: true, authorized: true };
@@ -71,11 +87,14 @@ export const getHealthKitAuthorizationState = async () => {
 };
 
 const fetchDailyStepStatistics = async (startDate, endDate) => {
-  if (!hasModernHealthKit() || !STEP_TYPE || typeof KingstinctHealthKit.queryStatisticsForQuantity !== 'function') {
+  if (!hasModernHealthKit() || typeof KingstinctHealthKit.queryStatisticsForQuantity !== 'function') {
     return null;
   }
+
+  const type = STEP_TYPE || KingstinctHealthKit?.HKQuantityTypeIdentifier?.stepCount;
+
   const options = {
-    quantityType: STEP_TYPE,
+    quantityType: type,
     from: startDate,
     to: endDate,
     options: Array.isArray(CUMULATIVE) ? CUMULATIVE : [CUMULATIVE],
@@ -95,10 +114,10 @@ const fetchDailyStepStatistics = async (startDate, endDate) => {
   });
 };
 
+// null でも authorize だけ実行できるように修正
 const ensureAuthorized = async () => {
   if (!hasModernHealthKit()) return false;
   const readTypes = readQuantityTypes();
-  if (!readTypes.length) return false;
   await KingstinctHealthKit.requestAuthorization({ read: readTypes, share: [] });
   return true;
 };
@@ -140,15 +159,18 @@ export const checkHealthKitPermissions = async () => {
 };
 
 export const startStepsBackgroundUpdates = async () => {
-  if (!hasModernHealthKit() || !STEP_TYPE) return false;
+  if (!hasModernHealthKit()) return false;
+
+  const type = STEP_TYPE || KingstinctHealthKit?.HKQuantityTypeIdentifier?.stepCount;
   const enableDelivery = KingstinctHealthKit.enableBackgroundDelivery;
   if (typeof enableDelivery !== 'function') return false;
+
   try {
     if (enableDelivery.length >= 2) {
-      await enableDelivery(STEP_TYPE, 'hourly');
+      await enableDelivery(type, 'hourly');
     } else {
       await enableDelivery({
-        quantityType: STEP_TYPE,
+        quantityType: type,
         frequency: 'hourly',
       });
     }
@@ -160,12 +182,15 @@ export const startStepsBackgroundUpdates = async () => {
 };
 
 export const stopStepsBackgroundUpdates = async () => {
-  if (!hasModernHealthKit() || !STEP_TYPE) return false;
+  if (!hasModernHealthKit()) return false;
+
+  const type = STEP_TYPE || KingstinctHealthKit?.HKQuantityTypeIdentifier?.stepCount;
   const disableDelivery = KingstinctHealthKit.disableBackgroundDelivery || KingstinctHealthKit.disableAllBackgroundDelivery;
   if (typeof disableDelivery !== 'function') return false;
+
   try {
     if (disableDelivery.length >= 1) {
-      await disableDelivery(STEP_TYPE);
+      await disableDelivery(type);
     } else {
       await disableDelivery();
     }
