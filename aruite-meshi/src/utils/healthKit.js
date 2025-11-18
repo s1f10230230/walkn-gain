@@ -16,9 +16,17 @@ try {
 const HISTORICAL_IMPORT_KEY = 'healthkit_historical_import_v2';
 const isIOS = Platform.OS === 'ios';
 
-const STEP_TYPE = KingstinctHealthKit?.HKQuantityTypeIdentifier?.stepCount;
-const DISTANCE_TYPE = KingstinctHealthKit?.HKQuantityTypeIdentifier?.distanceWalkingRunning;
-const ENERGY_TYPE = KingstinctHealthKit?.HKQuantityTypeIdentifier?.activeEnergyBurned;
+const STEP_TYPE =
+  KingstinctHealthKit?.HKQuantityTypeIdentifier?.stepCount ??
+  'HKQuantityTypeIdentifierStepCount';  // fallback追加
+
+const DISTANCE_TYPE =
+  KingstinctHealthKit?.HKQuantityTypeIdentifier?.distanceWalkingRunning ??
+  'HKQuantityTypeIdentifierDistanceWalkingRunning';  // fallback追加
+
+const ENERGY_TYPE =
+  KingstinctHealthKit?.HKQuantityTypeIdentifier?.activeEnergyBurned ??
+  'HKQuantityTypeIdentifierActiveEnergyBurned';  // fallback追加
 const STAT_OPTIONS = KingstinctHealthKit?.HKStatisticsOptions;
 const CUMULATIVE = STAT_OPTIONS?.cumulativeSum || 'cumulativeSum';
 const HKUnit = KingstinctHealthKit?.HKUnit;
@@ -42,21 +50,31 @@ const toDateKey = (value) => {
   return null;
 };
 
-const hasModernHealthKit = () => isIOS && KingstinctHealthKit;
+const hasModernHealthKit = () =>
+  isIOS &&
+  KingstinctHealthKit &&
+  typeof KingstinctHealthKit.requestAuthorization === 'function';
 
 // STEP_TYPE が null でも HealthKit を初期化できるようにする
 const readQuantityTypes = () => {
-  const types = [
-    KingstinctHealthKit?.HKQuantityTypeIdentifier?.stepCount,
-    KingstinctHealthKit?.HKQuantityTypeIdentifier?.distanceWalkingRunning,
-    KingstinctHealthKit?.HKQuantityTypeIdentifier?.activeEnergyBurned,
+  const HK = KingstinctHealthKit?.HKQuantityTypeIdentifier;
+
+  // TestFlight で HK が null のことがある
+  if (!HK || typeof HK !== 'object') {
+    return ['HKQuantityTypeIdentifierStepCount']; // fallback文字列
+  }
+
+  const list = [
+    HK.stepCount,
+    HK.distanceWalkingRunning,
+    HK.activeEnergyBurned,
   ].filter(Boolean);
 
-  // fallback: TestFlightでnullを返す現象対策
-  if (!types.length && KingstinctHealthKit?.HKQuantityTypeIdentifier?.stepCount) {
-    return [KingstinctHealthKit.HKQuantityTypeIdentifier.stepCount];
+  if (list.length === 0) {
+    return [HK.stepCount ?? 'HKQuantityTypeIdentifierStepCount'];
   }
-  return types;
+
+  return list;
 };
 
 // HealthKit 利用可否チェックを緩くする
@@ -87,11 +105,18 @@ export const getHealthKitAuthorizationState = async () => {
 };
 
 const fetchDailyStepStatistics = async (startDate, endDate) => {
-  if (!hasModernHealthKit() || typeof KingstinctHealthKit.queryStatisticsForQuantity !== 'function') {
+  if (
+    !hasModernHealthKit() ||
+    !KingstinctHealthKit ||
+    typeof KingstinctHealthKit.queryStatisticsForQuantity !== 'function'
+  ) {
     return null;
   }
 
-  const type = STEP_TYPE || KingstinctHealthKit?.HKQuantityTypeIdentifier?.stepCount;
+  const type =
+    STEP_TYPE ??
+    KingstinctHealthKit?.HKQuantityTypeIdentifier?.stepCount ??
+    'HKQuantityTypeIdentifierStepCount';  // 完全なfallback
 
   const options = {
     quantityType: type,
@@ -117,9 +142,24 @@ const fetchDailyStepStatistics = async (startDate, endDate) => {
 // null でも authorize だけ実行できるように修正
 const ensureAuthorized = async () => {
   if (!hasModernHealthKit()) return false;
-  const readTypes = readQuantityTypes();
-  await KingstinctHealthKit.requestAuthorization({ read: readTypes, share: [] });
-  return true;
+
+  let readTypes = readQuantityTypes();
+
+  // 防弾：空配列なら文字列を強制追加
+  if (!Array.isArray(readTypes) || readTypes.length === 0) {
+    readTypes = ['HKQuantityTypeIdentifierStepCount'];
+  }
+
+  try {
+    await KingstinctHealthKit.requestAuthorization({
+      read: readTypes,
+      share: [],
+    });
+    return true;
+  } catch (err) {
+    console.warn('[HK] requestAuthorization failed:', err);
+    return false;
+  }
 };
 
 export const initializeHealthKit = async (showAlert = false) => {
@@ -161,7 +201,10 @@ export const checkHealthKitPermissions = async () => {
 export const startStepsBackgroundUpdates = async () => {
   if (!hasModernHealthKit()) return false;
 
-  const type = STEP_TYPE || KingstinctHealthKit?.HKQuantityTypeIdentifier?.stepCount;
+  const type =
+    STEP_TYPE ??
+    KingstinctHealthKit?.HKQuantityTypeIdentifier?.stepCount ??
+    'HKQuantityTypeIdentifierStepCount';  // 完全なfallback
   const enableDelivery = KingstinctHealthKit.enableBackgroundDelivery;
   if (typeof enableDelivery !== 'function') return false;
 
@@ -184,7 +227,10 @@ export const startStepsBackgroundUpdates = async () => {
 export const stopStepsBackgroundUpdates = async () => {
   if (!hasModernHealthKit()) return false;
 
-  const type = STEP_TYPE || KingstinctHealthKit?.HKQuantityTypeIdentifier?.stepCount;
+  const type =
+    STEP_TYPE ??
+    KingstinctHealthKit?.HKQuantityTypeIdentifier?.stepCount ??
+    'HKQuantityTypeIdentifierStepCount';  // 完全なfallback
   const disableDelivery = KingstinctHealthKit.disableBackgroundDelivery || KingstinctHealthKit.disableAllBackgroundDelivery;
   if (typeof disableDelivery !== 'function') return false;
 
