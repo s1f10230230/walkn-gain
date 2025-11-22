@@ -16,6 +16,7 @@ export const TRANSLATIONS = {
       cancel: 'キャンセル',
       error: 'エラー',
       success: '成功',
+      skip: 'スキップ',
     },
     policy: {
       title: 'プライバシーポリシー',
@@ -28,6 +29,7 @@ export const TRANSLATIONS = {
             '歩数データ（デバイスのセンサーまたはヘルスケアアプリから取得）',
             '個人プロフィール情報（性別、年齢、身長、体重）',
             'アプリの設定情報（目標歩数、目標カロリー）',
+            'スキップ時：デフォルト設定（男性、30歳、170cm、65kg）を使用',
           ],
         },
         usage: {
@@ -114,8 +116,9 @@ export const TRANSLATIONS = {
     tabs: {
       home: 'ホーム',
       history: '履歴',
-      food: '食べ物',
       settings: '設定',
+      food: '食べたもの',
+      story: 'ストーリー',
     },
     settings: {
       privacyPolicy: 'プライバシーポリシー',
@@ -233,6 +236,7 @@ export const TRANSLATIONS = {
       },
   },
   onboarding: {
+      skipConfirm: 'オンボーディングをスキップしますか？\nデフォルト設定（男性、30歳、170cm、65kg）が適用されますが、後で設定画面から変更できます。',
       permissions: {
         title: 'より便利に使うために',
         subtitle: '以下の権限を許可すると、より多くの機能を利用できます',
@@ -359,7 +363,10 @@ export const TRANSLATIONS = {
         pedometerChecking: '歩数計: 確認中...'
       },
       modal: { selectDate: '日付を選択' },
+      modal: { selectDate: '日付を選択' },
       feedback: { title: '昨日のフィードバック', forDate: '{date}のフィードバック' },
+      futureDateAlert: '未来の日付は選択できません',
+      goalDenominator: '/ {goal} 歩',
     },
     history: {
       tabs: { week: '週', month: '月' },
@@ -466,6 +473,7 @@ export const TRANSLATIONS = {
       cancel: 'Cancel',
       error: 'Error',
       success: 'Success',
+      skip: 'Skip',
     },
     policy: {
       title: 'Privacy Policy',
@@ -478,6 +486,7 @@ export const TRANSLATIONS = {
             'Step data (from device sensors or health apps)',
             'Profile info (gender, age, height, weight)',
             'App settings (step goals, calorie goals)',
+            'When skipping: Default settings (Male, 30, 170cm, 65kg) are used',
           ],
         },
         usage: {
@@ -564,8 +573,9 @@ export const TRANSLATIONS = {
     tabs: {
       home: 'Home',
       history: 'History',
-      food: 'Foods',
       settings: 'Settings',
+      food: 'Food',
+      story: 'Story',
     },
     settings: {
       privacyPolicy: 'Privacy Policy',
@@ -683,6 +693,7 @@ export const TRANSLATIONS = {
       },
     },
     onboarding: {
+      skipConfirm: 'Skip onboarding?\nDefault settings (Male, 30, 170cm, 65kg) will be applied. You can change them later in Settings.',
       permissions: {
         title: 'Make it even better',
         subtitle: 'Grant these permissions to unlock more features',
@@ -790,16 +801,6 @@ export const TRANSLATIONS = {
       progress: { rate: 'Progress', remaining: 'Remaining' },
       a11y: {
         openCalendar: 'Open calendar',
-        prevWeek: 'Previous week',
-        nextWeek: 'Next week',
-        backToToday: 'Back to today',
-      },
-      backToToday: 'Today',
-      banner: { sensorUnavailable: 'Step data not available. Please check permissions.' },
-      chart: { hourlyDistribution: 'Hourly steps distribution' },
-      events: {
-        today: "Today's Schedule",
-        none: 'No events',
         moreCount: 'Plus {count} more',
       },
       food: { title: 'Food equivalents', seeAll: 'See all' },
@@ -1057,10 +1058,11 @@ export const TRANSLATIONS = {
       },
     },
     tabs: {
-      home: '首页',
+      home: '主页',
       history: '历史',
-      food: '食物',
       settings: '设置',
+      food: '食物',
+      story: '故事',
     },
     settings: {
       privacyPolicy: '隐私政策',
@@ -1305,6 +1307,8 @@ export const TRANSLATIONS = {
       },
       modal: { selectDate: '选择日期' },
       feedback: { title: '昨日的反馈', forDate: '{date}的反馈' },
+      futureDateAlert: '无法选择未来的日期',
+      goalDenominator: '/ {goal} 步',
     },
     history: {
       tabs: { week: '周', month: '月' },

@@ -377,6 +377,29 @@ const styles = StyleSheet.create({
   },
   hourlyDetailTooltipLabel: { fontSize: 12 },
   hourlyDetailTooltipValue: { fontSize: 13, fontWeight: "600" },
+  
+  // Date Navigation Styles (New)
+  dateNav: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dateNavButton: {
+    padding: 10,
+  },
+  dateNavArrow: {
+    fontSize: 24,
+    fontWeight: "600",
+  },
+  dateDisplay: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  disabledButton: {
+    opacity: 0.3,
+  },
 });
 
 export default styles;

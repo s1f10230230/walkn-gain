@@ -348,7 +348,6 @@ export default function HistoryScreen({ navigation }) {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* タブ切り替え */}
       <View style={[styles.tabContainer, { paddingTop: insets.top + 10, backgroundColor: theme.background }]}>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'week' && styles.activeTab, { backgroundColor: theme.card, borderColor: activeTab === 'week' ? theme.primary : 'transparent' }]}
@@ -373,7 +372,6 @@ export default function HistoryScreen({ navigation }) {
           style={styles.scrollView}
           contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
         >
-        {/* サマリー */}
         <View style={[styles.summaryContainer, { backgroundColor: theme.card }]}>
           <Text style={[styles.summaryTitle, { color: theme.text }]}>
             {activeTab === 'week' ? t('history.summary.titleWeek') : t('history.summary.titleMonth')}
@@ -416,10 +414,8 @@ export default function HistoryScreen({ navigation }) {
           </View>
         </View>
 
-        {/* グラフ */}
         {renderChart()}
 
-        {/* 日別データ */}
         <View style={[styles.dailyDataContainer, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('history.section.dailyData')}</Text>
           {historyData.map((dayData, index) => renderDayItem(dayData, index))}
@@ -428,6 +424,7 @@ export default function HistoryScreen({ navigation }) {
       </View>
     </View>
   );
+
 }
 
 const styles = StyleSheet.create({

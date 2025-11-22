@@ -169,6 +169,26 @@ export const initializeHealthKit = async (showAlert = false) => {
     }
     return false;
   }
+
+  // Health data が物理的に存在しないデバイス（Simulator 等）では即座に中断する
+  try {
+    let healthAvailable = true;
+    if (typeof KingstinctHealthKit?.isHealthDataAvailable === 'function') {
+      healthAvailable = !!KingstinctHealthKit.isHealthDataAvailable();
+    }
+    if (healthAvailable && typeof KingstinctHealthKit?.isHealthDataAvailableAsync === 'function') {
+      healthAvailable = !!(await KingstinctHealthKit.isHealthDataAvailableAsync());
+    }
+    if (!healthAvailable) {
+      if (showAlert) {
+        Alert.alert('HealthKit', 'このデバイスではヘルスケアデータにアクセスできません。');
+      }
+      return false;
+    }
+  } catch (availabilityError) {
+    console.warn('[healthKit] isHealthDataAvailable check failed:', availabilityError);
+  }
+
   try {
     await ensureAuthorized();
     return true;
@@ -400,18 +420,45 @@ export const importHistoricalData = async (daysBack = 30, onProgress = null) => 
  */
 export const syncPastDaysToStorage = async (daysBack = 7) => {
   const healthSyncEnabled = await getHealthSyncEnabled();
-  if (!healthSyncEnabled || !hasModernHealthKit()) return { synced: 0, skipped: true };
   const endDate = new Date();
   endDate.setHours(23, 59, 59, 999);
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - daysBack);
   startDate.setHours(0, 0, 0, 0);
 
-  try {
-    await ensureAuthorized();
-    const dayList = await getStepsInRange(startDate, endDate);
-    if (!Array.isArray(dayList) || !dayList.length) return { synced: 0, skipped: false };
+  let dayList = [];
+  let source = 'pedometer';
 
+  // 1. Try HealthKit if enabled
+  if (healthSyncEnabled && hasModernHealthKit()) {
+    try {
+      await ensureAuthorized();
+      const hkData = await getStepsInRange(startDate, endDate);
+      if (Array.isArray(hkData) && hkData.length > 0) {
+        dayList = hkData;
+        source = 'healthkit';
+      }
+    } catch (error) {
+      console.warn('[healthKit] syncPastDaysToStorage: HealthKit failed, falling back to Pedometer', error);
+    }
+  }
+
+  // 2. Fallback to Pedometer if HealthKit didn't yield results
+  if (dayList.length === 0) {
+    try {
+      const pedometerData = await getPedometerStepsInRange(startDate, endDate);
+      if (Array.isArray(pedometerData) && pedometerData.length > 0) {
+        dayList = pedometerData;
+        source = 'pedometer';
+      }
+    } catch (error) {
+      console.warn('[healthKit] syncPastDaysToStorage: Pedometer failed', error);
+    }
+  }
+
+  if (!Array.isArray(dayList) || !dayList.length) return { synced: 0, skipped: false };
+
+  try {
     const settings = await getSettings();
     const profile = await getUserProfile();
     const weight = Number(profile?.weight) || 65;
@@ -423,8 +470,17 @@ export const syncPastDaysToStorage = async (daysBack = 7) => {
       if (!day?.date) continue;
       const steps = Number(day.steps || 0);
       const existing = await getDailyData(day.date);
-      // 上書きはHK優先: HK>既存
-      if (existing?.steps && existing.steps >= steps) continue;
+      
+      // 上書き条件:
+      // 1. ソースがHealthKitなら常に優先 (HK > Existing)
+      // 2. ソースがPedometerなら、既存より多ければ更新 (Pedometer > Existing if larger)
+      if (source === 'healthkit') {
+        if (existing?.steps && existing.steps >= steps && existing.importedFromHealthKit) continue;
+      } else {
+        // Pedometer source
+        if (existing?.steps && existing.steps >= steps) continue;
+      }
+
       const calories = Math.round(calculateCalories(steps, weight));
       const distance = calculateDistance(steps, stride);
       const payload = {
@@ -434,13 +490,13 @@ export const syncPastDaysToStorage = async (daysBack = 7) => {
         calories,
         distance,
         goal,
-        importedFromHealthKit: true,
+        importedFromHealthKit: source === 'healthkit',
         importedAt: new Date().toISOString(),
       };
       await saveDailyData(day.date, payload);
       synced += 1;
     }
-    return { synced, skipped: false };
+    return { synced, skipped: false, source };
   } catch (error) {
     console.warn('[healthKit] syncPastDaysToStorage failed:', error);
     return { synced: 0, skipped: false, error: error?.message };

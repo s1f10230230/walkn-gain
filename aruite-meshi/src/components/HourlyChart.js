@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { calculateCalories, calculateDistance } from '../utils/calculations';
+import { getWeatherIcon } from '../utils/weather';
 
 export default function HourlyChart({
   styles,
@@ -13,10 +14,12 @@ export default function HourlyChart({
   setHourlyDetailTooltip,
   hourlyDetailTimerRef,
   hourlySteps,
+  hourlyWeather,
   profile,
   setChartWidth,
 }) {
   const labelHours = [0, 3, 6, 9, 12, 15, 18, 21];
+  const weatherHours = [0, 6, 12, 18]; // Display weather at 6-hour intervals
 
   const title = isToday(selectedDate)
     ? t('home.activity.today')
@@ -88,6 +91,20 @@ export default function HourlyChart({
             })()}
           </View>
               <View style={styles.chartArea}>
+                {/* Weather Icons Row */}
+                {hourlyWeather && hourlyWeather.length === 24 && (
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}>
+                    {weatherHours.map((hour) => {
+                      const weatherCode = hourlyWeather[hour];
+                      const icon = weatherCode !== null && weatherCode !== undefined ? getWeatherIcon(weatherCode) : '';
+                      return (
+                        <View key={hour} style={{ flex: 1, alignItems: 'center' }}>
+                          <Text style={{ fontSize: 18 }}>{icon}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
                 <View style={styles.chart} onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}>
                 {hourlySteps.map((count, hour) => {
                   const heightPct = (count / maxSteps) * 100;

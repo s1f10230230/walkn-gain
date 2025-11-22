@@ -87,6 +87,20 @@ export const formatDate = (dateString) => {
   return `${year}年${month}月${day}日`;
 };
 
+// 月/日形式でフォーマット (例: 11/22)
+export const formatMonthDay = (date, locale = 'ja') => {
+  const d = new Date(date);
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  
+  if (locale === 'en') {
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${monthNames[d.getMonth()]} ${day}`;
+  }
+  
+  return `${month}/${day}`;
+};
+
 // 曜日を取得
 export const getDayOfWeek = (dateString) => {
   const date = new Date(dateString);

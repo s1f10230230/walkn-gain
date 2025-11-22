@@ -151,6 +151,26 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
               </Text>
             )}
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={navigateToCalorieGoal}
+            disabled={isLoading}
+          >
+            <Text style={[styles.secondaryButtonText, { color: theme.textSecondary }]}>
+              {t('onboarding.health.skip') || 'スキップ'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+            disabled={isLoading}
+          >
+            <Text style={[styles.backButtonText, { color: theme.textSecondary }]}>
+              {t('common.back') || '戻る'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </View>
@@ -236,5 +256,24 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  secondaryButton: {
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  secondaryButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  backButton: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  backButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

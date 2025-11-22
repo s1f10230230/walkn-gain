@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   useColorScheme,
+  Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../../i18n/I18nProvider';
@@ -24,6 +25,56 @@ export default function ProfileInputScreen({ navigation }) {
   const [age, setAge] = useState('');
   const [height, setHeight] = useState('');
   const [weight, setWeight] = useState('');
+
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
+  const maleScale = useRef(new Animated.Value(1)).current;
+  const femaleScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  const animateGenderSelection = (selectedGender) => {
+    const targetScale = selectedGender === 'male' ? maleScale : femaleScale;
+    const otherScale = selectedGender === 'male' ? femaleScale : maleScale;
+
+    Animated.sequence([
+      Animated.spring(targetScale, {
+        toValue: 0.95,
+        useNativeDriver: true,
+      }),
+      Animated.spring(targetScale, {
+        toValue: 1,
+        friction: 3,
+        tension: 40,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    
+    // Reset other
+    Animated.spring(otherScale, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleGenderSelect = (g) => {
+    setGender(g);
+    animateGenderSelection(g);
+  };
 
   const handleNext = () => {
     // バリデーション
@@ -65,124 +116,139 @@ export default function ProfileInputScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={[styles.title, { color: theme.text }]}>{t('onboarding.profile.title')}</Text>
-        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{t('onboarding.profile.subtitle')}</Text>
+        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+          <Text style={[styles.title, { color: theme.text }]}>{t('onboarding.profile.title')}</Text>
+          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{t('onboarding.profile.subtitle')}</Text>
 
-        {/* 性別選択 */}
-        <View style={styles.section}>
-          <Text style={[styles.label, { color: theme.text }]}>{t('onboarding.profile.gender')}</Text>
-          <View style={styles.genderContainer}>
-            <TouchableOpacity
-              style={[
-                styles.genderButton,
-                { backgroundColor: theme.card, borderColor: theme.border },
-                gender === 'male' && (theme.isDark ? { backgroundColor: '#2A1B14', borderColor: theme.primary } : { backgroundColor: '#FFF3E0', borderColor: theme.primary }),
-              ]}
-              onPress={() => setGender('male')}
-            >
-              <Text
-                style={[
-                  styles.genderEmoji,
-                  gender === 'male' && styles.genderEmojiActive,
-                ]}
+          {/* 性別選択 */}
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: theme.text }]}>{t('onboarding.profile.gender')}</Text>
+            <View style={styles.genderContainer}>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => handleGenderSelect('male')}
+                style={{ flex: 1 }}
               >
-                👨
-              </Text>
-              <Text
-                style={[
-                  styles.genderText,
-                  { color: theme.textSecondary },
-                  gender === 'male' && { color: theme.primary },
-                ]}
+                <Animated.View
+                  style={[
+                    styles.genderButton,
+                    { backgroundColor: theme.card, borderColor: theme.border, transform: [{ scale: maleScale }] },
+                    gender === 'male' && (theme.isDark ? { backgroundColor: '#2A1B14', borderColor: theme.primary } : { backgroundColor: '#FFF3E0', borderColor: theme.primary }),
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.genderEmoji,
+                      gender === 'male' && styles.genderEmojiActive,
+                    ]}
+                  >
+                    👨
+                  </Text>
+                  <Text
+                    style={[
+                      styles.genderText,
+                      { color: theme.textSecondary },
+                      gender === 'male' && { color: theme.primary },
+                    ]}
+                  >
+                    {t('onboarding.profile.male')}
+                  </Text>
+                </Animated.View>
+              </TouchableOpacity>
+              
+              <View style={{ width: 10 }} />
+
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => handleGenderSelect('female')}
+                style={{ flex: 1 }}
               >
-                {t('onboarding.profile.male')}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.genderButton,
-                { backgroundColor: theme.card, borderColor: theme.border },
-                gender === 'female' && (theme.isDark ? { backgroundColor: '#2A1B14', borderColor: theme.primary } : { backgroundColor: '#FFF3E0', borderColor: theme.primary }),
-              ]}
-              onPress={() => setGender('female')}
-            >
-              <Text
-                style={[
-                  styles.genderEmoji,
-                  gender === 'female' && styles.genderEmojiActive,
-                ]}
-              >
-                👩
-              </Text>
-              <Text
-                style={[
-                  styles.genderText,
-                  { color: theme.textSecondary },
-                  gender === 'female' && { color: theme.primary },
-                ]}
-              >
-                {t('onboarding.profile.female')}
-              </Text>
-            </TouchableOpacity>
+                <Animated.View
+                  style={[
+                    styles.genderButton,
+                    { backgroundColor: theme.card, borderColor: theme.border, transform: [{ scale: femaleScale }] },
+                    gender === 'female' && (theme.isDark ? { backgroundColor: '#2A1B14', borderColor: theme.primary } : { backgroundColor: '#FFF3E0', borderColor: theme.primary }),
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.genderEmoji,
+                      gender === 'female' && styles.genderEmojiActive,
+                    ]}
+                  >
+                    👩
+                  </Text>
+                  <Text
+                    style={[
+                      styles.genderText,
+                      { color: theme.textSecondary },
+                      gender === 'female' && { color: theme.primary },
+                    ]}
+                  >
+                    {t('onboarding.profile.female')}
+                  </Text>
+                </Animated.View>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
 
-        {/* 年齢 */}
-        <View style={styles.section}>
-          <Text style={[styles.label, { color: theme.text }]}>{t('onboarding.profile.age')}</Text>
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={[styles.input, { color: theme.text }]}
-              placeholder="25"
-              placeholderTextColor={theme.textSecondary}
-              value={age}
-              onChangeText={setAge}
-              keyboardType="numeric"
-              maxLength={3}
-              returnKeyType="next"
-            />
-            <Text style={[styles.unit, { color: theme.textSecondary }]}>{t('units.years')}</Text>
+          {/* 年齢 */}
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: theme.text }]}>{t('onboarding.profile.age')}</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={[styles.input, { color: theme.text }]}
+                placeholder="25"
+                placeholderTextColor={theme.textSecondary}
+                value={age}
+                onChangeText={setAge}
+                keyboardType="numeric"
+                maxLength={3}
+                returnKeyType="next"
+              />
+              <Text style={[styles.unit, { color: theme.textSecondary }]}>{t('units.years')}</Text>
+            </View>
           </View>
-        </View>
 
-        {/* 身長 */}
-        <View style={styles.section}>
-          <Text style={[styles.label, { color: theme.text }]}>{t('onboarding.profile.height')}</Text>
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={[styles.input, { color: theme.text }]}
-              placeholder="170"
-              placeholderTextColor={theme.textSecondary}
-              value={height}
-              onChangeText={setHeight}
-              keyboardType="numeric"
-              maxLength={3}
-              returnKeyType="next"
-            />
-            <Text style={[styles.unit, { color: theme.textSecondary }]}>{t('units.cm')}</Text>
+          {/* 身長 */}
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: theme.text }]}>{t('onboarding.profile.height')}</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={[styles.input, { color: theme.text }]}
+                placeholder="170"
+                placeholderTextColor={theme.textSecondary}
+                value={height}
+                onChangeText={setHeight}
+                keyboardType="numeric"
+                maxLength={3}
+                returnKeyType="next"
+              />
+              <Text style={[styles.unit, { color: theme.textSecondary }]}>{t('units.cm')}</Text>
+            </View>
           </View>
-        </View>
 
-        {/* 体重 */}
-        <View style={styles.section}>
-          <Text style={[styles.label, { color: theme.text }]}>{t('onboarding.profile.weight')}</Text>
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={[styles.input, { color: theme.text }]}
-              placeholder="65"
-              placeholderTextColor={theme.textSecondary}
-              value={weight}
-              onChangeText={setWeight}
-              keyboardType="numeric"
-              maxLength={3}
-              returnKeyType="done"
-            />
-            <Text style={[styles.unit, { color: theme.textSecondary }]}>{t('units.kg')}</Text>
+          {/* 体重 */}
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: theme.text }]}>{t('onboarding.profile.weight')}</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={[styles.input, { color: theme.text }]}
+                placeholder="65"
+                placeholderTextColor={theme.textSecondary}
+                value={weight}
+                onChangeText={setWeight}
+                keyboardType="numeric"
+                maxLength={3}
+                returnKeyType="done"
+              />
+              <Text style={[styles.unit, { color: theme.textSecondary }]}>{t('units.kg')}</Text>
+            </View>
           </View>
-        </View>
 
-        {/* キーボード表示時のスペース確保 */}
-        <View style={{ height: 100 }} />
+          {/* キーボード表示時のスペース確保 */}
+          <View style={{ height: 100 }} />
+        </Animated.View>
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
@@ -230,12 +296,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   genderButton: {
-    flex: 1,
     borderRadius: 16,
     padding: 20,
-    marginHorizontal: 5,
     alignItems: 'center',
     borderWidth: 2,
+    width: '100%',
   },
   genderEmoji: {
     fontSize: 50,

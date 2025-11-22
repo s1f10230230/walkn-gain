@@ -72,7 +72,7 @@ export default function GoalStepsScreen({ navigation, route }) {
         </View>
 
         <View style={styles.inputSection}>
-          <View style={styles.inputContainer}>
+          <View style={[styles.inputContainer, { backgroundColor: theme.card, borderColor: theme.primary, borderWidth: 2 }]}>
             <TextInput
               style={[styles.input, { color: theme.text }]}
               value={goalSteps}
@@ -82,11 +82,21 @@ export default function GoalStepsScreen({ navigation, route }) {
               placeholderTextColor={theme.textSecondary}
             />
             <Text style={[styles.unit, { color: theme.textSecondary }]}>{t('onboarding.goal.unitSteps')}</Text>
+            <View style={styles.editIconContainer}>
+              <Text style={{ fontSize: 20 }}>✏️</Text>
+            </View>
           </View>
 
-          <TouchableOpacity style={[styles.recommendButton, { backgroundColor: theme.accent }]} onPress={applyRecommended}>
+          <TouchableOpacity 
+            style={[styles.recommendButton, { backgroundColor: theme.accent, shadowColor: theme.accent }]} 
+            onPress={applyRecommended}
+            activeOpacity={0.8}
+          >
             <Text style={styles.recommendButtonText}>
               {`✨ ${t('onboarding.goal.recommended', { steps: formatNumber(recommendedSteps) })}`}
+            </Text>
+            <Text style={styles.recommendSubText}>
+              {t('onboarding.goal.tapToApply') || 'Tap to apply'}
             </Text>
           </TouchableOpacity>
 
@@ -132,12 +142,34 @@ const styles = StyleSheet.create({
   },
   input: { flex: 1, fontSize: 48, fontWeight: '700', textAlign: 'center' },
   unit: { fontSize: 24, fontWeight: '600', marginLeft: 8 },
-  recommendButton: { paddingVertical: 16, paddingHorizontal: 24, borderRadius: 12, alignItems: 'center', marginBottom: 24 },
+  editIconContainer: {
+    position: 'absolute',
+    right: 16,
+    top: 16,
+    opacity: 0.5,
+  },
+  recommendButton: { 
+    paddingVertical: 16, 
+    paddingHorizontal: 24, 
+    borderRadius: 16, 
+    alignItems: 'center', 
+    marginBottom: 24,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
   recommendButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
     letterSpacing: 0.3,
+    marginBottom: 4,
+  },
+  recommendSubText: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 12,
+    fontWeight: '600',
   },
   infoBox: { padding: 16, borderRadius: 12, borderLeftWidth: 4 },
   infoText: { fontSize: 14, lineHeight: 20 },

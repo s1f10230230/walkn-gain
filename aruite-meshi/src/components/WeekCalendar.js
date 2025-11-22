@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Animated, Alert } from 'react-native';
 import * as Progress from 'react-native-progress';
 import { toDateKeyLocal } from '../utils/calculations';
 
@@ -54,18 +54,24 @@ export default function WeekCalendar({
           return (
             <Animated.View key={index} style={{ transform: [{ scale }, { translateY }], opacity }}>
               <TouchableOpacity
-                onPress={() => !future && onSelectDate(date)}
+                onPress={() => {
+                  if (future) {
+                    Alert.alert("", t("home.futureDateAlert"));
+                    return;
+                  }
+                  onSelectDate(date);
+                }}
                 style={[
                   styles.calendarItem,
                   selected && styles.calendarItemSelected,
                   today && !selected && { borderWidth: 2, borderColor: theme.isDark ? '#2DD4BF' : '#14B8A6' },
                   {
-                    backgroundColor: theme.card,
+                    backgroundColor: selected ? (theme.isDark ? '#334155' : '#E2E8F0') : theme.card, // 選択時の背景色を少し濃く
                     borderWidth: selected ? 2 : today ? 2 : 0,
                     borderColor: selected ? '#FF9E57' : today ? (theme.isDark ? '#2DD4BF' : '#14B8A6') : 'transparent',
                   },
                 ]}
-                disabled={future}
+                disabled={false} // 未来の日付もタップ可能にしてアラートを表示
               >
                 <View style={{ alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
                   {(() => {

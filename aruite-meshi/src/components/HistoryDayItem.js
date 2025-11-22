@@ -10,6 +10,7 @@ import {
 import { getTheme } from "../utils/theme";
 import { getEventsForDate, getEventsSummary } from "../utils/calendar";
 import { getDayNote } from "../utils/dayNotes";
+import { getWeatherIcon } from "../utils/weather";
 
 const { width } = Dimensions.get("window");
 
@@ -111,6 +112,16 @@ export default function HistoryDayItem({
             numberOfLines={1}
           >
             {getEventsSummary(events)}
+          </Text>
+        </View>
+      )}
+
+      {/* Weather Info (New) */}
+      {dayData.weather && (
+        <View style={styles.dayInfoRow}>
+          <Text style={styles.dayInfoIcon}>{getWeatherIcon(dayData.weather.code)}</Text>
+          <Text style={[styles.dayInfoText, { color: theme.textSecondary }]}>
+            {Math.round(dayData.weather.maxTemp)}° / {Math.round(dayData.weather.minTemp)}°
           </Text>
         </View>
       )}

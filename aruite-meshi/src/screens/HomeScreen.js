@@ -20,6 +20,7 @@ import {
   PanResponder,
   RefreshControl,
   Image,
+  Platform,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -86,6 +87,7 @@ import { registerBackgroundStepsTask } from "../tasks/backgroundStepsTask";
 import { CalendarIcon } from "../components/SettingsIcons";
 import { getEventsForDate, getEventsSummary } from "../utils/calendar";
 import TodayNote from "../components/TodayNote";
+import DiaryModal from "../components/DiaryModal";
 import RecentNotes from "../components/RecentNotes";
 import { hasNote } from "../utils/dayNotes";
 import HeaderStats from "../components/HeaderStats";
@@ -125,12 +127,46 @@ const LAST_SELECTED_DATE_KEY = "ui_last_selected_date";
 // 初回起動時にPedometerで過去データを取り込んだかのフラグ
 const PEDOMETER_INITIAL_IMPORT_KEY = "pedometer_initial_import_v1";
 
+import {
+  fetchWeatherForLocation,
+  getWeatherIcon,
+  fetchWeatherHistory,
+  fetchHourlyWeather,
+  getWeatherSummary,
+} from "../utils/weather";
+
 export default function HomeScreen({ navigation, route }) {
   // RecentNotesコンポーネントへの参照
   const recentNotesRef = useRef(null);
 
   // 日付関連（週単位のスライドウィンドウ）
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [weather, setWeather] = useState(null); // New Weather State
+  const [hourlyWeather, setHourlyWeather] = useState(Array(24).fill(null)); // Hourly weather codes
+
+  // Weather History Sync (One-time on mount)
+  useEffect(() => {
+    const syncWeather = async () => {
+      const history = await fetchWeatherHistory(30);
+      if (history.length > 0) {
+        // Save each day to storage
+        for (const item of history) {
+          const stored = await getDailyData(item.date);
+          // Only update if weather is missing or we want to overwrite
+          if (stored) {
+             await saveDailyData(item.date, { ...stored, weather: item.weather });
+          } else {
+             // If no step data exists for that day, we might not want to create a partial record,
+             // OR we can create it with 0 steps just to hold weather.
+             // For now, let's only attach to existing records or create if missing (safe).
+             await saveDailyData(item.date, { date: item.date, steps: 0, calories: 0, ...item.weather, weather: item.weather });
+          }
+        }
+        console.log('Weather history synced:', history.length, 'days');
+      }
+    };
+    syncWeather();
+  }, []);
   const [weekStartDate, setWeekStartDate] = useState(() => {
     // 今週の月曜日を取得
     const today = new Date();
@@ -212,6 +248,20 @@ export default function HomeScreen({ navigation, route }) {
   const appState = useRef(AppState.currentState);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const bumpAnim = useRef(new Animated.Value(1)).current; // 値更新時のワンショット弾む演出
+  const arrowBounceAnim = useRef(new Animated.Value(0)).current; // 矢印のバウンスアニメーション
+
+  // 初回起動時に矢印を一度だけバウンスさせる
+  useEffect(() => {
+    const bounce = Animated.sequence([
+      Animated.delay(1000),
+      Animated.timing(arrowBounceAnim, { toValue: 10, duration: 300, useNativeDriver: true }),
+      Animated.timing(arrowBounceAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+      Animated.timing(arrowBounceAnim, { toValue: 5, duration: 200, useNativeDriver: true }),
+      Animated.timing(arrowBounceAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]);
+    bounce.start();
+  }, []);
+
   // 円アニメ用（近接パルス/値更新バンプ）のみ維持
   const pulseLoopRef = useRef(null);
   const [dailyFeedback, setDailyFeedback] = useState("");
@@ -219,13 +269,25 @@ export default function HomeScreen({ navigation, route }) {
   const selectedDateRef = useRef(selectedDate); // PanResponder内で最新日付を参照
 
   // 起動時に直近7日をHealthKit優先でストレージに同期
+  // 起動時に直近7日をHealthKit優先でストレージに同期（一度だけ実行）
+  const hasSyncedRef = useRef(false);
   useEffect(() => {
-    (async () => {
-      try {
-        await syncPastDaysToStorage(7);
-      } catch (_) {}
-    })();
-  }, []);
+    if (calendarDates.length > 0 && !hasSyncedRef.current) {
+      const runSync = async () => {
+        hasSyncedRef.current = true;
+        try {
+          console.log('[HomeScreen] Starting initial sync...');
+          const result = await syncPastDaysToStorage(7);
+          console.log('[HomeScreen] Initial sync result:', result);
+          // 同期完了後にカレンダーデータを再取得（現在の表示週で）
+          loadWeeklyData(calendarDates);
+        } catch (e) {
+          console.error('[HomeScreen] Initial sync failed:', e);
+        }
+      };
+      runSync();
+    }
+  }, [calendarDates]);
 
   const loadFeedbackMessage = useCallback(
     async (targetDate) => {
@@ -596,9 +658,9 @@ export default function HomeScreen({ navigation, route }) {
     try {
       const token = ++weekLoadTokenRef.current;
       const userProfile = await getUserProfile();
-      const start = new Date(dates[dates.length - 1]);
+      const start = new Date(dates[0]);
       start.setHours(0, 0, 0, 0);
-      const end = new Date(dates[0]);
+      const end = new Date(dates[dates.length - 1]);
       end.setHours(23, 59, 59, 999);
       const list = await getStepsInRange(start, end);
       if (weekLoadTokenRef.current !== token) return;
@@ -611,6 +673,7 @@ export default function HomeScreen({ navigation, route }) {
           calories: calculateCalories(stepsVal, userProfile.weight),
         };
       }
+      console.log('[HomeScreen] loadWeeklyData loaded:', Object.keys(data).length, 'days');
       setWeeklyData(data);
     } catch (error) {
       console.error("Error loading weekly data:", error);
@@ -831,6 +894,25 @@ export default function HomeScreen({ navigation, route }) {
 
       // 時間帯別のデータを取得（キャッシュ優先、なければPedometerで取得）
       try {
+        // Weather Logic
+        const storedData = await getDailyData(dateKey);
+        if (storedData && storedData.weather) {
+          setWeather(storedData.weather);
+        } else if (isToday(currentSelected)) {
+          // Fetch fresh weather for today
+          const freshWeather = await fetchWeatherForLocation();
+          if (freshWeather) {
+            setWeather(freshWeather);
+            // Save to storage (merge with existing)
+            const currentData = storedData || { date: dateKey, steps: daySteps, calories: dayCalories };
+            await saveDailyData(dateKey, { ...currentData, weather: freshWeather });
+          } else {
+            setWeather(null);
+          }
+        } else {
+          setWeather(null);
+        }
+
         // まずキャッシュを確認
         const cachedHourly = await getHourlyStepsForDate(dateKey);
         if (cachedHourly && cachedHourly.some((val) => val > 0)) {
@@ -865,6 +947,15 @@ export default function HomeScreen({ navigation, route }) {
           try {
             await saveHourlyStepsForDate(dateKey, hourlyData);
           } catch (_) {}
+        }
+
+        // Fetch hourly weather for the selected date
+        try {
+          const hourlyWeatherData = await fetchHourlyWeather(currentSelected);
+          setHourlyWeather(hourlyWeatherData);
+        } catch (error) {
+          console.warn("Failed to load hourly weather:", error);
+          setHourlyWeather(Array(24).fill(null));
         }
       } catch (error) {
         console.warn("Failed to load hourly steps:", error);
@@ -1642,52 +1733,81 @@ export default function HomeScreen({ navigation, route }) {
         <View style={[styles.dateNavigation, { paddingTop: insets.top + 20 }]}>
           {/* トロフィー数とストリーク（縦2行） */}
           <View
-            style={{ position: "absolute", left: 16, top: insets.top + 16 }}
+            style={{ position: "absolute", left: 20, top: insets.top + 10 }}
           >
+            {/* Free/Pro Badge - Subtle & Clickable */}
+            <TouchableOpacity 
+              style={{ 
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: 'rgba(0,0,0,0.05)', 
+                paddingHorizontal: 8, 
+                paddingVertical: 4, 
+                borderRadius: 12, 
+                alignSelf: 'flex-start',
+                marginBottom: 4
+              }}
+            >
+              <Text style={{ fontSize: 10, fontWeight: '700', color: theme.text, opacity: 0.7, letterSpacing: 0.5 }}>
+                FREE
+              </Text>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: theme.text, opacity: 0.4, marginLeft: 2 }}>
+                {'>'}
+              </Text>
+            </TouchableOpacity>
+
             <HeaderStats
               totalTrophies={totalTrophies}
               currentStreak={currentStreak}
               isCalculating={isCalculatingStats}
               theme={theme}
             />
+            {/* Weather Summary Badge */}
+            {hourlyWeather && hourlyWeather.length === 24 && weather && (() => {
+              const summary = getWeatherSummary(hourlyWeather);
+              return summary.icon && summary.icon !== '❓' ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, backgroundColor: theme.card, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: theme.text, marginRight: 6 }}>
+                    {summary.icon}
+                  </Text>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: theme.textSecondary }}>
+                    {Math.round(weather.maxTemp)}° / {Math.round(weather.minTemp)}°
+                  </Text>
+                </View>
+              ) : null;
+            })()}
           </View>
 
+        {/* 日付ナビゲーション */}
+        <View style={[styles.dateNav, { marginTop: 10 }]}>
           <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel={t("home.a11y.prevWeek")}
-            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-            onPress={() => changeWeek(-1)}
-            style={[styles.navButton, { paddingHorizontal: 8 }]}
+            onPress={() => changeDate(-1)}
+            style={styles.dateNavButton}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >
-            <Text
-              style={[
-                styles.navButtonText,
-                { color: theme.text, fontSize: 16 },
-              ]}
-            >
-              ◀
+            <Animated.Text style={[styles.dateNavArrow, { color: theme.text, transform: [{ translateX: arrowBounceAnim.interpolate({ inputRange: [0, 10], outputRange: [0, -5] }) }] }]}>◀</Animated.Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setShowCalendarModal(true)}
+            style={styles.dateDisplay}
+          >
+            <Text style={[styles.dateText, { color: theme.text }]}>
+              {formatMonthDayHelper(selectedDate, locale)}
             </Text>
           </TouchableOpacity>
-          <Text style={[styles.dateText, { color: theme.text }]}>
-            {i18nFormatWeekRange(weekStartDate)}
-          </Text>
           <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel={t("home.a11y.nextWeek")}
-            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-            onPress={() => changeWeek(1)}
-            style={[styles.navButton, { paddingHorizontal: 8 }]}
+            onPress={() => changeDate(1)}
+            style={[
+              styles.dateNavButton,
+              isFuture(selectedDate) && styles.disabledButton,
+            ]}
+            disabled={isFuture(selectedDate)}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >
-            <Text
-              style={[
-                styles.navButtonText,
-                { color: theme.text, fontSize: 16 },
-              ]}
-            >
-              ▶
-            </Text>
+            <Animated.Text style={[styles.dateNavArrow, { color: isFuture(selectedDate) ? theme.textTertiary : theme.text, transform: [{ translateX: arrowBounceAnim.interpolate({ inputRange: [0, 10], outputRange: [0, 5] }) }] }]}>▶</Animated.Text>
           </TouchableOpacity>
         </View>
+      </View>
 
         {/* 今日へ戻るチップ（右利き向けに右寄せ） */}
         {/* 配置: 横スクロールの週カレンダーの直下に表示 */}
@@ -1923,17 +2043,16 @@ export default function HomeScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
 
-          {/* Share CTA */}
-          <View
-            style={{
-              alignItems: "flex-end",
-              paddingHorizontal: 20,
-              marginTop: 8,
-              marginBottom: 8,
-              zIndex: 10,
-              position: "relative",
-            }}
-          >
+          {/* Action Row: Finger & ShareCTA */}
+          {/* Action Row: Finger & ShareCTA */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', paddingHorizontal: 20, marginTop: 10, marginBottom: 12, zIndex: 10 }}>
+            {/* Finger Icon */}
+            <Image
+              source={require("../../assets/finger.png")}
+              style={{ width: 60, height: 60, resizeMode: 'contain' }}
+            />
+
+            {/* Share CTA */}
             <ShareCTA
               selectedDate={selectedDate}
               steps={steps}
@@ -1944,32 +2063,33 @@ export default function HomeScreen({ navigation, route }) {
             />
           </View>
 
-          {dailyFeedback ? (
-            <View style={styles.feedbackWrapper}>
-              <View style={styles.feedbackPointerContainer}>
-                <Image
-                  source={require("../../assets/finger.png")}
-                  style={styles.feedbackPointerImage}
-                  resizeMode="contain"
-                />
-              </View>
-              <View
-                style={[
-                  styles.feedbackCard,
-                  { backgroundColor: theme.card, borderColor: theme.border },
-                ]}
-              >
-                <Text
-                  style={[styles.feedbackLabel, { color: theme.textSecondary }]}
-                >
-                  {feedbackTitle}
-                </Text>
-                <Text style={[styles.feedbackMessage, { color: theme.text }]}>
+          {/* Daily Feedback Message */}
+          {dailyFeedback && (
+            <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
+              <View style={{
+                backgroundColor: theme.card,
+                borderRadius: 16,
+                padding: 16,
+                shadowColor: theme.shadow,
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.05,
+                shadowRadius: 8,
+                elevation: 2,
+                borderWidth: 1,
+                borderColor: theme.border,
+              }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 16, marginRight: 6 }}>💡</Text>
+                  <Text style={{ fontSize: 13, color: theme.textSecondary, fontWeight: '600' }}>
+                    昨日のフィードバック
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 14, lineHeight: 22, color: theme.text, fontWeight: '500' }}>
                   {dailyFeedback}
                 </Text>
               </View>
             </View>
-          ) : null}
+          )}
 
           {/* Stats カード（タブ切替） */}
           <StatsCards
@@ -2020,6 +2140,7 @@ export default function HomeScreen({ navigation, route }) {
             setHourlyDetailTooltip={setHourlyDetailTooltip}
             hourlyDetailTimerRef={hourlyDetailTimerRef}
             hourlySteps={hourlySteps}
+            hourlyWeather={hourlyWeather}
             profile={profile}
             setChartWidth={setChartWidth}
           />
@@ -2145,878 +2266,15 @@ export default function HomeScreen({ navigation, route }) {
           </View>
         )}
 
-        {/* カレンダーモーダル */}
-        <Modal
+        {/* Diary Modal */}
+        <DiaryModal
           visible={showCalendarModal}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => setShowCalendarModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View
-              style={[styles.modalContent, { backgroundColor: theme.card }]}
-            >
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>
-                  {t("home.modal.selectDate")}
-                </Text>
-                <TouchableOpacity onPress={() => setShowCalendarModal(false)}>
-                  <Text style={[styles.modalClose, { color: theme.text }]}>
-                    ✕
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* 月切替 */}
-              <View style={styles.monthSwitcher}>
-                <TouchableOpacity
-                  accessibilityRole="button"
-                  hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-                  style={styles.navButton}
-                  onPress={async () => {
-                    const prev = new Date(calendarMonth);
-                    prev.setMonth(calendarMonth.getMonth() - 1);
-                    prev.setDate(1);
-                    prev.setHours(0, 0, 0, 0);
-                    setCalendarMonth(prev);
-                    await loadMonthlyData(prev);
-                    // 月のすべての日付のコメント有無をチェック
-                    const year = prev.getFullYear();
-                    const month = prev.getMonth();
-                    const daysInMonth = new Date(year, month + 1, 0).getDate();
-                    const map = {};
-                    for (let day = 1; day <= daysInMonth; day++) {
-                      const date = new Date(year, month, day);
-                      const dateKey = toDateKeyLocal(date);
-                      map[dateKey] = await hasNote(dateKey);
-                    }
-                    setNotesMap((prev) => ({ ...prev, ...map }));
-                  }}
-                >
-                  <Text style={[styles.navButtonText, { color: theme.text }]}>
-                    ◀
-                  </Text>
-                </TouchableOpacity>
-                <Text style={[styles.dateText, { color: theme.text }]}>
-                  {formatMonthYear(calendarMonth)}
-                </Text>
-                <TouchableOpacity
-                  accessibilityRole="button"
-                  hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-                  style={styles.navButton}
-                  onPress={async () => {
-                    const next = new Date(calendarMonth);
-                    next.setMonth(calendarMonth.getMonth() + 1);
-                    next.setDate(1);
-                    next.setHours(0, 0, 0, 0);
-                    setCalendarMonth(next);
-                    await loadMonthlyData(next);
-                    // 月のすべての日付のコメント有無をチェック
-                    const year = next.getFullYear();
-                    const month = next.getMonth();
-                    const daysInMonth = new Date(year, month + 1, 0).getDate();
-                    const map = {};
-                    for (let day = 1; day <= daysInMonth; day++) {
-                      const date = new Date(year, month, day);
-                      const dateKey = toDateKeyLocal(date);
-                      map[dateKey] = await hasNote(dateKey);
-                    }
-                    setNotesMap((prev) => ({ ...prev, ...map }));
-                  }}
-                >
-                  <Text style={[styles.navButtonText, { color: theme.text }]}>
-                    ▶
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* 月カレンダーグリッド */}
-              <View style={styles.calendarGrid}>
-                <View style={styles.weekdayRow}>
-                  {(() => {
-                    const base = t("weekdaysShort") || [
-                      "日",
-                      "月",
-                      "火",
-                      "水",
-                      "木",
-                      "金",
-                      "土",
-                    ];
-                    const firstDow = locale === "en" ? 0 : 1;
-                    const ordered = [
-                      ...base.slice(firstDow),
-                      ...base.slice(0, firstDow),
-                    ];
-                    return ordered.map((day, i) => (
-                      <Text
-                        key={i}
-                        style={[
-                          styles.weekdayText,
-                          { color: theme.textSecondary },
-                        ]}
-                      >
-                        {day}
-                      </Text>
-                    ));
-                  })()}
-                </View>
-
-                {(() => {
-                  const today = new Date();
-                  const base = calendarMonth;
-                  const year = base.getFullYear();
-                  const month = base.getMonth();
-                  const firstDay = new Date(year, month, 1);
-                  const lastDay = new Date(year, month + 1, 0);
-                  const daysInMonth = lastDay.getDate();
-                  const startDayOfWeek = firstDay.getDay();
-                  const firstDow = locale === "en" ? 0 : 1;
-
-                  const days = [];
-                  // 空白セル（週頭に合わせてオフセット）
-                  const padding = (startDayOfWeek - firstDow + 7) % 7;
-                  for (let i = 0; i < padding; i++) {
-                    days.push(
-                      <View key={`empty-${i}`} style={styles.calendarDay} />
-                    );
-                  }
-
-                  // 日付セル
-                  for (let day = 1; day <= daysInMonth; day++) {
-                    const date = new Date(year, month, day);
-                    const isSelected =
-                      date.toDateString() === selectedDate.toDateString();
-                    const isTodayDate =
-                      date.toDateString() === today.toDateString();
-                    const isFutureDate = date > today;
-                    const dateKey = toDateKeyLocal(date);
-                    const dayData = monthlyData[dateKey];
-
-                    days.push(
-                      <TouchableOpacity
-                        key={day}
-                        style={[
-                          styles.calendarModalDayCell,
-                          // 目標達成時の背景色（選択中でも維持）
-                          !isFutureDate &&
-                            dayData &&
-                            dayData.steps >= goal && {
-                              backgroundColor: theme.isDark
-                                ? "#402820"
-                                : "#A0EFFF",
-                            },
-                          // 選択中（背景色は上書きせず、枠だけ追加）
-                          isSelected && {
-                            borderWidth: 2,
-                            borderColor: "#FF9E57",
-                          },
-                          // 今日（選択中でない場合）
-                          isTodayDate &&
-                            !isSelected && {
-                              borderWidth: 2,
-                              borderColor: theme.primary,
-                            },
-                        ]}
-                        onPress={() => {
-                          if (!isFutureDate) {
-                            setSelectedDate(date);
-                            // 選択した日付が現在の週に含まれていない場合、週を移動
-                            const dayDiff =
-                              date.getDay() === 0 ? -6 : 1 - date.getDay();
-                            const newMonday = new Date(date);
-                            newMonday.setDate(date.getDate() + dayDiff);
-                            newMonday.setHours(0, 0, 0, 0);
-                            setWeekStartDate(newMonday);
-                            setShowCalendarModal(false);
-                          }
-                        }}
-                        disabled={isFutureDate}
-                      >
-                        <View style={{ position: "relative" }}>
-                          <Text
-                            style={[
-                              styles.calendarModalDayText,
-                              isSelected && {
-                                color: theme.isDark ? "#EAF7EF" : "#333333",
-                                fontWeight: "700",
-                              },
-                              isFutureDate && { color: theme.textTertiary },
-                              !isSelected &&
-                                !isFutureDate && { color: theme.text },
-                            ]}
-                          >
-                            {day}
-                          </Text>
-                          {/* 目標達成トロフィー */}
-                          {!isFutureDate &&
-                            dayData &&
-                            dayData.steps >= (dayData.goal || goal) && (
-                              <Text
-                                style={{
-                                  position: "absolute",
-                                  top: -6,
-                                  left: -10,
-                                  fontSize: 10,
-                                }}
-                              >
-                                🏆
-                              </Text>
-                            )}
-                        </View>
-                        {/* コメントドット */}
-                        {notesMap[dateKey] && (
-                          <View
-                            style={{
-                              width: 4,
-                              height: 4,
-                              borderRadius: 2,
-                              backgroundColor: isSelected
-                                ? theme.isDark
-                                  ? "#00D3A7"
-                                  : "#FF9E57"
-                                : theme.primary,
-                              marginTop: 2,
-                            }}
-                          />
-                        )}
-                        {!isFutureDate && dayData && (
-                          <>
-                            <Text
-                              style={[
-                                styles.calendarModalSteps,
-                                {
-                                  color: isSelected
-                                    ? theme.isDark
-                                      ? "#00D3A7"
-                                      : "#FF9E57"
-                                    : theme.accent,
-                                },
-                              ]}
-                            >
-                              {dayData.steps >= 1000
-                                ? `${(dayData.steps / 1000).toFixed(1)}k`
-                                : dayData.steps}
-                            </Text>
-                            <Text
-                              style={[
-                                styles.calendarModalCalories,
-                                {
-                                  color: isSelected
-                                    ? theme.isDark
-                                      ? "rgba(234,247,239,0.7)"
-                                      : "rgba(51,51,51,0.7)"
-                                    : theme.textSecondary,
-                                },
-                              ]}
-                            >
-                              {dayData.calories.toFixed(0)}
-                            </Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  }
-
-                  // グリッドを週単位で分割
-                  const weeks = [];
-                  for (let i = 0; i < days.length; i += 7) {
-                    weeks.push(
-                      <View key={`week-${i}`} style={styles.calendarWeek}>
-                        {days.slice(i, i + 7)}
-                      </View>
-                    );
-                  }
-
-                  return weeks;
-                })()}
-              </View>
-            </View>
-          </View>
-        </Modal>
+          initialDate={selectedDate}
+          onClose={() => setShowCalendarModal(false)}
+        />
       </ScrollView>
     </View>
   );
 }
 
-// styles moved to separate module for readability
-// styles import moved to top-level imports (see top of file)
 
-/* const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  container: {
-    flex: 1,
-    backgroundColor: "#F5F5F5",
-  },
-  infoBanner: {
-    marginTop: 8,
-    marginHorizontal: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  tabContainer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 12,
-    paddingHorizontal: 20,
-    paddingBottom: 15,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    backgroundColor: "#FFF",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "transparent",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  tabActive: {
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  tabText: {
-    fontSize: 16,
-    fontWeight: "600",
-    letterSpacing: 0.3,
-  },
-  calendarIconButton: {
-    position: "absolute",
-    right: 20,
-    padding: 8,
-    zIndex: 10,
-    backgroundColor: "#FFF",
-    borderRadius: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  calendarIcon: {
-    fontSize: 24,
-  },
-  dateNavigation: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingBottom: 15,
-    paddingHorizontal: 20,
-  },
-  navButton: {
-    padding: 10,
-  },
-  navButtonText: {
-    fontSize: 24,
-    color: "#212121",
-  },
-  dateText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#212121",
-    marginHorizontal: 10,
-    minWidth: 160,
-    textAlign: "center",
-  },
-  calendarScroll: {
-    marginBottom: 20,
-  },
-  calendarContent: {
-    paddingHorizontal: 60, // 画面端ジェスチャー完全回避
-    gap: 12, // カード間のギャップ
-  },
-  calendarItem: {
-    width: 70,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    marginHorizontal: 6, // カード間のスペース
-    borderRadius: 16, // よりインスタ風の角丸
-    backgroundColor: "#FFF",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  calendarItemSelected: {
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  calendarItemToday: {
-    borderWidth: 2,
-    borderColor: "#FF7043",
-  },
-  calendarDay: {
-    width: "14.28%", // 100% / 7 = 14.28% で均等配置（空白セル用）
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#212121",
-    marginBottom: 2,
-  },
-  calendarRingDay: {
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  calendarWeekday: {
-    fontSize: 12,
-    color: "#757575",
-    marginBottom: 6,
-  },
-  calendarSteps: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#212121",
-    marginBottom: 2,
-  },
-  calendarCalories: {
-    fontSize: 10,
-    color: "#9E9E9E",
-  },
-  circleContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginVertical: 20,
-    position: "relative",
-  },
-  circleBackground: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 120,
-    padding: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  circleCenter: {
-    position: "absolute",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 200,
-    height: 200,
-    top: 10,
-    left: 10,
-  },
-  percentText: {
-    fontSize: 56,
-    fontWeight: "700",
-    color: "#212121",
-    letterSpacing: -2,
-    textAlign: "center",
-  },
-  goalLabel: {
-    fontSize: 14,
-    color: "#9E9E9E",
-    marginTop: 4,
-    fontWeight: "500",
-    letterSpacing: 0.2,
-  },
-  progressSubtext: {
-    fontSize: 12,
-    color: "#9E9E9E",
-    marginTop: 4,
-    fontWeight: "500",
-    letterSpacing: 0.2,
-  },
-  statsRow: {
-    flexDirection: "row",
-    paddingHorizontal: 20,
-    gap: 12,
-    marginBottom: 20,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: "#FFF",
-    borderRadius: 16,
-    padding: 20,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  statLabel: {
-    fontSize: 13,
-    color: "#9E9E9E",
-    fontWeight: "500",
-    marginBottom: 8,
-    letterSpacing: 0.3,
-  },
-  statValue: {
-    fontSize: 32,
-    color: "#212121",
-    fontWeight: "600",
-    marginBottom: 4,
-    letterSpacing: -0.5,
-  },
-  statSubtext: {
-    fontSize: 12,
-    color: "#BDBDBD",
-    fontWeight: "400",
-    letterSpacing: 0.2,
-  },
-  foodSection: {
-    marginTop: 20,
-    marginBottom: 30,
-  },
-  titleRow: {
-    // use sectionTitle's own left margin to align; only control layout here
-    marginBottom: 5,
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-  },
-  sectionTitle: {
-    fontSize: 22, // 🔍 視認性改善: 大きく
-    fontWeight: "800", // 🔍 視認性改善: より太く
-    color: "#212121",
-    marginLeft: 20,
-    marginBottom: 5,
-    letterSpacing: 0.3,
-  },
-  seeAllText: {
-    fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 0.2,
-    marginRight: 20,
-  },
-  chartSubtitle: {
-    fontSize: 14,
-    color: "#757575",
-    marginLeft: 20,
-    marginBottom: 10,
-  },
-  foodList: {
-    flexDirection: "row",
-    paddingHorizontal: 20,
-  },
-  foodCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    marginRight: 16,
-    alignItems: "center",
-    width: 120,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
-    borderWidth: 1,
-    borderColor: "#F5F5F5",
-  },
-  foodEmoji: {
-    fontSize: 44, // 🔍 視認性改善: 大きく
-    marginBottom: 10,
-  },
-  foodAmount: {
-    fontSize: 28, // 🔍 視認性改善: 大きく
-    fontWeight: "800", // 🔍 視認性改善: より太く
-    color: "#FF7043", // 🔍 視認性改善: オレンジで強調
-    letterSpacing: -0.5,
-  },
-  foodUnit: {
-    fontSize: 17, // 🔍 視認性改善: 少し大きく
-    color: "#757575", // 🔍 視認性改善: 少し明るく
-    marginTop: 5,
-    fontWeight: "600", // 🔍 視認性改善: より太く
-  },
-  debugContainer: {
-    margin: 20,
-    padding: 15,
-    backgroundColor: "#FFF3CD",
-    borderRadius: 10,
-  },
-  debugText: {
-    fontSize: 14,
-    color: "#856404",
-    marginVertical: 2,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    width: "85%",
-    backgroundColor: "#FFF",
-    borderRadius: 20,
-    padding: 25,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 10,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  monthSwitcher: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#212121",
-  },
-  modalClose: {
-    fontSize: 28,
-    color: "#757575",
-    fontWeight: "300",
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: "#757575",
-    marginBottom: 30,
-    textAlign: "center",
-  },
-  modalButton: {
-    backgroundColor: "#FF7043",
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  modalButtonText: {
-    color: "#FFF",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  calendarGrid: {
-    marginTop: 10,
-  },
-  weekdayRow: {
-    flexDirection: "row",
-    justifyContent: "space-evenly",
-    marginBottom: 10,
-  },
-  weekdayText: {
-    width: "14.28%", // 100% / 7 = 14.28% で均等配置
-    textAlign: "center",
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#757575",
-  },
-  calendarWeek: {
-    flexDirection: "row",
-    marginBottom: 8,
-  },
-  calendarDayCell: {
-    width: "14.28%", // 100% / 7 = 14.28% で均等配置
-    height: 40,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 20,
-  },
-  calendarDayText: {
-    fontSize: 16,
-    color: "#212121",
-  },
-  calendarModalDayCell: {
-    width: "14.28%", // 100% / 7 = 14.28% で均等配置
-    minHeight: 60,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 8,
-    paddingVertical: 4,
-  },
-  calendarModalDayText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#212121",
-    marginBottom: 2,
-  },
-  calendarModalSteps: {
-    fontSize: 9,
-    fontWeight: "600",
-    marginBottom: 1,
-  },
-  calendarModalCalories: {
-    fontSize: 8,
-  },
-  chartSection: {
-    marginTop: 10,
-    marginBottom: 20,
-  },
-  chartCard: {
-    backgroundColor: "#FFF",
-    borderRadius: 16,
-    padding: 20,
-    marginHorizontal: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  chartWithAxis: {
-    flexDirection: "row",
-    alignItems: "stretch",
-  },
-  yAxis: {
-    width: 40,
-    justifyContent: "space-between",
-    paddingRight: 8,
-    paddingTop: 10,
-    paddingBottom: 25,
-  },
-  yAxisLabel: {
-    fontSize: 11,
-    color: "#9E9E9E",
-    textAlign: "right",
-  },
-  chartArea: {
-    flex: 1,
-  },
-  chart: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    height: 140,
-    paddingTop: 10,
-  },
-  barContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "flex-end",
-    height: "100%",
-    paddingBottom: 20,
-    position: "relative",
-  },
-  barTouchable: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "flex-end",
-    width: "100%",
-    position: "relative",
-    overflow: "visible",
-  },
-  barWrapper: {
-    width: "80%",
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  bar: {
-    width: "100%",
-    backgroundColor: "#FF7043",
-    borderRadius: 3,
-    minHeight: 2,
-  },
-  hourLabel: {
-    fontSize: 10,
-    color: "#9E9E9E",
-    marginTop: 5,
-    position: "absolute",
-    bottom: 0,
-  },
-  tooltipBubble: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    backgroundColor: "rgba(17,24,39,0.9)",
-  },
-  tooltipText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#FFF",
-  },
-  tooltipContainer: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    zIndex: 20,
-    alignItems: "center",
-  },
-  eventsContainer: {
-    marginTop: 15,
-    marginHorizontal: 20, // 画面端ジェスチャー完全回避
-    padding: 15,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  eventsTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 10,
-  },
-  eventItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-  },
-  eventTitle: {
-    fontSize: 14,
-    flex: 1,
-    marginRight: 10,
-  },
-  eventTime: {
-    fontSize: 12,
-  },
-  moreEvents: {
-    fontSize: 12,
-    marginTop: 8,
-    textAlign: "center",
-  },
-  noEventsText: {
-    fontSize: 13,
-    opacity: 0.4,
-    paddingVertical: 8,
-    textAlign: "center",
-  },
-  hourlyDetailTooltipWrapper: {
-    marginBottom: 12,
-    paddingHorizontal: 20,
-    backgroundColor: "transparent",
-  },
-  hourlyDetailTooltip: {
-    padding: 14,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  hourlyDetailTooltipTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    marginBottom: 8,
-  },
-  hourlyDetailTooltipRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  hourlyDetailTooltipLabel: {
-    fontSize: 12,
-  },
-  hourlyDetailTooltipValue: {
-    fontSize: 13,
-    fontWeight: "600",
-  },
-}); */
-// (obsolete) old chart touch handler removed; HourlyChart handles interactions internally

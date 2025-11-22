@@ -10,7 +10,8 @@ import SettingsScreen from '../screens/SettingsScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 import FoodListScreen from '../screens/FoodListScreen';
 import SharePreviewScreen from '../screens/SharePreviewScreen';
-import { HomeIcon, HistoryIcon, SettingsIcon } from '../components/TabIcons';
+import StoryScreen from '../screens/StoryScreen';
+import { HomeIcon, HistoryIcon, SettingsIcon, StoryIcon } from '../components/TabIcons';
 import { useI18n } from '../i18n/I18nProvider';
 import { getTheme } from '../utils/theme';
 
@@ -169,7 +170,16 @@ export default function AppNavigator() {
           ),
         }}
       />
-      {/** FoodList は HomeStack 経由に変更（タブからは外す） */}
+      <Tab.Screen
+        name="Story"
+        component={StoryScreen}
+        options={{
+          tabBarLabel: t('tabs.story'),
+          tabBarIcon: ({ color, size }) => (
+            <StoryIcon color={color} size={size} />
+          ),
+        }}
+      />
       <Tab.Screen
         name="Settings"
         component={SettingsStack}
