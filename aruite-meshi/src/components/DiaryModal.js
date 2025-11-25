@@ -20,6 +20,8 @@ import { useI18n } from '../i18n/I18nProvider';
 import { getDailyData } from '../utils/storage';
 import { getDayNote, setDayNote } from '../utils/dayNotes';
 import { toDateKeyLocal, getDayOfWeek } from '../utils/calculations';
+import { AppIcon } from './AppIcon';
+import { getWeatherIconName } from '../utils/weather';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -173,19 +175,27 @@ export default function DiaryModal({ visible, onClose, initialDate }) {
     const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
     const monthStr = monthNames[currentDate.getMonth()];
 
+    const isAchieved = dailyData?.steps && dailyData.steps >= (dailyData.goal || 8000);
+
     return (
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={styles.pageContent}>
           {/* Header: Date */}
-          <View style={styles.headerRow}>
+          <View style={[styles.headerRow, isAchieved && styles.headerRowAchieved]}>
             <View style={styles.dateGroup}>
-              <Text style={styles.dateMonth}>{monthStr}</Text>
+              <Text style={[styles.dateMonth, isAchieved && { color: theme.primary }]}>{monthStr}</Text>
               <Text style={styles.dateDay}>{day}</Text>
             </View>
-            <View style={styles.weatherGroup}>
-              <Text style={styles.weatherText}>
-                {getEditorialWeather(dailyData?.weather?.code)}
-              </Text>
+            <View style={[styles.weatherGroup, isAchieved && { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
+              {dailyData?.weather?.code !== undefined ? (
+                <AppIcon 
+                  name={getWeatherIconName(dailyData.weather.code)} 
+                  size={20} 
+                  color={isAchieved ? theme.primary : '#9CA5B5'} 
+                />
+              ) : (
+                <Text style={styles.weatherText}>---</Text>
+              )}
             </View>
           </View>
 
@@ -354,6 +364,9 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+  },
+  headerRowAchieved: {
+    borderBottomColor: '#FF6B35', // theme.primary
   },
   dateGroup: {
     flexDirection: 'row',

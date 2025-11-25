@@ -21,6 +21,7 @@ import {
   RefreshControl,
   Image,
   Platform,
+  ImageBackground,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -67,7 +68,6 @@ import {
   getCurrentGoalLevelDate,
   saveCurrentGoalLevelDate,
 } from "../utils/storage";
-import DailyFoodGoal from "../components/DailyFoodGoal";
 import { initializePedometer } from "../utils/pedometer";
 import {
   requestNotificationPermissions,
@@ -87,7 +87,7 @@ import { registerBackgroundStepsTask } from "../tasks/backgroundStepsTask";
 import { CalendarIcon } from "../components/SettingsIcons";
 import { getEventsForDate, getEventsSummary } from "../utils/calendar";
 import TodayNote from "../components/TodayNote";
-import DiaryModal from "../components/DiaryModal";
+import CalendarModal from "../components/CalendarModal";
 import RecentNotes from "../components/RecentNotes";
 import { hasNote } from "../utils/dayNotes";
 import HeaderStats from "../components/HeaderStats";
@@ -99,6 +99,7 @@ import MetricTabs from "../components/MetricTabs";
 import StatsCards from "../components/StatsCards";
 import EventsCard from "../components/EventsCard";
 import { computeTrophiesStreak } from "../utils/stats";
+import { AppIcon } from "../components/AppIcon";
 import { seedPastDaysPedometer } from "../utils/pedometerSeed";
 import styles from "./home/styles";
 import {
@@ -115,6 +116,15 @@ import {
 } from "../utils/feedback";
 
 const { width } = Dimensions.get("window");
+
+// 0〜1に正規化（NaN/Infinityも0として扱う）
+const clamp01 = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  if (n < 0) return 0;
+  if (n > 1) return 1;
+  return n;
+};
 
 // Dev flag: Pedometer の取り込みを一時停止（HealthKit取り込みの切り分け用）
 const DISABLE_PEDOMETER_DEV = false;
@@ -210,6 +220,7 @@ export default function HomeScreen({ navigation, route }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingSteps, setIsLoadingSteps] = useState(false); // 歩数データ読み込み中
   const [hourlySteps, setHourlySteps] = useState(Array(24).fill(0));
+  const lastProgressDateRef = useRef(toDateKeyLocal(new Date()));
   const selectedLoadTokenRef = useRef(0);
   const selectedDebounceTimerRef = useRef(null);
   const lastRefreshRef = useRef(0);
@@ -249,6 +260,27 @@ export default function HomeScreen({ navigation, route }) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const bumpAnim = useRef(new Animated.Value(1)).current; // 値更新時のワンショット弾む演出
   const arrowBounceAnim = useRef(new Animated.Value(0)).current; // 矢印のバウンスアニメーション
+  // 週カレンダー/リングの即時反映用に日付キー単位でアップサート
+  const upsertWeeklyEntry = useCallback(
+    (dateKey, stepsVal, caloriesVal, goalVal, goalCaloriesVal) => {
+      const safeKey = toDateKeyLocal(dateKey);
+      if (!safeKey) return;
+      const g = Number(goalVal ?? goal ?? 10000);
+      const cg = Number(goalCaloriesVal ?? goalCalories ?? 500);
+      setWeeklyData((prev) => {
+        const next = { ...prev };
+        next[safeKey] = {
+          ...(next[safeKey] || {}),
+          steps: Number(stepsVal) || 0,
+          calories: Number(caloriesVal) || 0,
+          goal: g,
+          goalCalories: cg,
+        };
+        return next;
+      });
+    },
+    [goal, goalCalories]
+  );
 
   // 初回起動時に矢印を一度だけバウンスさせる
   useEffect(() => {
@@ -319,6 +351,23 @@ export default function HomeScreen({ navigation, route }) {
     },
     [selectedDate]
   );
+
+  const getTodayStepsViaPedometer = async () => {
+    try {
+      const available = await Pedometer.isAvailableAsync();
+      if (!available) return null;
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const end = new Date();
+      const res = await Pedometer.getStepCountAsync(start, end);
+      if (typeof res?.steps === "number" && res.steps >= 0) {
+        return res.steps;
+      }
+    } catch (error) {
+      console.warn("Pedometer step fetch failed, fallback to HK:", error);
+    }
+    return null;
+  };
   const goalReachedRef = useRef({ steps: false, calories: false });
   const levelUpLockRef = useRef(false); // レベルアップの同時実行防止
   const slideAnim = useRef(new Animated.Value(0)).current; // 日付切替のスライド
@@ -658,19 +707,29 @@ export default function HomeScreen({ navigation, route }) {
     try {
       const token = ++weekLoadTokenRef.current;
       const userProfile = await getUserProfile();
+      const settings = await getSettings();
       const start = new Date(dates[0]);
       start.setHours(0, 0, 0, 0);
       const end = new Date(dates[dates.length - 1]);
       end.setHours(23, 59, 59, 999);
       const list = await getStepsInRange(start, end);
       if (weekLoadTokenRef.current !== token) return;
-      const data = {};
+      // 一度マップ化してから、渡された日付順にデータを埋める（オフセットずれ防止）
+      const dateMap = new Map();
       for (const item of list || []) {
-        if (!item?.date) continue;
-        const stepsVal = Number(item.steps || 0);
-        data[item.date] = {
+        const key = item?.date ? toDateKeyLocal(item.date) : null;
+        if (!key) continue;
+        dateMap.set(key, Number(item.steps || 0));
+      }
+      const data = {};
+      for (const d of dates) {
+        const key = toDateKeyLocal(d);
+        const stepsVal = dateMap.get(key) || 0;
+        data[key] = {
           steps: stepsVal,
           calories: calculateCalories(stepsVal, userProfile.weight),
+          goal: settings.dailyGoal,
+          goalCalories: settings.goalCalories || 500,
         };
       }
       console.log('[HomeScreen] loadWeeklyData loaded:', Object.keys(data).length, 'days');
@@ -798,20 +857,101 @@ export default function HomeScreen({ navigation, route }) {
 
   // 選択された日付が変更されたときの更新（デバウンス）
   useEffect(() => {
-    if (selectedDebounceTimerRef.current)
-      clearTimeout(selectedDebounceTimerRef.current);
-    selectedDebounceTimerRef.current = setTimeout(() => {
-      loadSelectedDateData();
-    }, 150);
-    return () => {
-      if (selectedDebounceTimerRef.current)
-        clearTimeout(selectedDebounceTimerRef.current);
+    const updateData = async () => {
+      setIsLoadingSteps(true);
+      // 選択された日付のデータを取得
+      const dateKey = toDateKeyLocal(selectedDate);
+
+      // 1. まずキャッシュ/ストレージから即時表示
+      const cached = await getDailyData(dateKey);
+      if (cached) {
+        setSteps(cached.steps || 0);
+        setCalories(cached.calories || 0);
+        setDistance(cached.distance || 0);
+        setGoal(cached.goal || 10000);
+      } else {
+        // データがない場合は0で初期化
+        setSteps(0);
+        setCalories(0);
+        setDistance(0);
+      }
+
+      // 2. 今日の場合はリアルタイム更新（Pedometer/HealthKit）
+      if (isToday(selectedDate)) {
+        // Pedometerの更新はリスナーが行うのでここでは何もしない
+        // ただし、HealthKit同期は行う
+        try {
+          const { steps: todaySteps } = await getTodayData();
+          setSteps(todaySteps);
+          // カロリー等は計算
+          const userProfile = await getUserProfile();
+          setCalories(calculateCalories(todaySteps, userProfile.weight));
+          setDistance(calculateDistance(todaySteps, userProfile.stride));
+        } catch (e) {
+          console.error("Error syncing today data:", e);
+        }
+      }
+
+      // 3. 時間別データの取得
+      try {
+        const hourly = await getHourlyStepsForDate(dateKey);
+        setHourlySteps(hourly);
+
+        // 天気情報の取得（キャッシュまたはAPI）
+        // まずストレージから確認
+        if (cached && cached.weather) {
+          setWeather(cached.weather);
+          // hourlyWeatherはストレージに保存していない場合が多いので、
+          // 必要なら別途保存するか、APIから再取得する
+          // ここでは簡易的にAPI取得を試みる（キャッシュが効くはず）
+          const hourlyW = await fetchHourlyWeather();
+          setHourlyWeather(hourlyW);
+        } else {
+          // データがない場合はAPIから取得
+          const w = await fetchWeatherForLocation();
+          setWeather(w);
+          const hourlyW = await fetchHourlyWeather();
+          setHourlyWeather(hourlyW);
+        }
+      } catch (e) {
+        console.error("Error loading hourly data:", e);
+      }
+
+      setIsLoadingSteps(false);
     };
+
+    if (selectedDebounceTimerRef.current) {
+      clearTimeout(selectedDebounceTimerRef.current);
+    }
+    selectedDebounceTimerRef.current = setTimeout(updateData, 100);
   }, [selectedDate]);
 
   useEffect(() => {
     loadFeedbackMessage(selectedDate);
   }, [selectedDate, loadFeedbackMessage]);
+
+  // steps/goalが変わったら進捗を強制的に同期（前日の値が残るのを防ぐ）
+  useEffect(() => {
+    const todayKey = toDateKeyLocal(new Date());
+    if (todayKey !== lastProgressDateRef.current) {
+      lastProgressDateRef.current = todayKey;
+    }
+    setProgress(
+      clamp01(calculateGoalProgress(steps, goal || 10000) / 100)
+    );
+  }, [steps, goal]);
+
+  // calories/goalCaloriesも同期
+  useEffect(() => {
+    const todayKey = toDateKeyLocal(new Date());
+    if (todayKey !== lastProgressDateRef.current) {
+      lastProgressDateRef.current = todayKey;
+    }
+    const calGoal = Number(goalCalories || 500);
+    setCaloriesProgress(
+      clamp01(calGoal > 0 ? calories / calGoal : 0)
+    );
+  }, [calories, goalCalories]);
 
   // 選択された日付のデータを取得
   const loadSelectedDateData = async () => {
@@ -837,6 +977,7 @@ export default function HomeScreen({ navigation, route }) {
         setCalories(0);
         setDistance(0);
         setProgress(0);
+        setCaloriesProgress(0);
         setHourlySteps(Array(24).fill(0));
         return;
       }
@@ -855,22 +996,28 @@ export default function HomeScreen({ navigation, route }) {
       const daySteps = Number(dayEntry?.steps || 0);
       const dayCalories = calculateCalories(daySteps, userProfile.weight);
       const dayDistance = calculateDistance(daySteps, userProfile.stride);
-      const dayProgress = calculateGoalProgress(daySteps, settings.dailyGoal);
-      const dayCaloriesProgress = (dayCalories / goalCalories) * 100;
+      const goalSteps = Number(settings.dailyGoal || goal || 10000);
+      const goalKcal = Number(settings.goalCalories || goalCalories || 500);
+      const dayProgress = clamp01(
+        calculateGoalProgress(daySteps, goalSteps) / 100
+      );
+      const dayCaloriesProgress = clamp01(
+        goalKcal > 0 ? dayCalories / goalKcal : 0
+      );
 
       setSteps(daySteps);
       setCalories(dayCalories);
       setDistance(dayDistance);
-      const nextNorm = dayProgress / 100;
-      setProgress(nextNorm);
-      setCaloriesProgress(dayCaloriesProgress / 100);
+      setProgress(dayProgress);
+      setCaloriesProgress(dayCaloriesProgress);
+      upsertWeeklyEntry(dateKey, daySteps, dayCalories, goalSteps, goalKcal);
 
       // スイープの手動制御はしない（標準animatedに任せる）
 
       // 値が大きく変わったときは、過去日でも軽い“弾む”演出を適用
       try {
         const prev = progress; // 現在のstate（0-1）
-        const next = dayProgress / 100; // 新しい進捗（0-1）
+        const next = dayProgress; // 新しい進捗（0-1）
         if (Math.abs(next - prev) > 0.005) {
           bumpAnim.stopAnimation(() => {
             bumpAnim.setValue(1);
@@ -904,8 +1051,15 @@ export default function HomeScreen({ navigation, route }) {
           if (freshWeather) {
             setWeather(freshWeather);
             // Save to storage (merge with existing)
-            const currentData = storedData || { date: dateKey, steps: daySteps, calories: dayCalories };
-            await saveDailyData(dateKey, { ...currentData, weather: freshWeather });
+            const currentData = storedData || {
+              date: dateKey,
+              steps: daySteps,
+              calories: dayCalories,
+            };
+            await saveDailyData(dateKey, {
+              ...currentData,
+              weather: freshWeather,
+            });
           } else {
             setWeather(null);
           }
@@ -1068,12 +1222,15 @@ export default function HomeScreen({ navigation, route }) {
         const s = await getSettings();
         setGoal(s.dailyGoal);
         setGoalCalories(s.goalCalories || 500);
-        // カロリー進捗の再計算（現在のcaloriesに対して）
-        setCaloriesProgress((prev) => {
-          const base = calories;
-          const target = s.goalCalories || 500;
-          return target > 0 ? base / target : 0;
-        });
+        // 現在の値を新しい目標で再計算
+        const stepGoal = Number(s.dailyGoal || goal || 10000);
+        const calGoal = Number(s.goalCalories || 500);
+        setProgress(
+          clamp01(calculateGoalProgress(steps, stepGoal) / 100)
+        );
+        setCaloriesProgress(
+          clamp01(calGoal > 0 ? calories / calGoal : 0)
+        );
       };
       reloadFavorites();
       reloadSettings();
@@ -1087,6 +1244,17 @@ export default function HomeScreen({ navigation, route }) {
       appState.current.match(/inactive|background/) &&
       nextAppState === "active"
     ) {
+      // 日付が変わっていたら表示をリセット
+      const todayKey = toDateKeyLocal(new Date());
+      if (todayKey !== lastProgressDateRef.current) {
+        lastProgressDateRef.current = todayKey;
+        setSteps(0);
+        setCalories(0);
+        setDistance(0);
+        setProgress(0);
+        setCaloriesProgress(0);
+        setHourlySteps(Array(24).fill(0));
+      }
       try {
         await syncPastDaysToStorage(3);
       } catch (_) {}
@@ -1114,7 +1282,15 @@ export default function HomeScreen({ navigation, route }) {
       const nowTs = Date.now();
       if (nowTs - (lastRefreshRef.current || 0) < 2000) return;
       lastRefreshRef.current = nowTs;
-      // 今日の場合はHK優先で日区切りを再取得
+      // 今日の場合はPedometerを優先し、HealthKitはフォールバックにする（時差ズレ防止）
+      try {
+        const pedoSteps = await getTodayStepsViaPedometer();
+        if (pedoSteps !== null) {
+          console.log(`🔄 更新: ${pedoSteps}歩 (ソース: Pedometer)`);
+          updateSteps(pedoSteps);
+          return;
+        }
+      } catch (_) {}
       try {
         const start = new Date();
         start.setHours(0, 0, 0, 0);
@@ -1124,9 +1300,12 @@ export default function HomeScreen({ navigation, route }) {
         const todayKey = toDateKeyLocal(start);
         const record = (list || []).find((it) => it?.date === todayKey);
         const stepsVal = Number(record?.steps || 0);
-        console.log(`🔄 更新: ${stepsVal}歩 (ソース: HealthKit優先)`);
-        if (stepsVal > 0) {
+        console.log(`🔄 更新: ${stepsVal}歩 (ソース: HealthKitフォールバック)`);
+        if (stepsVal >= 0) {
           updateSteps(stepsVal);
+        } else {
+          setProgress(0);
+          setCaloriesProgress(0);
         }
       } catch (error) {
         console.error("歩数データ更新に失敗:", error);
@@ -1145,8 +1324,17 @@ export default function HomeScreen({ navigation, route }) {
         setSteps(cached.steps || 0);
         setCalories(cached.calories || 0);
         setDistance(cached.distance || 0);
+        const cachedGoal = Number(cached.goal || goal || 10000);
+        const cachedCalGoal = Number(goalCalories || 500);
         setProgress(
-          calculateGoalProgress(cached.steps || 0, cached.goal || 10000) / 100
+          clamp01(
+            calculateGoalProgress(cached.steps || 0, cachedGoal) / 100
+          )
+        );
+        setCaloriesProgress(
+          clamp01(
+            cachedCalGoal > 0 ? (cached.calories || 0) / cachedCalGoal : 0
+          )
         );
         console.log("✅ キャッシュからデータを表示しました");
         setIsLoadingSteps(false);
@@ -1209,13 +1397,32 @@ export default function HomeScreen({ navigation, route }) {
       setCalories(todayData.calories);
       setDistance(todayData.distance);
       // プログレスは0-1で保持
+      const stepGoal = Number(settings.dailyGoal || goal || 10000);
+      const calGoal = Number(settings.goalCalories || 500);
       setProgress(
-        calculateGoalProgress(todayData.steps, settings.dailyGoal) / 100
+        clamp01(calculateGoalProgress(todayData.steps, stepGoal) / 100)
       );
-      setCaloriesProgress(todayData.calories / (settings.goalCalories || 500));
+      setCaloriesProgress(
+        clamp01(calGoal > 0 ? todayData.calories / calGoal : 0)
+      );
+      upsertWeeklyEntry(
+        getTodayDateString(),
+        todayData.steps,
+        todayData.calories,
+        stepGoal,
+        calGoal
+      );
 
       // 毎日リセット方針のため、前日達成による持ち越しは行わない
     }
+
+    // 起動直後にPedometerで当日分を再取得（時差・前日データ残りをリセット）
+    try {
+      const pedoSteps = await getTodayStepsViaPedometer();
+      if (pedoSteps !== null) {
+        updateSteps(pedoSteps);
+      }
+    } catch (_) {}
 
     // 初回のみ：Pedometerで過去（最大7日）を取り込み → 保存
     try {
@@ -1403,7 +1610,12 @@ export default function HomeScreen({ navigation, route }) {
     // 体重を考慮した歩行カロリー計算
     const cal = calculateCalories(newSteps, profile.weight);
     const dist = calculateDistance(newSteps, profile.stride);
-    const prog = calculateGoalProgress(newSteps, goal);
+    const safeGoal = Number(goal || 10000);
+    const prog = clamp01(
+      calculateGoalProgress(newSteps, safeGoal) / 100
+    );
+    const calGoal = Number(goalCalories || 500);
+    const calProg = clamp01(calGoal > 0 ? cal / calGoal : 0);
 
     // 表示の更新は「今日」を見ている時だけ行う（過去日表示中に飛ばないように）
     try {
@@ -1416,8 +1628,8 @@ export default function HomeScreen({ navigation, route }) {
         setSteps(newSteps);
         setCalories(cal);
         setDistance(dist);
-        const nextNorm = prog / 100;
-        setProgress(nextNorm);
+        setProgress(prog);
+        setCaloriesProgress(calProg);
       }
     } catch (_) {}
 
@@ -1441,6 +1653,9 @@ export default function HomeScreen({ navigation, route }) {
 
     // 食べ物目標達成チェック - その日中にレベルアップ
     await checkFoodGoalAchievement(cal);
+
+    // 週カレンダー表示も即時更新
+    upsertWeeklyEntry(data.date, newSteps, cal, safeGoal, calGoal);
 
     // 分析: 同期イベント（Pedometerアプリ内計測）
     try {
@@ -1762,49 +1977,36 @@ export default function HomeScreen({ navigation, route }) {
               isCalculating={isCalculatingStats}
               theme={theme}
             />
-            {/* Weather Summary Badge */}
-            {hourlyWeather && hourlyWeather.length === 24 && weather && (() => {
-              const summary = getWeatherSummary(hourlyWeather);
-              return summary.icon && summary.icon !== '❓' ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, backgroundColor: theme.card, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: theme.text, marginRight: 6 }}>
-                    {summary.icon}
-                  </Text>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: theme.textSecondary }}>
-                    {Math.round(weather.maxTemp)}° / {Math.round(weather.minTemp)}°
-                  </Text>
-                </View>
-              ) : null;
-            })()}
+            {/* Weather Summary Badge Removed */}
           </View>
 
         {/* 日付ナビゲーション */}
         <View style={[styles.dateNav, { marginTop: 10 }]}>
           <TouchableOpacity
             onPress={() => changeDate(-1)}
-            style={styles.dateNavButton}
+            style={[styles.dateNavButton, styles.navButtonLeft]}
             hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >
             <Animated.Text style={[styles.dateNavArrow, { color: theme.text, transform: [{ translateX: arrowBounceAnim.interpolate({ inputRange: [0, 10], outputRange: [0, -5] }) }] }]}>◀</Animated.Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setShowCalendarModal(true)}
-            style={styles.dateDisplay}
-          >
-            <Text style={[styles.dateText, { color: theme.text }]}>
-              {formatMonthDayHelper(selectedDate, locale)}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.dateDisplay}>
+            <TouchableOpacity onPress={() => setCalendarVisible(true)}>
+              <Text style={[styles.dateText, { color: theme.text }]}>
+                {formatMonthDayHelper(selectedDate, locale)}
+              </Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity
             onPress={() => changeDate(1)}
             style={[
               styles.dateNavButton,
+              styles.navButtonRight,
               isFuture(selectedDate) && styles.disabledButton,
             ]}
             disabled={isFuture(selectedDate)}
             hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >
-            <Animated.Text style={[styles.dateNavArrow, { color: isFuture(selectedDate) ? theme.textTertiary : theme.text, transform: [{ translateX: arrowBounceAnim.interpolate({ inputRange: [0, 10], outputRange: [0, 5] }) }] }]}>▶</Animated.Text>
+            <Animated.Text style={[styles.dateNavArrow, { color: theme.text, opacity: isFuture(selectedDate) ? 0.3 : 1, transform: [{ translateX: arrowBounceAnim.interpolate({ inputRange: [0, 10], outputRange: [0, 5] }) }] }]}>▶</Animated.Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1964,8 +2166,7 @@ export default function HomeScreen({ navigation, route }) {
                 ]}
               >
                 {(() => {
-                  const ringP = Math.min(
-                    1,
+                  const ringP = clamp01(
                     activeTab === "steps" ? progress : caloriesProgress
                   );
                   const isFull = ringP >= 0.999;
@@ -2011,7 +2212,7 @@ export default function HomeScreen({ navigation, route }) {
                           { color: theme.textSecondary },
                         ]}
                       >
-                        {t("home.progress.rate")}: {Math.round(progress * 100)}%
+                        {t("home.progress.rate")}: {Math.round(clamp01(progress) * 100)}%
                       </Text>
                     </>
                   ) : (
@@ -2034,7 +2235,7 @@ export default function HomeScreen({ navigation, route }) {
                         ]}
                       >
                         {t("home.progress.rate")}:{" "}
-                        {Math.round(caloriesProgress * 100)}%
+                        {Math.round(clamp01(caloriesProgress) * 100)}%
                       </Text>
                     </>
                   )}
@@ -2045,12 +2246,9 @@ export default function HomeScreen({ navigation, route }) {
 
           {/* Action Row: Finger & ShareCTA */}
           {/* Action Row: Finger & ShareCTA */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', paddingHorizontal: 20, marginTop: 10, marginBottom: 12, zIndex: 10 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'flex-end', paddingHorizontal: 20, marginTop: 10, marginBottom: 12, zIndex: 10 }}>
             {/* Finger Icon */}
-            <Image
-              source={require("../../assets/finger.png")}
-              style={{ width: 60, height: 60, resizeMode: 'contain' }}
-            />
+            {/* Finger Icon Removed */}
 
             {/* Share CTA */}
             <ShareCTA
@@ -2063,70 +2261,7 @@ export default function HomeScreen({ navigation, route }) {
             />
           </View>
 
-          {/* Daily Feedback Message */}
-          {dailyFeedback && (
-            <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
-              <View style={{
-                backgroundColor: theme.card,
-                borderRadius: 16,
-                padding: 16,
-                shadowColor: theme.shadow,
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.05,
-                shadowRadius: 8,
-                elevation: 2,
-                borderWidth: 1,
-                borderColor: theme.border,
-              }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={{ fontSize: 16, marginRight: 6 }}>💡</Text>
-                  <Text style={{ fontSize: 13, color: theme.textSecondary, fontWeight: '600' }}>
-                    昨日のフィードバック
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 14, lineHeight: 22, color: theme.text, fontWeight: '500' }}>
-                  {dailyFeedback}
-                </Text>
-              </View>
-            </View>
-          )}
 
-          {/* Stats カード（タブ切替） */}
-          <StatsCards
-            styles={styles}
-            theme={theme}
-            t={t}
-            activeTab={activeTab}
-            steps={steps}
-            calories={calories}
-            goal={goal}
-            goalCalories={goalCalories}
-            formatNumber={formatNumber}
-            navigation={navigation}
-          />
-
-          {/* 今日の予定（常に表示） */}
-          <EventsCard
-            styles={styles}
-            theme={theme}
-            t={t}
-            todayEvents={todayEvents}
-          />
-
-          {/* 今日のひとこと */}
-          <TodayNote
-            theme={theme}
-            date={toDateKeyLocal(selectedDate)}
-            onNoteChange={async (text) => {
-              // 最近のひとこと一覧を更新
-              if (recentNotesRef.current) {
-                recentNotesRef.current.reload();
-              }
-              // コメントマップを更新
-              const dateKey = toDateKeyLocal(selectedDate);
-              setNotesMap((prev) => ({ ...prev, [dateKey]: !!text }));
-            }}
-          />
 
           {/* 時間帯別グラフ */}
           <HourlyChart
@@ -2145,42 +2280,69 @@ export default function HomeScreen({ navigation, route }) {
             setChartWidth={setChartWidth}
           />
 
-          {/* 今日の食べ物目標 */}
-          <View style={styles.foodSection}>
-            {(() => {
-              const isSelToday = (() => {
-                const s = new Date(selectedDate);
-                s.setHours(0, 0, 0, 0);
-                const t = new Date();
-                t.setHours(0, 0, 0, 0);
-                return s.getTime() === t.getTime();
-              })();
-              const goalsForView = isSelToday ? todayGoals : selectedGoals;
-              const lvlForView = isSelToday
-                ? currentGoalLevel
-                : selectedGoalsLevel;
-              const curr =
-                goalsForView[lvlForView - 1] || getCurrentGoal(lvlForView);
-              const next =
-                goalsForView[lvlForView] || getCurrentGoal(lvlForView + 1);
-              const currTarget = curr?.food?.calories || 0;
-              return (
-                <DailyFoodGoal
-                  currentGoal={curr}
-                  currentCalories={calories}
-                  achieved={isGoalAchieved(calories, currTarget)}
-                  remainingCalories={Math.max(0, currTarget - calories)}
-                  remainingSteps={Math.ceil(
-                    Math.max(0, currTarget - calories) *
-                      (1 / (0.00055 * (profile.weight || 65)))
-                  )}
-                  level={lvlForView}
-                  totalLevels={goalsForView.length || 0}
-                  nextGoal={next}
-                />
-              );
-            })()}
-          </View>
+          {/* 今日のひとこと */}
+          <TodayNote
+            theme={theme}
+            date={toDateKeyLocal(selectedDate)}
+            onNoteChange={async (text) => {
+              // 最近のひとこと一覧を更新
+              if (recentNotesRef.current) {
+                recentNotesRef.current.reload();
+              }
+              // コメントマップを更新
+              const dateKey = toDateKeyLocal(selectedDate);
+              setNotesMap((prev) => ({ ...prev, [dateKey]: !!text }));
+            }}
+          />
+
+          {/* Daily Feedback Message */}
+
+
+          {/* Stats カード（タブ切替） */}
+
+
+          {/* 今日の予定（常に表示） */}
+          <EventsCard
+            styles={styles}
+            theme={theme}
+            t={t}
+            todayEvents={todayEvents}
+          />
+
+          {/* Daily Feedback Message */}
+          {dailyFeedback && (
+            <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
+              <View style={{
+                backgroundColor: theme.card,
+                borderRadius: 16,
+                padding: 16,
+                shadowColor: theme.shadow,
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.05,
+                shadowRadius: 8,
+                elevation: 2,
+                borderWidth: 1,
+                borderColor: theme.border,
+              }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                  <AppIcon name="lightbulb" size={18} color={theme.primary} style={{ marginRight: 6 }} />
+                  <Text style={{ fontSize: 13, color: theme.textSecondary, fontWeight: '600' }}>
+                    昨日のフィードバック
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 14, lineHeight: 22, color: theme.text, fontWeight: '500' }}>
+                  {dailyFeedback}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* 今日のひとこと */}
+
+
+          {/* 時間帯別グラフ */}
+
+
 
           {/* 最近のひとこと */}
           <RecentNotes
@@ -2266,15 +2428,17 @@ export default function HomeScreen({ navigation, route }) {
           </View>
         )}
 
-        {/* Diary Modal */}
-        <DiaryModal
+        {/* Calendar Modal */}
+        <CalendarModal
           visible={showCalendarModal}
           initialDate={selectedDate}
           onClose={() => setShowCalendarModal(false)}
+          onSelectDate={(date) => {
+            setSelectedDate(date);
+            setShowCalendarModal(false);
+          }}
         />
       </ScrollView>
     </View>
   );
 }
-
-

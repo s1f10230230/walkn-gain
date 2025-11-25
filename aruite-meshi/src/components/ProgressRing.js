@@ -23,7 +23,7 @@ export default function ProgressRing({
           size={size}
           progress={progress}
           showsText={false}
-          animated={false}
+          animated={true}
           color={color}
           unfilledColor={unfilledColor}
           borderWidth={0}

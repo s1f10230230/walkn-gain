@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
+import { AppIcon } from './AppIcon';
 
 export default function MetricTabs({ theme, styles, activeTab, setActiveTab, t }) {
   return (
@@ -15,14 +16,17 @@ export default function MetricTabs({ theme, styles, activeTab, setActiveTab, t }
         ]}
         onPress={() => setActiveTab('steps')}
       >
-        <Text
-          style={[
-            styles.tabText,
-            { color: activeTab === 'steps' ? theme.primary : theme.textSecondary },
-          ]}
-        >
-          🦶 {t('home.tabs.steps')}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <AppIcon name="footsteps" size={16} color={activeTab === 'steps' ? theme.primary : theme.textSecondary} style={{ marginRight: 6 }} />
+          <Text
+            style={[
+              styles.tabText,
+              { color: activeTab === 'steps' ? theme.primary : theme.textSecondary },
+            ]}
+          >
+            {t('home.tabs.steps')}
+          </Text>
+        </View>
       </TouchableOpacity>
       <TouchableOpacity
         style={[
@@ -35,14 +39,17 @@ export default function MetricTabs({ theme, styles, activeTab, setActiveTab, t }
         ]}
         onPress={() => setActiveTab('calories')}
       >
-        <Text
-          style={[
-            styles.tabText,
-            { color: activeTab === 'calories' ? theme.accent : theme.textSecondary },
-          ]}
-        >
-          🔥 {t('home.tabs.calories')}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <AppIcon name="fire" size={16} color={activeTab === 'calories' ? theme.accent : theme.textSecondary} style={{ marginRight: 6 }} />
+          <Text
+            style={[
+              styles.tabText,
+              { color: activeTab === 'calories' ? theme.accent : theme.textSecondary },
+            ]}
+          >
+            {t('home.tabs.calories')}
+          </Text>
+        </View>
       </TouchableOpacity>
     </View>
   );

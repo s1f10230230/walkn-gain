@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text } from 'react-native';
+import { AppIcon } from './AppIcon';
 
 export default function EventsCard({ styles, theme, t, todayEvents = [] }) {
   return (
@@ -9,7 +10,10 @@ export default function EventsCard({ styles, theme, t, todayEvents = [] }) {
         { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, minHeight: 72 },
       ]}
     >
-      <Text style={[styles.eventsTitle, { color: theme.text }]}>📅 {t('home.events.today') || '今日の予定'}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+        <AppIcon name="calendar" size={18} color={theme.text} style={{ marginRight: 6 }} />
+        <Text style={[styles.eventsTitle, { color: theme.text, marginBottom: 0 }]}>{t('home.events.today') || '今日の予定'}</Text>
+      </View>
       {todayEvents.length > 0 ? (
         <>
           {todayEvents.slice(0, 3).map((event, index) => (

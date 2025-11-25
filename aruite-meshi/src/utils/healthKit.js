@@ -50,6 +50,14 @@ const toDateKey = (value) => {
   return null;
 };
 
+const normalizeDateKey = (value) => {
+  try {
+    return toDateKeyLocal(value);
+  } catch (_) {
+    return null;
+  }
+};
+
 const hasModernHealthKit = () =>
   isIOS &&
   KingstinctHealthKit &&
@@ -132,8 +140,15 @@ const fetchDailyStepStatistics = async (startDate, endDate) => {
   }
   const results = await KingstinctHealthKit.queryStatisticsForQuantity(options);
   if (!Array.isArray(results)) return null;
-  return results.map((entry) => {
-    const key = toDateKey(entry.startDate || entry.startTimestamp || entry.date) || toDateKeyLocal(new Date(entry.endDate || Date.now()));
+  return results.map((entry, index) => {
+    // HealthKitの日付がUTC基準になるケースがあるため、リクエスト開始日 + index日目をローカル日付として採用
+    const day = new Date(startDate);
+    day.setHours(0, 0, 0, 0);
+    day.setDate(day.getDate() + index);
+    const key =
+      toDateKeyLocal(day) ||
+      toDateKey(entry.startDate || entry.startTimestamp || entry.date) ||
+      toDateKeyLocal(new Date(entry.endDate || Date.now()));
     const steps = Number(entry.sumQuantity ?? entry.quantity ?? entry.value ?? 0) || 0;
     return { date: key, steps };
   });
@@ -274,9 +289,33 @@ export const getStepsInRange = async (startDate, endDate) => {
   if (hasModernHealthKit() && healthSyncEnabled) {
     try {
       await ensureAuthorized();
-      const stats = await fetchDailyStepStatistics(start, end);
+      // HealthKitがUTC基準で解釈するケースに備えて、ローカル日付をUTCに変換して渡す
+      const localStart = new Date(start);
+      localStart.setHours(0, 0, 0, 0);
+      const localEnd = new Date(end);
+      localEnd.setHours(23, 59, 59, 999);
+      const hkStart = new Date(Date.UTC(
+        localStart.getFullYear(),
+        localStart.getMonth(),
+        localStart.getDate(),
+        0, 0, 0, 0
+      ));
+      const hkEnd = new Date(Date.UTC(
+        localEnd.getFullYear(),
+        localEnd.getMonth(),
+        localEnd.getDate(),
+        23, 59, 59, 999
+      ));
+
+      const stats = await fetchDailyStepStatistics(hkStart, hkEnd);
       if (stats && stats.length) {
-        return stats;
+        const normalized = stats
+          .map((item) => ({
+            ...item,
+            date: normalizeDateKey(item?.date || item?.startDate || item?.endDate),
+          }))
+          .filter((item) => !!item.date);
+        if (normalized.length) return normalized;
       }
     } catch (error) {
       console.warn('[healthKit] Failed to fetch steps from HealthKit, falling back to pedometer data:', error);
@@ -284,7 +323,11 @@ export const getStepsInRange = async (startDate, endDate) => {
   }
   // fallback: Pedometer
   const pedometer = await getPedometerStepsInRange(start, end);
-  if (Array.isArray(pedometer) && pedometer.length) return pedometer;
+  if (Array.isArray(pedometer) && pedometer.length) {
+    return pedometer
+      .map((item) => ({ ...item, date: normalizeDateKey(item?.date) }))
+      .filter((item) => !!item.date);
+  }
   // fallback2: storage snapshot per day
   try {
     const cursor = new Date(start);
@@ -295,7 +338,9 @@ export const getStepsInRange = async (startDate, endDate) => {
       if (stored) list.push({ date: key, steps: stored.steps || 0 });
       cursor.setDate(cursor.getDate() + 1);
     }
-    return list;
+    return list
+      .map((item) => ({ ...item, date: normalizeDateKey(item?.date) }))
+      .filter((item) => !!item.date);
   } catch (_) {
     return [];
   }

@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../../i18n/I18nProvider';
 import { getTheme } from '../../utils/theme';
 import { saveUserProfile, saveSettings, saveOnboardingComplete } from '../../utils/storage';
+import { AppIcon } from '../../components/AppIcon';
 
 export default function WelcomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -95,7 +96,9 @@ export default function WelcomeScreen({ navigation }) {
 
         <View style={styles.featuresContainer}>
           <Animated.View style={[styles.feature, { opacity: fadeAnim, transform: [{ translateX: slideAnim }] }]}>
-            <Text style={styles.featureEmoji}>👟</Text>
+            <View style={{ marginRight: 20 }}>
+              <AppIcon name="footsteps" size={40} color={theme.primary} />
+            </View>
             <Text style={[styles.featureText, { color: theme.text }]}>{t('onboarding.welcome.featureSteps')}</Text>
           </Animated.View>
           <Animated.View style={[styles.feature, { opacity: fadeAnim, transform: [{ translateX: slideAnim }] }, { transitionDelay: '100ms' }]}> 
@@ -104,7 +107,9 @@ export default function WelcomeScreen({ navigation }) {
                 but for now single animation is better than complex one for this step. 
                 Actually, let's just animate them together for now to keep it clean.
             */}
-            <Text style={styles.featureEmoji}>🔥</Text>
+            <View style={{ marginRight: 20 }}>
+              <AppIcon name="fire" size={40} color={theme.accent} />
+            </View>
             <Text style={[styles.featureText, { color: theme.text }]}>{t('onboarding.welcome.featureCalories')}</Text>
           </Animated.View>
           <Animated.View style={[styles.feature, { opacity: fadeAnim, transform: [{ translateX: slideAnim }] }]}>

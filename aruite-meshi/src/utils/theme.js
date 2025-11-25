@@ -4,42 +4,44 @@
  */
 
 export const COLORS = {
-  // メインカラー（Calm × Cute）
-  primary: '#FF8050',            // 祝祭・強CTA（控えめに使用）
-  primaryDark: '#FF936A',
-  accent: '#14B8A6',             // Teal 500（落ち着き＋少し可愛い）
-  accentDark: '#2DD4BF',         // ダーク用ティール
+  // Journal Color Palette (Teal × Orange)
+  primary: '#FF6B35',            // Coral Orange (accent, CTAs)
+  primaryDark: '#FF8050',
+  accent: '#00A896',             // Teal Green (brand color)
+  accentDark: '#14B8A6',
   success: '#16A34A',            // Green 600
   successDark: '#22C55E',
 
-  // ライトモード（Calm寄り）
+  // Light Mode (Journal Paper)
   light: {
-    background: '#F7FAFC',       // 淡いブルーグレー
-    card: '#FFFFFF',
-    cardWarm: '#F8FAFC',
-    text: '#1A202C',             // Slate 900
-    textSecondary: '#64748B',    // Slate 500
-    textTertiary: '#94A3B8',     // Slate 400
-    border: '#E5E7EB',           // Gray 200
-    shadow: '#000000',
-    progressUnfilled: '#E2E8F0', // Slate 200
-    circleUnfilled: '#EDF2F7',   // Gray 100
-    chartBar: '#CBD5E1',         // Slate 300（落ち着いたバー色）
+    background: '#F8F4E3',       // Warm ivory (paper)
+    card: '#FFFDF9',             // Paper white
+    cardWarm: '#FFFEF9',
+    text: '#2D3142',             // Ink dark
+    textSecondary: '#9CA5B5',    // Muted gray
+    textTertiary: '#B8BFC9',     // Light gray
+    border: '#F0F0F0',           // Paper edge
+    lineGray: '#E0E0E0',         // Ruled lines
+    shadow: '#1B1F23',           // Deep shadow
+    progressUnfilled: '#E8E4D8', // Subtle tan
+    circleUnfilled: '#EDF2F7',
+    chartBar: '#D4CFC0',         // Muted tan bar
   },
 
-  // ダークモード（Calm寄り）
+  // Dark Mode (Dark Paper/Parchment)
   dark: {
-    background: '#111827',       // Slate 900
-    card: '#1F2937',             // Slate 800
-    cardWarm: '#1F2937',
-    text: '#F9FAFB',
-    textSecondary: '#D1D5DB',    // Gray 300
-    textTertiary: '#9CA3AF',     // Gray 400
-    border: '#374151',           // Slate 700
+    background: '#1C1917',       // Dark brown-gray
+    card: '#292524',             // Warm dark card
+    cardWarm: '#292524',
+    text: '#F5F5F4',             // Warm white
+    textSecondary: '#A8A29E',    // Warm gray
+    textTertiary: '#78716C',     // Muted warm gray
+    border: '#44403C',           // Dark border
+    lineGray: '#57534E',         // Dark ruled line
     shadow: '#000000',
-    progressUnfilled: '#374151',
-    circleUnfilled: '#111827',
-    chartBar: '#334155',         // Slate 700（暗所でも落ち着く）
+    progressUnfilled: '#44403C',
+    circleUnfilled: '#1C1917',
+    chartBar: '#57534E',
   },
 };
 
@@ -62,6 +64,7 @@ export const getTheme = (colorScheme) => {
     textSecondary: isDark ? COLORS.dark.textSecondary : COLORS.light.textSecondary,
     textTertiary: isDark ? COLORS.dark.textTertiary : COLORS.light.textTertiary,
     border: isDark ? COLORS.dark.border : COLORS.light.border,
+    lineGray: isDark ? COLORS.dark.lineGray : COLORS.light.lineGray,
     shadow: isDark ? COLORS.dark.shadow : COLORS.light.shadow,
     progressUnfilled: isDark ? COLORS.dark.progressUnfilled : COLORS.light.progressUnfilled,
     circleUnfilled: isDark ? COLORS.dark.circleUnfilled : COLORS.light.circleUnfilled,
@@ -79,18 +82,19 @@ export const getShadowStyle = (isDark) => {
   if (isDark) {
     return {
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.6,  // ダークモードでは影を強く
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.5,
       shadowRadius: 12,
       elevation: 12,
     };
   }
 
+  // Richer shadow for paper depth
   return {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowColor: '#1B1F23',
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowRadius: 12,
+    elevation: 10,
   };
 };

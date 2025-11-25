@@ -6,11 +6,13 @@ import {
   Dimensions,
   TouchableOpacity,
   useColorScheme,
+  Platform,
 } from "react-native";
 import { getTheme } from "../utils/theme";
 import { getEventsForDate, getEventsSummary } from "../utils/calendar";
 import { getDayNote } from "../utils/dayNotes";
-import { getWeatherIcon } from "../utils/weather";
+import { getWeatherIconName } from "../utils/weather";
+import { AppIcon } from "./AppIcon";
 
 const { width } = Dimensions.get("window");
 
@@ -75,7 +77,7 @@ export default function HistoryDayItem({
             />
           )}
         </View>
-        <Text style={[styles.daySteps, { color: theme.text }]}>
+        <Text style={[styles.daySteps, { color: theme.text, fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }) }]}>
           {formatNumber(dayData.steps)}
         </Text>
       </View>
@@ -85,7 +87,7 @@ export default function HistoryDayItem({
         <View
           style={[
             styles.progressBar,
-            { width: barWidth, backgroundColor: theme.primary },
+            { width: barWidth, backgroundColor: '#FFDDC1' },  // Very light beige/peach
           ]}
         />
       </View>
@@ -93,7 +95,7 @@ export default function HistoryDayItem({
       {/* コメント情報 */}
       {noteText && (
         <View style={styles.dayInfoRow}>
-          <Text style={styles.dayInfoIcon}>💬</Text>
+          <AppIcon name="comment" size={12} color="#9CA5B5" style={{ marginRight: 6 }} />
           <Text
             style={[styles.dayInfoText, { color: theme.textSecondary }]}
             numberOfLines={1}
@@ -103,10 +105,9 @@ export default function HistoryDayItem({
         </View>
       )}
 
-      {/* カレンダー情報 */}
       {!loading && events.length > 0 && (
         <View style={styles.dayInfoRow}>
-          <Text style={styles.dayInfoIcon}>📅</Text>
+          <AppIcon name="calendar" size={12} color="#9CA5B5" style={{ marginRight: 6 }} />
           <Text
             style={[styles.dayInfoText, { color: theme.textSecondary }]}
             numberOfLines={1}
@@ -116,10 +117,15 @@ export default function HistoryDayItem({
         </View>
       )}
 
-      {/* Weather Info (New) */}
+      {/* Weather Info */}
       {dayData.weather && (
         <View style={styles.dayInfoRow}>
-          <Text style={styles.dayInfoIcon}>{getWeatherIcon(dayData.weather.code)}</Text>
+          <AppIcon 
+            name={getWeatherIconName(dayData.weather.code)} 
+            size={12} 
+            color={theme.textSecondary} 
+            style={{ marginRight: 6 }} 
+          />
           <Text style={[styles.dayInfoText, { color: theme.textSecondary }]}>
             {Math.round(dayData.weather.maxTemp)}° / {Math.round(dayData.weather.minTemp)}°
           </Text>
@@ -137,7 +143,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   dateContainer: {
     flexDirection: "row",
@@ -160,28 +166,28 @@ const styles = StyleSheet.create({
     color: "#212121",
   },
   progressBarContainer: {
-    height: 8,
-    borderRadius: 4,
+    height: 4,  // Thinner bar (was 8)
+    borderRadius: 2,
     overflow: "hidden",
+    marginBottom: 6,
   },
   progressBar: {
     height: "100%",
-    borderRadius: 4,
+    borderRadius: 2,
+    opacity: 0.7,  // Muted color
   },
   dayInfoRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(0,0,0,0.06)",
+    marginTop: 4,
+    marginLeft: 2,
   },
   dayInfoIcon: {
-    fontSize: 16,
-    marginRight: 8,
+    fontSize: 12,  // Smaller icon
+    marginRight: 6,
   },
   dayInfoText: {
-    fontSize: 13,
+    fontSize: 11,  // Smaller text (was 13)
     flex: 1,
   },
 });

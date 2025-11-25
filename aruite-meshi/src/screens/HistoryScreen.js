@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   Dimensions,
   InteractionManager,
+  Platform,
+  ImageBackground,
 } from 'react-native';
 import { useColorScheme } from 'react-native';
 
@@ -240,8 +242,8 @@ export default function HistoryScreen({ navigation }) {
       datasets: [
         {
           data: data.length > 0 ? data : [0],
-          color: (opacity = 1) => `rgba(255, 128, 80, ${opacity})`, // メインオレンジ
-          strokeWidth: 3, // 線を太く
+          color: (opacity = 1) => `rgba(0, 168, 150, ${opacity})`, // Teal for journal aesthetic
+          strokeWidth: 3, // Slightly thinner than before but still visible
         },
       ],
     };
@@ -251,36 +253,37 @@ export default function HistoryScreen({ navigation }) {
       backgroundGradientFrom: theme.card,
       backgroundGradientTo: theme.card,
       decimalPlaces: 0,
-      color: (opacity = 1) => `rgba(255, 128, 80, ${opacity})`,
+      color: (opacity = 1) => `rgba(0, 168, 150, ${opacity})`, // Teal
       labelColor: (opacity = 1) => theme.textSecondary,
       style: {
-        borderRadius: 16,
+        borderRadius: 20,
       },
       propsForDots: {
-        r: 6,
-        strokeWidth: 3,
-        stroke: '#FFFFFF',
-        fill: theme.primary,
+        r: 5, // Smaller dots
+        strokeWidth: 2,
+        stroke: '#FFFDF9', // theme.card
+        fill: theme.accent, // Teal
       },
       propsForBackgroundLines: {
         strokeWidth: 1,
-        stroke: theme.border,
-        strokeDasharray: 0,
+        stroke: theme.lineGray, // Ruled lines
+        strokeDasharray: "5, 5", // Dashed lines for notebook feel
       },
       propsForLabels: {
         fontSize: 10,
+        fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }), // Serif font
       },
-      fillShadowGradient: theme.primary,
-      fillShadowGradientOpacity: 0.08,
-      fillShadowGradientFrom: theme.primary,
-      fillShadowGradientFromOpacity: 0.1,
-      fillShadowGradientTo: theme.primary,
-      fillShadowGradientToOpacity: 0.02,
+      fillShadowGradient: theme.accent,
+      fillShadowGradientOpacity: 0.2, // More visible fill for pencil shading effect
+      fillShadowGradientFrom: theme.accent,
+      fillShadowGradientFromOpacity: 0.3,
+      fillShadowGradientTo: theme.accent,
+      fillShadowGradientToOpacity: 0.05,
     };
 
     return (
       <View style={[styles.chartContainer, { position: 'relative', backgroundColor: theme.card }] }>
-        <Text style={[styles.chartTitle, { color: theme.text }]}>{t('history.chart.stepsTrend')}</Text>
+        <Text style={[styles.chartTitle, { color: theme.text, fontFamily: serifFont }]}>{t('history.chart.stepsTrend')}</Text>
         <LineChart
           data={chartData}
           width={width - 40}
@@ -346,24 +349,35 @@ export default function HistoryScreen({ navigation }) {
     return calculateFoodAmount(totalCalories, defaultFood);
   };
 
+  const serifFont = Platform.select({ ios: 'Georgia', android: 'serif' });
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.tabContainer, { paddingTop: insets.top + 10, backgroundColor: theme.background }]}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'week' && styles.activeTab, { backgroundColor: theme.card, borderColor: activeTab === 'week' ? theme.primary : 'transparent' }]}
+    <ImageBackground
+      source={require('../../assets/paper-texture.png')}
+      style={[styles.container, { backgroundColor: theme.background }]}
+      imageStyle={{ opacity: 0.03, resizeMode: 'repeat' }}
+    >
+      {/* Journal Header */}
+      <View style={{ paddingTop: insets.top + 20, paddingHorizontal: 24, paddingBottom: 10 }}>
+        <Text style={{ fontSize: 32, fontFamily: serifFont, color: theme.text, fontWeight: '600' }}>History</Text>
+        <Text style={{ fontSize: 14, fontFamily: serifFont, color: theme.textSecondary, fontStyle: 'italic', marginTop: 4 }}>
+          Your progress over time
+        </Text>
+      </View>
+
+      {/* Minimalist Tabs with Underline */}
+      <View style={{ flexDirection: 'row', paddingHorizontal: 24, marginBottom: 20, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+        <TouchableOpacity 
           onPress={() => changeTab('week')}
+          style={{ paddingVertical: 12, marginRight: 32, borderBottomWidth: 2, borderBottomColor: activeTab === 'week' ? theme.accent : 'transparent' }}
         >
-          <Text style={[styles.tabText, { color: activeTab === 'week' ? theme.primary : theme.textSecondary }]}>
-            {t('history.tabs.week')}
-          </Text>
+          <Text style={{ fontFamily: serifFont, fontSize: 15, fontWeight: '600', color: activeTab === 'week' ? theme.text : theme.textSecondary }}>WEEK</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'month' && styles.activeTab, { backgroundColor: theme.card, borderColor: activeTab === 'month' ? theme.accent : 'transparent' }]}
+        <TouchableOpacity 
           onPress={() => changeTab('month')}
+          style={{ paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: activeTab === 'month' ? theme.accent : 'transparent' }}
         >
-          <Text style={[styles.tabText, { color: activeTab === 'month' ? theme.accent : theme.textSecondary }]}>
-            {t('history.tabs.month')}
-          </Text>
+          <Text style={{ fontFamily: serifFont, fontSize: 15, fontWeight: '600', color: activeTab === 'month' ? theme.text : theme.textSecondary }}>MONTH</Text>
         </TouchableOpacity>
       </View>
 
@@ -373,13 +387,13 @@ export default function HistoryScreen({ navigation }) {
           contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
         >
         <View style={[styles.summaryContainer, { backgroundColor: theme.card }]}>
-          <Text style={[styles.summaryTitle, { color: theme.text }]}>
+          <Text style={[styles.summaryTitle, { color: theme.text, fontFamily: serifFont }]}>
             {activeTab === 'week' ? t('history.summary.titleWeek') : t('history.summary.titleMonth')}
           </Text>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
               <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>{t('history.summary.totalSteps')}</Text>
-              <Text style={[styles.summaryValue, { color: theme.text }]}>{formatNumber(totalSteps)}</Text>
+              <Text style={[styles.summaryValue, { color: theme.text, fontFamily: serifFont }]}>{formatNumber(totalSteps)}</Text>
               <Text style={[styles.summaryUnit, { color: theme.textSecondary }]}>{t('units.steps')}</Text>
             </View>
             <View style={styles.summaryItem}>
@@ -387,14 +401,14 @@ export default function HistoryScreen({ navigation }) {
             </View>
             <View style={styles.summaryItem}>
               <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>{t('history.summary.averageSteps')}</Text>
-              <Text style={[styles.summaryValue, { color: theme.text }]}>{formatNumber(averageSteps)}</Text>
+              <Text style={[styles.summaryValue, { color: theme.text, fontFamily: serifFont }]}>{formatNumber(averageSteps)}</Text>
               <Text style={[styles.summaryUnit, { color: theme.textSecondary }]}>{t('history.unit.stepsPerDay')}</Text>
             </View>
           </View>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
               <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>{t('history.summary.totalCalories')}</Text>
-              <Text style={[styles.summaryValue, { color: theme.text }]}>{formatNumber(Math.round(totalCalories))}</Text>
+              <Text style={[styles.summaryValue, { color: theme.text, fontFamily: serifFont }]}>{formatNumber(Math.round(totalCalories))}</Text>
               <Text style={[styles.summaryUnit, { color: theme.accent, fontWeight: '600' }]}>{t('units.kcal')}</Text>
             </View>
           </View>
@@ -422,7 +436,7 @@ export default function HistoryScreen({ navigation }) {
         </View>
       </ScrollView>
       </View>
-    </View>
+    </ImageBackground>
   );
 
 }

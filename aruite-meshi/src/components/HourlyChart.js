@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { calculateCalories, calculateDistance } from '../utils/calculations';
-import { getWeatherIcon } from '../utils/weather';
+import { getWeatherIconName } from '../utils/weather';
+import { AppIcon } from './AppIcon';
 
 export default function HourlyChart({
   styles,
@@ -25,7 +26,8 @@ export default function HourlyChart({
     ? t('home.activity.today')
     : t('home.activity.onDate', { date: formatMonthDay(selectedDate) });
 
-  const maxSteps = Math.max(...hourlySteps, 1);
+  const safeHourlySteps = hourlySteps || Array(24).fill(0);
+  const maxSteps = Math.max(...safeHourlySteps, 1);
 
   return (
     <View style={styles.chartSection}>
@@ -48,19 +50,19 @@ export default function HourlyChart({
             <View style={styles.hourlyDetailTooltipRow}>
               <Text style={[styles.hourlyDetailTooltipLabel, { color: theme.textSecondary }]}>歩数:</Text>
               <Text style={[styles.hourlyDetailTooltipValue, { color: theme.primary }]}>
-                {(hourlySteps[hourlyDetailTooltip.hour] || 0).toLocaleString()} 歩
+                {(safeHourlySteps[hourlyDetailTooltip.hour] || 0).toLocaleString()} 歩
               </Text>
             </View>
             <View style={styles.hourlyDetailTooltipRow}>
               <Text style={[styles.hourlyDetailTooltipLabel, { color: theme.textSecondary }]}>カロリー:</Text>
               <Text style={[styles.hourlyDetailTooltipValue, { color: theme.accent }]}>
-                {calculateCalories(hourlySteps[hourlyDetailTooltip.hour] || 0, profile.weight).toFixed(1)} kcal
+                {calculateCalories(safeHourlySteps[hourlyDetailTooltip.hour] || 0, profile.weight).toFixed(1)} kcal
               </Text>
             </View>
             <View style={styles.hourlyDetailTooltipRow}>
               <Text style={[styles.hourlyDetailTooltipLabel, { color: theme.textSecondary }]}>距離:</Text>
               <Text style={[styles.hourlyDetailTooltipValue, { color: theme.success }]}>
-                {calculateDistance(hourlySteps[hourlyDetailTooltip.hour] || 0, profile.stride).toFixed(2)} km
+                {calculateDistance(safeHourlySteps[hourlyDetailTooltip.hour] || 0, profile.stride).toFixed(2)} km
               </Text>
             </View>
           </View>
@@ -96,17 +98,21 @@ export default function HourlyChart({
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}>
                     {weatherHours.map((hour) => {
                       const weatherCode = hourlyWeather[hour];
-                      const icon = weatherCode !== null && weatherCode !== undefined ? getWeatherIcon(weatherCode) : '';
+                      const iconName = weatherCode !== null && weatherCode !== undefined ? getWeatherIconName(weatherCode) : null;
                       return (
                         <View key={hour} style={{ flex: 1, alignItems: 'center' }}>
-                          <Text style={{ fontSize: 18 }}>{icon}</Text>
+                          {iconName ? (
+                            <AppIcon name={iconName} size={20} color={theme.textSecondary} />
+                          ) : (
+                            <Text style={{ fontSize: 18 }}> </Text>
+                          )}
                         </View>
                       );
                     })}
                   </View>
                 )}
                 <View style={styles.chart} onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}>
-                {hourlySteps.map((count, hour) => {
+                {safeHourlySteps.map((count, hour) => {
                   const heightPct = (count / maxSteps) * 100;
                   const isSelectedToday = selectedDate.toDateString() === new Date().toDateString();
                   const currentHour = new Date().getHours();
@@ -136,10 +142,15 @@ export default function HourlyChart({
                           {
                             height: `${Math.max(2, heightPct)}%`,
                             backgroundColor: isMaxBar
-                              ? theme.primary
+                              ? theme.primary // Orange for max
                               : isCurrentHour
-                              ? theme.success
-                              : theme.chartBar,
+                              ? theme.success // Bright Teal for current
+                              : theme.accent, // Teal for others
+                            opacity: 0.8, // Colored pencil texture feel
+                            width: '60%', // Thinner bars
+                            borderTopLeftRadius: 4,
+                            borderTopRightRadius: 4,
+                            borderRadius: 0, // Reset default borderRadius
                           },
                         ]}
                       />

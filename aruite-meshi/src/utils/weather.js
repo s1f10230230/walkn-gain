@@ -5,6 +5,30 @@ const BASE_URL = 'https://api.open-meteo.com/v1/forecast';
 
 // WMO Weather Codes mapping
 // https://open-meteo.com/en/docs
+// Map WMO codes to AppIcon names
+export const getWeatherIconName = (code) => {
+  if (code === undefined || code === null) return null;
+  
+  // Clear
+  if (code === 0) return 'sunny';
+  // Mostly Clear / Partly Cloudy
+  if (code === 1 || code === 2 || code === 3) return 'cloudy'; // AppIcon doesn't have partly cloudy yet, use cloudy or sunny
+  // Fog
+  if (code === 45 || code === 48) return 'cloudy';
+  // Drizzle / Rain
+  if (code >= 51 && code <= 67) return 'rainy';
+  // Snow
+  if (code >= 71 && code <= 77) return 'rainy'; // Use rainy for snow for now or add snow icon
+  // Showers
+  if (code >= 80 && code <= 82) return 'rainy';
+  // Snow Showers
+  if (code >= 85 && code <= 86) return 'rainy';
+  // Thunderstorm
+  if (code >= 95 && code <= 99) return 'rainy';
+
+  return 'cloudy';
+};
+
 export const getWeatherIcon = (code) => {
   if (code === undefined || code === null) return '❓';
   
@@ -132,7 +156,7 @@ export const fetchWeatherHistory = async (days = 30) => {
   }
 };
 
-export const fetchHourlyWeather = async (date) => {
+export const fetchHourlyWeather = async (date = new Date()) => {
   try {
     // Get Location
     const { status } = await Location.requestForegroundPermissionsAsync();

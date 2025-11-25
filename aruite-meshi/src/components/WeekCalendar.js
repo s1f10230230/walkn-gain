@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Animated, Alert } from 'react-native';
 import * as Progress from 'react-native-progress';
 import { toDateKeyLocal } from '../utils/calculations';
+import { AppIcon } from './AppIcon';
 
 export default function WeekCalendar({
   theme,
@@ -105,7 +106,9 @@ export default function WeekCalendar({
                           {date.getDate()}
                         </Text>
                         {ratio >= 1 && (
-                          <Text style={{ position: 'absolute', top: -8, left: -8, fontSize: 12 }}>🏆</Text>
+                          <View style={{ position: 'absolute', top: -10, left: -10 }}>
+                            <AppIcon name="trophy" size={14} color={theme.success} />
+                          </View>
                         )}
                       </View>
                     );

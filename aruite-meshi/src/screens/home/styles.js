@@ -63,12 +63,14 @@ const styles = StyleSheet.create({
   navButton: { padding: 10 },
   navButtonText: { fontSize: 24, color: "#212121" },
   dateText: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "600",
     color: "#212121",
-    marginHorizontal: 10,
-    minWidth: 160,
+    marginHorizontal: 4,
+    minWidth: 120, // Reduced to bring arrows inward
     textAlign: "center",
+    // fontFamily: serifFont, // This variable is not defined in the provided context, commenting out to avoid error
+    letterSpacing: 0.5,
   },
   // Calendar modal
   modalOverlay: {
@@ -176,11 +178,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FFFFFF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16, // 半径を大きくしてグラデ感を強める
-    elevation: 8,
+    // Paper depth shadow
+    shadowColor: "#1B1F23",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: "#F0F0F0",
   },
   
   circleCenter: {
@@ -237,29 +242,39 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: 20,  // Slightly softer corners for paper feel
     padding: 16,
     marginHorizontal: 6,
     backgroundColor: "#FFF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    // Paper card shadow
+    shadowColor: "#1B1F23",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: "#F0F0F0",
   },
   statLabel: { fontSize: 12, fontWeight: "700", textAlign: "center" },
   statValue: {
     fontSize: 24,
     fontWeight: "800",
     marginTop: 2,
-    textAlign: "center",
-  },
+    textAlign: "center" },
   statSubtext: { fontSize: 12, marginTop: 4, textAlign: "center" },
   eventsCard: {
-    borderRadius: 16,
+    borderRadius: 20,  // Paper card
     padding: 16,
     marginHorizontal: 20,
     marginTop: 16,
+    borderWidth: 1,
+    borderColor: "#F0F0F0",
+    // Paper shadow
+    shadowColor: "#1B1F23",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 8,
   },
   eventsTitle: { fontSize: 16, fontWeight: "800", marginBottom: 8 },
   eventItem: { paddingVertical: 10, borderBottomWidth: 1 },
@@ -289,14 +304,17 @@ const styles = StyleSheet.create({
   chartSection: { marginTop: 10, marginBottom: 20 },
   chartCard: {
     backgroundColor: "#FFF",
-    borderRadius: 16,
+    borderRadius: 20,  // Paper card feel
     padding: 20,
     marginHorizontal: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    // Paper depth shadow
+    shadowColor: "#1B1F23",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: "#F0F0F0",
   },
   chartWithAxis: { flexDirection: "row", alignItems: "stretch" },
   yAxis: {
@@ -387,6 +405,12 @@ const styles = StyleSheet.create({
   dateNavButton: {
     padding: 10,
   },
+  navButtonLeft: {
+    marginLeft: 32, // Increased to bring arrows further inward
+  },
+  navButtonRight: {
+    marginRight: 32, // Increased to bring arrows further inward
+  },
   dateNavArrow: {
     fontSize: 24,
     fontWeight: "600",
@@ -395,7 +419,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 10,
+    paddingHorizontal: 20, // 左右の矢印との重なりを減らす
   },
   disabledButton: {
     opacity: 0.3,

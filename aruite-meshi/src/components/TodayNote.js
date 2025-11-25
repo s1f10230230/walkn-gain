@@ -18,6 +18,7 @@ import {
 } from "../utils/dayNotes";
 import { useI18n } from "../i18n/I18nProvider";
 import { getTodayDateString } from "../utils/calculations";
+import { AppIcon } from "./AppIcon";
 
 export default function TodayNote({ theme, date, onNoteChange }) {
   const { t } = useI18n();
@@ -140,13 +141,11 @@ export default function TodayNote({ theme, date, onNoteChange }) {
             style={styles.addButton}
             onPress={() => setIsExpanded(true)}
           >
-            <Text style={styles.commentIcon}>💬</Text>
+            <AppIcon name="pen" size={20} color={theme.textSecondary} style={{ marginRight: 8 }} />
             <Text style={[styles.addButtonText, { color: theme.primary }]}>
               {t("todayNote.add") || "ひとことを追加"}
             </Text>
-            <Text style={[styles.editIcon, { color: theme.textSecondary }]}>
-              ✏️
-            </Text>
+
           </TouchableOpacity>
         )}
 
@@ -156,7 +155,7 @@ export default function TodayNote({ theme, date, onNoteChange }) {
             style={styles.noteDisplay}
             onPress={() => setIsExpanded(true)}
           >
-            <Text style={styles.commentIcon}>💬</Text>
+            <AppIcon name="pen" size={20} color={theme.textSecondary} style={{ marginRight: 8 }} />
             <View style={styles.noteContent}>
               <Text style={[styles.noteLabel, { color: theme.textSecondary }]}>
                 {label}
@@ -165,9 +164,7 @@ export default function TodayNote({ theme, date, onNoteChange }) {
                 {noteText}
               </Text>
             </View>
-            <Text style={[styles.editIcon, { color: theme.textSecondary }]}>
-              ✏️
-            </Text>
+
           </TouchableOpacity>
         )}
 
@@ -176,30 +173,36 @@ export default function TodayNote({ theme, date, onNoteChange }) {
             <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
               {label}
             </Text>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: theme.background,
-                  color: theme.text,
-                  borderColor: theme.border,
-                },
-              ]}
-              value={noteText}
-              onChangeText={setNoteText}
-              placeholder={
-                isToday
-                  ? t("todayNote.placeholderToday") ||
-                    "今日の気分や出来事を記録..."
-                  : t("todayNote.placeholderOther") ||
-                    "この日の気分や出来事を記録..."
-              }
-              placeholderTextColor={theme.textSecondary}
-              maxLength={100}
-              autoFocus
-              returnKeyType="done"
-              onSubmitEditing={handleSave}
-            />
+            <View style={{ position: 'relative' }}>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: theme.background,
+                    color: theme.text,
+                    borderColor: theme.border,
+                  },
+                ]}
+                value={noteText}
+                onChangeText={setNoteText}
+                placeholder={
+                  isToday
+                    ? t("todayNote.placeholderToday") ||
+                      "今日の気分や出来事を記録..."
+                    : t("todayNote.placeholderOther") ||
+                      "この日の気分や出来事を記録..."
+                }
+                placeholderTextColor={theme.textSecondary}
+                maxLength={100}
+                autoFocus
+                returnKeyType="done"
+                onSubmitEditing={handleSave}
+              />
+              {/* Ruled lines background */}
+              <View style={styles.ruledLinesContainer} pointerEvents="none">
+                <View style={[styles.ruledLine, { backgroundColor: theme.lineGray || theme.border }]} />
+              </View>
+            </View>
 
             <View style={styles.presetsContainer}>
               <Text
@@ -434,5 +437,17 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "600",
+  },
+  ruledLinesContainer: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    right: 12,
+    height: 1,
+    justifyContent: 'flex-end',
+  },
+  ruledLine: {
+    height: 1,
+    width: '100%',
   },
 });

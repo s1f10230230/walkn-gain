@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { getRecentNotes } from "../utils/dayNotes";
 import { useI18n } from "../i18n/I18nProvider";
+import { AppIcon } from "./AppIcon";
 
 const RecentNotes = forwardRef(({ theme, onNotePress }, ref) => {
   const { t, formatNumber } = useI18n();
@@ -86,7 +87,7 @@ const RecentNotes = forwardRef(({ theme, onNotePress }, ref) => {
             onPress={() => onNotePress && onNotePress(note.date)}
           >
             <View style={styles.iconContainer}>
-              <Text style={styles.commentIcon}>💬</Text>
+              <AppIcon name="comment" size={20} color={theme.textSecondary} />
             </View>
             <View style={styles.noteContent}>
               <Text style={[styles.noteDate, { color: theme.textSecondary }]}>
