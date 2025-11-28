@@ -10,7 +10,8 @@
       "Bash(eas build:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(npx pod-install)"
+      "Bash(npx pod-install)",
+      "Bash(npx expo prebuild:*)"
     ],
     "deny": [],
     "ask": []

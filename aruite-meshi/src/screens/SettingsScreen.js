@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   Alert,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { useColorScheme } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,7 +28,7 @@ import {
   getReminderEnabled,
 } from '../utils/storage';
 import { estimateStrideLength } from '../utils/calculations';
-import { initializeHealthKit, startStepsBackgroundUpdates, stopStepsBackgroundUpdates, isHistoricalImportCompleted, importHistoricalData, getHealthKitAuthorizationState, syncPastDaysToStorage } from '../utils/healthKit';
+import { initializeHealthKit, startStepsBackgroundUpdates, stopStepsBackgroundUpdates, isHistoricalImportCompleted, importHistoricalData, getHealthKitAuthorizationState, syncPastDaysToStorage, resetHistoricalImport } from '../utils/healthKit';
 import { registerBackgroundStepsTask, unregisterBackgroundStepsTask } from '../tasks/backgroundStepsTask';
 import { scheduleReminderNotification, cancelReminderNotifications } from '../utils/notifications';
 import { UserIcon, TargetIcon, HeartIcon, PenIcon, InfoIcon } from '../components/SettingsIcons';
@@ -429,6 +430,51 @@ export default function SettingsScreen({ navigation }) {
     );
   };
 
+  // 履歴データ再インポート
+  const [isReimporting, setIsReimporting] = React.useState(false);
+  const handleReimportData = async () => {
+    if (isReimporting) return;
+
+    Alert.alert(
+      '履歴データの再インポート',
+      '過去30日分の歩数データと時間帯別データをHealthKitから再取得します。\n\n既存のデータは上書きされます。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '再インポート',
+          onPress: async () => {
+            setIsReimporting(true);
+            try {
+              // インポート済みフラグをリセット
+              await resetHistoricalImport();
+
+              // 再インポート実行
+              const result = await importHistoricalData(30);
+              console.log('[Settings] Re-import result:', result);
+
+              if (result.success) {
+                Alert.alert(
+                  '完了',
+                  `${result.importedDays}日分のデータをインポートしました。\n（時間帯別データ含む）`
+                );
+              } else {
+                Alert.alert(
+                  'インポート失敗',
+                  'データの取得に失敗しました。ヘルスケア連携が有効か確認してください。'
+                );
+              }
+            } catch (error) {
+              console.error('[Settings] Re-import error:', error);
+              Alert.alert('エラー', 'インポート中にエラーが発生しました。');
+            } finally {
+              setIsReimporting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // 提出用: HealthKit診断機能は非表示
 
   // 都市選択ハンドラは削除
@@ -617,7 +663,23 @@ export default function SettingsScreen({ navigation }) {
               trackColor={{ false: '#ccc', true: theme.accent }}
             />
           </View>
-          {/* 診断ログボタン（提出版では非表示） */}
+          {/* 履歴データ再インポートボタン */}
+          {Platform.OS === 'ios' && toBoolean(healthSync) && (
+            <TouchableOpacity
+              style={[
+                styles.reimportButton,
+                { backgroundColor: theme.accent, opacity: isReimporting ? 0.6 : 1 }
+              ]}
+              onPress={handleReimportData}
+              disabled={isReimporting}
+            >
+              {isReimporting ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.reimportButtonText}>履歴データを再インポート</Text>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -914,6 +976,18 @@ const styles = StyleSheet.create({
   },
   debugButtonText: {
     color: '#1976D2',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  reimportButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 15,
+  },
+  reimportButtonText: {
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
   },

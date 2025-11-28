@@ -271,6 +271,8 @@ export const TRANSLATIONS = {
         featureSteps: '歩数を自動で記録',
         featureCalories: '消費カロリーを計算',
         featureFood: '食べ物に換算',
+        featureDiary: 'ひとこと・写真で振り返り',
+        featureStats: '週間・月間の統計を確認',
         start: 'はじめる',
       },
       profile: {
@@ -728,6 +730,8 @@ export const TRANSLATIONS = {
         featureSteps: 'Auto step tracking',
         featureCalories: 'Calculate calories burned',
         featureFood: 'Convert to foods',
+        featureDiary: 'Reflect with notes & photos',
+        featureStats: 'Weekly & monthly statistics',
         start: 'Get Started',
       },
       profile: {
@@ -1214,6 +1218,8 @@ export const TRANSLATIONS = {
         featureSteps: '自动记录步数',
         featureCalories: '计算消耗热量',
         featureFood: '换算成食物分量',
+        featureDiary: '用一句话和照片记录',
+        featureStats: '查看周/月统计数据',
         start: '开始使用',
       },
       profile: {

@@ -59,10 +59,6 @@ import {
 import { getFoodById, calculateFoodAmount } from "../data/foodDatabase";
 import { getCurrentGoal, isGoalAchieved } from "../data/dailyGoals";
 import {
-  getOrCreateTodayGoals,
-  getOrCreateGoalsForDate,
-} from "../utils/dynamicGoals";
-import {
   getCurrentGoalLevel,
   saveCurrentGoalLevel,
   getCurrentGoalLevelDate,
@@ -84,6 +80,14 @@ import { saveReminderEnabled } from "../utils/storage";
 import { logEvent } from "../utils/analytics";
 import { getStepsInRange, syncPastDaysToStorage } from "../utils/healthKit";
 import { registerBackgroundStepsTask } from "../tasks/backgroundStepsTask";
+
+// Swiftモジュール（時間帯別歩数の高速取得）
+let HealthKitSwift = null;
+try {
+  HealthKitSwift = require("healthkit-swift");
+} catch (e) {
+  console.log("[HomeScreen] Swift module not available");
+}
 import { CalendarIcon } from "../components/SettingsIcons";
 import { getEventsForDate, getEventsSummary } from "../utils/calendar";
 import TodayNote from "../components/TodayNote";
@@ -95,7 +99,7 @@ import ProgressRing from "../components/ProgressRing";
 import ShareCTA from "../components/ShareCTA";
 import WeekCalendar from "../components/WeekCalendar";
 import HourlyChart from "../components/HourlyChart";
-import MetricTabs from "../components/MetricTabs";
+// MetricTabs removed - カロリー・距離はリング下に統合表示
 import StatsCards from "../components/StatsCards";
 import EventsCard from "../components/EventsCard";
 import { computeTrophiesStreak } from "../utils/stats";
@@ -199,7 +203,7 @@ export default function HomeScreen({ navigation, route }) {
     return d;
   });
 
-  const [activeTab, setActiveTab] = useState("steps"); // 'steps' or 'calories'
+  // activeTab removed - 常に歩数表示に固定
   const [steps, setSteps] = useState(0);
   const [todayStepsSnapshot, setTodayStepsSnapshot] = useState(0);
   const [calories, setCalories] = useState(0);
@@ -239,8 +243,6 @@ export default function HomeScreen({ navigation, route }) {
   // タイマーは使わず、押下中のみ表示
   const hourlyTooltipTimerRef = useRef(null);
   const [chartWidth, setChartWidth] = useState(0);
-  const [selectedGoals, setSelectedGoals] = useState([]);
-  const [selectedGoalsLevel, setSelectedGoalsLevel] = useState(1);
   const [hourlyDetailTooltip, setHourlyDetailTooltip] = useState({
     visible: false,
     hour: -1,
@@ -447,10 +449,10 @@ export default function HomeScreen({ navigation, route }) {
     }
   }, [route?.params?.selectedDate, navigation]);
 
-  // 週バー表示モードはタブに追従（歩数タブ=歩、カロリータブ=kcal）
+  // 週バー表示モードは常に歩数
   useEffect(() => {
-    setWeeklyDisplayMode(activeTab === "calories" ? "calories" : "steps");
-  }, [activeTab]);
+    setWeeklyDisplayMode("steps");
+  }, []);
 
   // 日付変更用のスワイプジェスチャー
   const panResponder = useMemo(
@@ -1073,29 +1075,48 @@ export default function HomeScreen({ navigation, route }) {
           // キャッシュがあり、データが入っている場合はそれを使う
           setHourlySteps(cachedHourly);
         } else {
-          // キャッシュがないか空の場合、Pedometerで取得
-          const hourlyData = Array(24).fill(0);
-          const isSelectedToday =
-            currentSelected.toDateString() === today.toDateString();
-          const maxHour = isSelectedToday ? new Date().getHours() : 23;
-          for (let hour = 0; hour <= maxHour; hour++) {
-            const hourStart = new Date(selectedDate);
-            hourStart.setHours(hour, 0, 0, 0);
-            const hourEnd = new Date(selectedDate);
-            hourEnd.setHours(hour, 59, 59, 999);
-            if (isSelectedToday && hour === maxHour) {
-              hourEnd.setTime(Date.now());
-            }
+          // キャッシュがない場合、Swiftモジュールで高速取得を試みる
+          let hourlyData = null;
+
+          // 1. Swift HealthKit（一括取得・高速）
+          if (HealthKitSwift && typeof HealthKitSwift.getHourlyStepsForDate === "function") {
             try {
-              const hourResult = await Pedometer.getStepCountAsync(
-                hourStart,
-                hourEnd
-              );
-              hourlyData[hour] = hourResult.steps;
-            } catch (error) {
-              console.warn(`Failed to get steps for hour ${hour}:`, error);
+              const swiftHourly = await HealthKitSwift.getHourlyStepsForDate(dateKey);
+              if (Array.isArray(swiftHourly) && swiftHourly.length === 24) {
+                hourlyData = swiftHourly.map((v) => Number(v) || 0);
+                console.log("[HomeScreen] Hourly data from Swift:", hourlyData.reduce((a, b) => a + b, 0), "steps");
+              }
+            } catch (swiftErr) {
+              console.warn("[HomeScreen] Swift hourly fetch failed:", swiftErr);
             }
           }
+
+          // 2. フォールバック: Pedometer（24回ループ・遅い）
+          if (!hourlyData || !hourlyData.some((v) => v > 0)) {
+            hourlyData = Array(24).fill(0);
+            const isSelectedToday =
+              currentSelected.toDateString() === today.toDateString();
+            const maxHour = isSelectedToday ? new Date().getHours() : 23;
+            for (let hour = 0; hour <= maxHour; hour++) {
+              const hourStart = new Date(selectedDate);
+              hourStart.setHours(hour, 0, 0, 0);
+              const hourEnd = new Date(selectedDate);
+              hourEnd.setHours(hour, 59, 59, 999);
+              if (isSelectedToday && hour === maxHour) {
+                hourEnd.setTime(Date.now());
+              }
+              try {
+                const hourResult = await Pedometer.getStepCountAsync(
+                  hourStart,
+                  hourEnd
+                );
+                hourlyData[hour] = hourResult.steps;
+              } catch (error) {
+                console.warn(`Failed to get steps for hour ${hour}:`, error);
+              }
+            }
+          }
+
           setHourlySteps(hourlyData);
           // キャッシュに保存
           try {
@@ -1116,17 +1137,6 @@ export default function HomeScreen({ navigation, route }) {
         setHourlySteps(Array(24).fill(0));
       }
 
-      // 選択日のゴールを取得（今日/過去共通）
-      try {
-        const goalsForDate = await getOrCreateGoalsForDate(selectedStart);
-        setSelectedGoals(goalsForDate);
-        // 過去日の表示用に「次に目指す段階」を計算（cal < goal の最初）
-        const idx = goalsForDate.findIndex(
-          (g) => dayCalories < g.food.calories
-        );
-        setSelectedGoalsLevel(idx === -1 ? goalsForDate.length : idx + 1);
-      } catch (_) {}
-
       // カレンダーイベントを取得
       try {
         const events = await getEventsForDate(selectedDate);
@@ -1145,6 +1155,12 @@ export default function HomeScreen({ navigation, route }) {
   useEffect(() => {
     // 🚀 起動1秒表示: キャッシュから即座に読み込み
     loadCachedData();
+
+    // 3秒後に強制的にローディング解除（フォールバック）
+    const fallbackTimer = setTimeout(() => {
+      setIsLoading(false);
+      console.log('[HomeScreen] Fallback: forced loading off');
+    }, 3000);
 
     // バックグラウンドで最新データを取得
     loadData();
@@ -1716,8 +1732,6 @@ export default function HomeScreen({ navigation, route }) {
     } catch (_) {}
   };
 
-  // (obsolete) food card renderer was replaced by DailyFoodGoal
-
   const isStepGoalAchieved = progress >= 1.0;
   const progressColor = isStepGoalAchieved ? theme.success : theme.accent;
 
@@ -1825,10 +1839,7 @@ export default function HomeScreen({ navigation, route }) {
   useEffect(() => {
     const isSelectedToday =
       selectedDate.toDateString() === new Date().toDateString();
-    const nearSteps = isSelectedToday && progress >= 0.8 && progress < 1.0;
-    const nearCalories =
-      isSelectedToday && caloriesProgress >= 0.8 && caloriesProgress < 1.0;
-    const near = activeTab === "steps" ? nearSteps : nearCalories;
+    const near = isSelectedToday && progress >= 0.8 && progress < 1.0;
 
     if (near) {
       if (!pulseLoopRef.current) {
@@ -1857,7 +1868,7 @@ export default function HomeScreen({ navigation, route }) {
       }
       pulseAnim.setValue(1);
     }
-  }, [activeTab, progress, caloriesProgress, selectedDate]);
+  }, [progress, selectedDate]);
 
   useEffect(() => {
     const isSelectedToday =
@@ -1948,7 +1959,7 @@ export default function HomeScreen({ navigation, route }) {
         <View style={[styles.dateNavigation, { paddingTop: insets.top + 20 }]}>
           {/* トロフィー数とストリーク（縦2行） */}
           <View
-            style={{ position: "absolute", left: 20, top: insets.top + 10 }}
+            style={{ position: "absolute", left: 20, top: insets.top + 16 }}
           >
             {/* Free/Pro Badge - Subtle & Clickable */}
             <TouchableOpacity 
@@ -2031,15 +2042,6 @@ export default function HomeScreen({ navigation, route }) {
         </TouchableOpacity>
 
         {/* インライン通知は非表示 */}
-
-        {/* 歩数/カロリー タブ */}
-        <MetricTabs
-          theme={theme}
-          styles={styles}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          t={t}
-        />
 
         {/* 週の操作ボタン群は削除（上部に重複する今日へをなくす） */}
 
@@ -2166,18 +2168,9 @@ export default function HomeScreen({ navigation, route }) {
                 ]}
               >
                 {(() => {
-                  const ringP = clamp01(
-                    activeTab === "steps" ? progress : caloriesProgress
-                  );
+                  const ringP = clamp01(progress);
                   const isFull = ringP >= 0.999;
-                  const ringColor =
-                    activeTab === "steps"
-                      ? ringP >= 1.0
-                        ? theme.success
-                        : theme.accent
-                      : ringP >= 1.0
-                      ? theme.success
-                      : theme.accent;
+                  const ringColor = ringP >= 1.0 ? theme.success : theme.accent;
                   return (
                     <ProgressRing
                       size={200}
@@ -2193,60 +2186,63 @@ export default function HomeScreen({ navigation, route }) {
                   );
                 })()}
                 <View style={styles.circleCenter}>
-                  {activeTab === "steps" ? (
-                    <>
-                      <Text style={[styles.percentText, { color: theme.text }]}>
-                        {formatNumber(steps)}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.goalLabel,
-                          { color: theme.textSecondary },
-                        ]}
-                      >
-                        {t("units.steps")}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.progressSubtext,
-                          { color: theme.textSecondary },
-                        ]}
-                      >
-                        {t("home.progress.rate")}: {Math.round(clamp01(progress) * 100)}%
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text style={[styles.percentText, { color: theme.text }]}>
-                        {calories.toFixed(0)}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.goalLabel,
-                          { color: theme.textSecondary },
-                        ]}
-                      >
-                        {t("units.kcal")}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.progressSubtext,
-                          { color: theme.textSecondary },
-                        ]}
-                      >
-                        {t("home.progress.rate")}:{" "}
-                        {Math.round(clamp01(caloriesProgress) * 100)}%
-                      </Text>
-                    </>
-                  )}
+                  <Text style={[styles.percentText, { color: theme.text }]}>
+                    {formatNumber(steps)}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.goalLabel,
+                      { color: theme.textSecondary },
+                    ]}
+                  >
+                    {t("units.steps")}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.progressSubtext,
+                      { color: theme.textSecondary },
+                    ]}
+                  >
+                    {t("home.progress.rate")}: {Math.round(clamp01(progress) * 100)}%
+                  </Text>
                 </View>
               </View>
             </TouchableOpacity>
           </View>
 
-          {/* Action Row: Finger & ShareCTA */}
-          {/* Action Row: Finger & ShareCTA */}
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'flex-end', paddingHorizontal: 20, marginTop: 10, marginBottom: 12, zIndex: 10 }}>
+          {/* カロリー・距離統合表示 */}
+          <View style={{
+            flexDirection: 'row',
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingHorizontal: 20,
+            marginTop: 8,
+            marginBottom: 4,
+            gap: 24,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <AppIcon name="flame" size={18} color={theme.primary} />
+              <Text style={{ marginLeft: 6, fontSize: 15, fontWeight: '600', color: theme.text }}>
+                {calories.toFixed(0)}
+              </Text>
+              <Text style={{ marginLeft: 3, fontSize: 13, color: theme.textSecondary }}>
+                {t("units.kcal")}
+              </Text>
+            </View>
+            <View style={{ width: 1, height: 16, backgroundColor: theme.border }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <AppIcon name="location" size={18} color={theme.accent} />
+              <Text style={{ marginLeft: 6, fontSize: 15, fontWeight: '600', color: theme.text }}>
+                {distance.toFixed(1)}
+              </Text>
+              <Text style={{ marginLeft: 3, fontSize: 13, color: theme.textSecondary }}>
+                km
+              </Text>
+            </View>
+          </View>
+
+          {/* Action Row: ShareCTA */}
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'flex-end', paddingHorizontal: 20, marginTop: 6, marginBottom: 12, zIndex: 10 }}>
             {/* Finger Icon */}
             {/* Finger Icon Removed */}
 

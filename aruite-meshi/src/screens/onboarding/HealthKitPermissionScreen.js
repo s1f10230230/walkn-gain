@@ -11,10 +11,18 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../../i18n/I18nProvider';
-import { initializeHealthKit, importHistoricalData } from '../../utils/healthKit';
+import { importHistoricalData } from '../../utils/healthKit';
 import { saveHealthSyncEnabled } from '../../utils/storage';
 import { useColorScheme } from 'react-native';
 import { getTheme } from '../../utils/theme';
+
+// Swiftネイティブモジュールを直接使用
+let HealthKitSwift = null;
+try {
+  HealthKitSwift = require('healthkit-swift');
+} catch (e) {
+  console.log('[HealthKitPermission] Swift module not available');
+}
 
 export default function HealthKitPermissionScreen({ navigation, route }) {
   const ENABLE_HEALTHKIT_IMPORT = true; // 初回にサイレントで過去データを取り込み（ユーザー通知なし）
@@ -41,42 +49,70 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
     setIsLoading(true);
 
     try {
-      // ❶ 権限要求（availabilityチェックは削除 - TestFlightで誤判定されるため）
-      const success = await initializeHealthKit(true);
+      // ❶ Swiftモジュールで権限要求（Kingstinctを使わない）
+      let success = false;
+
+      if (HealthKitSwift && typeof HealthKitSwift.isAvailable === 'function') {
+        const available = await HealthKitSwift.isAvailable();
+        console.log('[HealthKitPermission] Swift isAvailable:', available);
+
+        if (available) {
+          success = await HealthKitSwift.requestAuthorization();
+          console.log('[HealthKitPermission] Swift authorization:', success);
+        }
+      }
+
       if (!success) {
+        console.log('[HealthKitPermission] HealthKit not available, skipping...');
         Alert.alert(
-          'HealthKit',
-          'ヘルスケア権限を有効にできませんでした。設定アプリで許可してください。'
+          t('onboarding.health.alertTitle') || 'HealthKit',
+          t('onboarding.health.alertFail') || 'ヘルスケアが利用できません。後で設定から有効にできます。',
+          [
+            {
+              text: t('common.ok') || 'OK',
+              onPress: () => {
+                setIsLoading(false);
+                navigateToCalorieGoal();
+              },
+            },
+          ]
         );
-        setIsLoading(false);
-        return;   // ⬅ 成功しなければ絶対に進ませない
+        return;
       }
 
       // ❷ HK有効化フラグ
       await saveHealthSyncEnabled(true);
 
-      // ❸ 二重 initialize（HK反映の遅延対策）
-      await initializeHealthKit(false);
-
-      // ❹ 過去データインポート
+      // ❸ 過去データインポート（Swiftモジュール優先）
       if (ENABLE_HEALTHKIT_IMPORT) {
         try {
-          console.log('📊 [HealthKitPermission] 過去データの取り込みを開始...');
+          console.log('[HealthKitPermission] 過去データの取り込みを開始...');
           const result = await importHistoricalData(30);
-          console.log('📊 [HealthKitPermission] インポート完了:', JSON.stringify(result, null, 2));
+          console.log('[HealthKitPermission] インポート完了:', JSON.stringify(result, null, 2));
         } catch (err) {
-          console.error('❌ [HealthKitPermission] インポートエラー:', err);
-          console.error('❌ [HealthKitPermission] エラー詳細:', err.message, err.stack);
+          console.error('[HealthKitPermission] インポートエラー:', err);
         }
       }
 
     } catch (error) {
-      console.error('HealthKit初期化エラー:', error);
-      setIsLoading(false);
-      return;  // エラーでも遷移しない
+      console.error('[HealthKitPermission] HealthKit初期化エラー:', error);
+      Alert.alert(
+        t('onboarding.health.alertTitle') || 'HealthKit',
+        t('onboarding.health.connectError') || 'ヘルスケア連携に失敗しました。後で設定から有効にできます。',
+        [
+          {
+            text: t('common.ok') || 'OK',
+            onPress: () => {
+              setIsLoading(false);
+              navigateToCalorieGoal();
+            },
+          },
+        ]
+      );
+      return;
     }
 
-    // ❺ 次へ
+    // ❹ 次へ
     setIsLoading(false);
     navigateToCalorieGoal();
   };

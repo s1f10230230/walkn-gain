@@ -101,20 +101,13 @@ export default function WelcomeScreen({ navigation }) {
             </View>
             <Text style={[styles.featureText, { color: theme.text }]}>{t('onboarding.welcome.featureSteps')}</Text>
           </Animated.View>
-          <Animated.View style={[styles.feature, { opacity: fadeAnim, transform: [{ translateX: slideAnim }] }, { transitionDelay: '100ms' }]}> 
-            {/* Note: transitionDelay isn't a valid style prop in RN Animated, we'd need separate animated values for staggered effect. 
-                For simplicity in this step, keeping it simple or I can implement stagger. Let's use stagger in useEffect if we want precise control, 
-                but for now single animation is better than complex one for this step. 
-                Actually, let's just animate them together for now to keep it clean.
-            */}
-            <View style={{ marginRight: 20 }}>
-              <AppIcon name="fire" size={40} color={theme.accent} />
-            </View>
-            <Text style={[styles.featureText, { color: theme.text }]}>{t('onboarding.welcome.featureCalories')}</Text>
+          <Animated.View style={[styles.feature, { opacity: fadeAnim, transform: [{ translateX: slideAnim }] }]}>
+            <Text style={styles.featureEmoji}>📝</Text>
+            <Text style={[styles.featureText, { color: theme.text }]}>{t('onboarding.welcome.featureDiary')}</Text>
           </Animated.View>
           <Animated.View style={[styles.feature, { opacity: fadeAnim, transform: [{ translateX: slideAnim }] }]}>
-            <Text style={styles.featureEmoji}>🍜</Text>
-            <Text style={[styles.featureText, { color: theme.text }]}>{t('onboarding.welcome.featureFood')}</Text>
+            <Text style={styles.featureEmoji}>📊</Text>
+            <Text style={[styles.featureText, { color: theme.text }]}>{t('onboarding.welcome.featureStats')}</Text>
           </Animated.View>
         </View>
       </View>

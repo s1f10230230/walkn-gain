@@ -1,0 +1,8 @@
+{
+  "name": "healthkit-swift",
+  "version": "1.0.0",
+  "main": "index.js",
+  "peerDependencies": {
+    "expo": "*"
+  }
+}

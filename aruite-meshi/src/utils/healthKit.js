@@ -1,8 +1,18 @@
 import { Alert, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { calculateCalories, calculateDistance, toDateKeyLocal } from './calculations';
-import { getSettings, getUserProfile, saveDailyData, getDailyData, getHealthSyncEnabled } from './storage';
+import { getSettings, getUserProfile, saveDailyData, getDailyData, getHealthSyncEnabled, saveHourlyStepsForDate } from './storage';
 import { getStepsInRange as getPedometerStepsInRange, getTodaySteps as getPedometerTodaySteps } from './pedometer';
+
+// Swiftネイティブモジュール（30日分取得に最適化）
+let HealthKitSwift = null;
+try {
+  // eslint-disable-next-line global-require
+  HealthKitSwift = require('healthkit-swift');
+} catch (error) {
+  HealthKitSwift = null;
+  console.log('[healthKit] Swift module not available:', error?.message || error);
+}
 
 let KingstinctHealthKit = null;
 try {
@@ -63,6 +73,38 @@ const hasModernHealthKit = () =>
   KingstinctHealthKit &&
   typeof KingstinctHealthKit.requestAuthorization === 'function';
 
+// シミュレーターチェック - HealthKitが物理的に利用可能か確認
+const isHealthDataAvailableOnDevice = async () => {
+  if (!hasModernHealthKit()) return false;
+
+  try {
+    // 同期チェック
+    if (typeof KingstinctHealthKit?.isHealthDataAvailable === 'function') {
+      try {
+        const syncResult = KingstinctHealthKit.isHealthDataAvailable();
+        if (!syncResult) return false;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    // 非同期チェック（より信頼性が高い）
+    if (typeof KingstinctHealthKit?.isHealthDataAvailableAsync === 'function') {
+      try {
+        const asyncResult = await KingstinctHealthKit.isHealthDataAvailableAsync();
+        return !!asyncResult;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    // チェック関数がない場合はtrue（実機と仮定）
+    return true;
+  } catch (_) {
+    return false;
+  }
+};
+
 // STEP_TYPE が null でも HealthKit を初期化できるようにする
 const readQuantityTypes = () => {
   const HK = KingstinctHealthKit?.HKQuantityTypeIdentifier;
@@ -94,22 +136,25 @@ export const getHealthKitAvailability = () => ({
 export const getHealthKitAuthorizationState = async () => {
   if (!hasModernHealthKit()) return { available: false, authorized: false };
 
+  // シミュレーターチェック
+  const deviceAvailable = await isHealthDataAvailableOnDevice();
+  if (!deviceAvailable) {
+    console.log('[healthKit] getHealthKitAuthorizationState: HealthKit not available on this device');
+    return { available: false, authorized: false };
+  }
+
   if (typeof KingstinctHealthKit.getAuthorizationStatus === 'function' && STEP_TYPE) {
     try {
       const status = await KingstinctHealthKit.getAuthorizationStatus(STEP_TYPE);
       return { available: true, authorized: status === 'sharingAuthorized' || status === 'authorized' };
     } catch (error) {
       console.warn('[healthKit] getAuthorizationStatus failed:', error);
+      return { available: true, authorized: false };
     }
   }
 
-  // fallback: initializeHealthKit が成功していれば authorized とみなす
-  try {
-    await ensureAuthorized();
-    return { available: true, authorized: true };
-  } catch (_) {
-    return { available: true, authorized: false };
-  }
+  // fallback: 権限確認できない場合は false
+  return { available: true, authorized: false };
 };
 
 const fetchDailyStepStatistics = async (startDate, endDate) => {
@@ -158,6 +203,13 @@ const fetchDailyStepStatistics = async (startDate, endDate) => {
 const ensureAuthorized = async () => {
   if (!hasModernHealthKit()) return false;
 
+  // シミュレーターチェック
+  const deviceAvailable = await isHealthDataAvailableOnDevice();
+  if (!deviceAvailable) {
+    console.log('[healthKit] ensureAuthorized: HealthKit not available on this device');
+    return false;
+  }
+
   let readTypes = readQuantityTypes();
 
   // 防弾：空配列なら文字列を強制追加
@@ -185,23 +237,14 @@ export const initializeHealthKit = async (showAlert = false) => {
     return false;
   }
 
-  // Health data が物理的に存在しないデバイス（Simulator 等）では即座に中断する
-  try {
-    let healthAvailable = true;
-    if (typeof KingstinctHealthKit?.isHealthDataAvailable === 'function') {
-      healthAvailable = !!KingstinctHealthKit.isHealthDataAvailable();
+  // シミュレーターチェック
+  const deviceAvailable = await isHealthDataAvailableOnDevice();
+  if (!deviceAvailable) {
+    console.log('[healthKit] HealthKit is not available on this device (simulator or unsupported)');
+    if (showAlert) {
+      Alert.alert('HealthKit', 'このデバイスではヘルスケアデータにアクセスできません。実機でお試しください。');
     }
-    if (healthAvailable && typeof KingstinctHealthKit?.isHealthDataAvailableAsync === 'function') {
-      healthAvailable = !!(await KingstinctHealthKit.isHealthDataAvailableAsync());
-    }
-    if (!healthAvailable) {
-      if (showAlert) {
-        Alert.alert('HealthKit', 'このデバイスではヘルスケアデータにアクセスできません。');
-      }
-      return false;
-    }
-  } catch (availabilityError) {
-    console.warn('[healthKit] isHealthDataAvailable check failed:', availabilityError);
+    return false;
   }
 
   try {
@@ -285,50 +328,24 @@ export const stopStepsBackgroundUpdates = async () => {
 export const getStepsInRange = async (startDate, endDate) => {
   const start = new Date(startDate);
   const end = new Date(endDate);
-  const healthSyncEnabled = await getHealthSyncEnabled();
-  if (hasModernHealthKit() && healthSyncEnabled) {
-    try {
-      await ensureAuthorized();
-      // HealthKitがUTC基準で解釈するケースに備えて、ローカル日付をUTCに変換して渡す
-      const localStart = new Date(start);
-      localStart.setHours(0, 0, 0, 0);
-      const localEnd = new Date(end);
-      localEnd.setHours(23, 59, 59, 999);
-      const hkStart = new Date(Date.UTC(
-        localStart.getFullYear(),
-        localStart.getMonth(),
-        localStart.getDate(),
-        0, 0, 0, 0
-      ));
-      const hkEnd = new Date(Date.UTC(
-        localEnd.getFullYear(),
-        localEnd.getMonth(),
-        localEnd.getDate(),
-        23, 59, 59, 999
-      ));
 
-      const stats = await fetchDailyStepStatistics(hkStart, hkEnd);
-      if (stats && stats.length) {
-        const normalized = stats
-          .map((item) => ({
-            ...item,
-            date: normalizeDateKey(item?.date || item?.startDate || item?.endDate),
-          }))
-          .filter((item) => !!item.date);
-        if (normalized.length) return normalized;
-      }
-    } catch (error) {
-      console.warn('[healthKit] Failed to fetch steps from HealthKit, falling back to pedometer data:', error);
+  // Kingstinct HealthKitはSwiftモジュールと競合してクラッシュするため無効化
+  // オンボーディングでSwiftモジュールが30日分をStorageにインポート済み
+  // ここではPedometer + Storageのみ使用
+
+  // 1. Pedometer
+  try {
+    const pedometer = await getPedometerStepsInRange(start, end);
+    if (Array.isArray(pedometer) && pedometer.length) {
+      return pedometer
+        .map((item) => ({ ...item, date: normalizeDateKey(item?.date) }))
+        .filter((item) => !!item.date);
     }
+  } catch (error) {
+    console.warn('[healthKit] getStepsInRange: Pedometer failed:', error);
   }
-  // fallback: Pedometer
-  const pedometer = await getPedometerStepsInRange(start, end);
-  if (Array.isArray(pedometer) && pedometer.length) {
-    return pedometer
-      .map((item) => ({ ...item, date: normalizeDateKey(item?.date) }))
-      .filter((item) => !!item.date);
-  }
-  // fallback2: storage snapshot per day
+
+  // 2. Storage fallback (HealthKitインポート済みデータ)
   try {
     const cursor = new Date(start);
     const list = [];
@@ -379,6 +396,89 @@ export const resetHistoricalImport = async () => {
 };
 
 export const importHistoricalData = async (daysBack = 30, onProgress = null) => {
+  // 1. Swiftモジュールを優先使用（30日分一括取得に最適化）
+  if (HealthKitSwift && typeof HealthKitSwift.isAvailable === 'function') {
+    try {
+      const available = await HealthKitSwift.isAvailable();
+      if (available) {
+        console.log('[healthKit] Using Swift module for historical import');
+        const authorized = await HealthKitSwift.requestAuthorization();
+        if (authorized) {
+          const stepsDict = await HealthKitSwift.getStepsForDays(daysBack);
+          if (stepsDict && Object.keys(stepsDict).length > 0) {
+            const settings = await getSettings();
+            const profile = await getUserProfile();
+            const weight = Number(profile?.weight) || 65;
+            const stride = Number(profile?.stride) || 72;
+            const goal = Number(settings?.dailyGoal) || 10000;
+
+            let importedCount = 0;
+            const errors = [];
+            const entries = Object.entries(stepsDict).sort((a, b) => a[0].localeCompare(b[0]));
+
+            for (let i = 0; i < entries.length; i += 1) {
+              const [dateKey, steps] = entries[i];
+              try {
+                if (onProgress) onProgress(i + 1, entries.length);
+
+                const existing = await getDailyData(dateKey);
+                if (existing?.steps && existing.steps >= steps) continue;
+
+                const calories = Math.round(calculateCalories(steps, weight));
+                const distance = calculateDistance(steps, stride);
+                const payload = {
+                  ...(existing || {}),
+                  date: dateKey,
+                  steps,
+                  calories,
+                  distance,
+                  goal,
+                  importedFromHealthKit: true,
+                  importedAt: new Date().toISOString(),
+                };
+                await saveDailyData(dateKey, payload);
+
+                // 時間帯別データも取得して保存
+                if (HealthKitSwift && typeof HealthKitSwift.getHourlyStepsForDate === 'function') {
+                  try {
+                    const hourlyData = await HealthKitSwift.getHourlyStepsForDate(dateKey);
+                    if (Array.isArray(hourlyData) && hourlyData.length === 24) {
+                      await saveHourlyStepsForDate(dateKey, hourlyData.map((v) => Number(v) || 0));
+                      console.log(`[healthKit] Swift: Hourly data saved for ${dateKey}`);
+                    }
+                  } catch (hourlyErr) {
+                    console.warn(`[healthKit] Swift: Failed to get hourly for ${dateKey}:`, hourlyErr);
+                  }
+                }
+
+                importedCount += 1;
+              } catch (error) {
+                console.error(`[healthKit] Swift: Failed to import ${dateKey}:`, error);
+                errors.push({ date: dateKey, error: error.message });
+              }
+            }
+
+            if (importedCount > 0) {
+              await markHistoricalImportCompleted();
+            }
+
+            console.log(`[healthKit] Swift import complete: ${importedCount}/${entries.length} days`);
+            return {
+              success: importedCount > 0,
+              importedDays: importedCount,
+              totalDays: entries.length,
+              errors,
+              source: 'swift',
+            };
+          }
+        }
+      }
+    } catch (swiftError) {
+      console.warn('[healthKit] Swift module failed, falling back:', swiftError);
+    }
+  }
+
+  // 2. フォールバック: Kingstinct HealthKit
   if (!hasModernHealthKit()) {
     return { success: false, importedDays: 0, errors: ['HealthKit unavailable'] };
   }
@@ -456,6 +556,7 @@ export const importHistoricalData = async (daysBack = 30, onProgress = null) => 
     importedDays: importedCount,
     totalDays: dayList.length,
     errors,
+    source: 'kingstinct',
   };
 };
 
@@ -464,7 +565,8 @@ export const importHistoricalData = async (daysBack = 30, onProgress = null) => 
  * @param {number} daysBack 何日前まで遡るか
  */
 export const syncPastDaysToStorage = async (daysBack = 7) => {
-  const healthSyncEnabled = await getHealthSyncEnabled();
+  console.log('[healthKit] syncPastDaysToStorage: START (Pedometer only)');
+
   const endDate = new Date();
   endDate.setHours(23, 59, 59, 999);
   const startDate = new Date();
@@ -474,19 +576,8 @@ export const syncPastDaysToStorage = async (daysBack = 7) => {
   let dayList = [];
   let source = 'pedometer';
 
-  // 1. Try HealthKit if enabled
-  if (healthSyncEnabled && hasModernHealthKit()) {
-    try {
-      await ensureAuthorized();
-      const hkData = await getStepsInRange(startDate, endDate);
-      if (Array.isArray(hkData) && hkData.length > 0) {
-        dayList = hkData;
-        source = 'healthkit';
-      }
-    } catch (error) {
-      console.warn('[healthKit] syncPastDaysToStorage: HealthKit failed, falling back to Pedometer', error);
-    }
-  }
+  // HomeScreenではPedometerのみ使用（HealthKitはオンボーディングで30日分取得済み）
+  // Swift/Kingstinctは競合してクラッシュするためスキップ
 
   // 2. Fallback to Pedometer if HealthKit didn't yield results
   if (dayList.length === 0) {
@@ -517,9 +608,10 @@ export const syncPastDaysToStorage = async (daysBack = 7) => {
       const existing = await getDailyData(day.date);
       
       // 上書き条件:
-      // 1. ソースがHealthKitなら常に優先 (HK > Existing)
+      // 1. ソースがSwift/HealthKitなら常に優先 (HK > Existing)
       // 2. ソースがPedometerなら、既存より多ければ更新 (Pedometer > Existing if larger)
-      if (source === 'healthkit') {
+      const isHKSource = source === 'healthkit' || source === 'swift';
+      if (isHKSource) {
         if (existing?.steps && existing.steps >= steps && existing.importedFromHealthKit) continue;
       } else {
         // Pedometer source
@@ -535,7 +627,7 @@ export const syncPastDaysToStorage = async (daysBack = 7) => {
         calories,
         distance,
         goal,
-        importedFromHealthKit: source === 'healthkit',
+        importedFromHealthKit: isHKSource,
         importedAt: new Date().toISOString(),
       };
       await saveDailyData(day.date, payload);
