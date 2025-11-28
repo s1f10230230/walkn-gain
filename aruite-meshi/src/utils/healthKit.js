@@ -422,23 +422,26 @@ export const importHistoricalData = async (daysBack = 30, onProgress = null) => 
                 if (onProgress) onProgress(i + 1, entries.length);
 
                 const existing = await getDailyData(dateKey);
-                if (existing?.steps && existing.steps >= steps) continue;
+                const shouldUpdateDaily = !existing?.steps || existing.steps < steps;
 
-                const calories = Math.round(calculateCalories(steps, weight));
-                const distance = calculateDistance(steps, stride);
-                const payload = {
-                  ...(existing || {}),
-                  date: dateKey,
-                  steps,
-                  calories,
-                  distance,
-                  goal,
-                  importedFromHealthKit: true,
-                  importedAt: new Date().toISOString(),
-                };
-                await saveDailyData(dateKey, payload);
+                // 日別データを更新（歩数が増えた場合のみ）
+                if (shouldUpdateDaily) {
+                  const calories = Math.round(calculateCalories(steps, weight));
+                  const distance = calculateDistance(steps, stride);
+                  const payload = {
+                    ...(existing || {}),
+                    date: dateKey,
+                    steps,
+                    calories,
+                    distance,
+                    goal,
+                    importedFromHealthKit: true,
+                    importedAt: new Date().toISOString(),
+                  };
+                  await saveDailyData(dateKey, payload);
+                }
 
-                // 時間帯別データも取得して保存
+                // 時間帯別データは常に取得・保存（グラフ表示のため）
                 if (HealthKitSwift && typeof HealthKitSwift.getHourlyStepsForDate === 'function') {
                   try {
                     const hourlyData = await HealthKitSwift.getHourlyStepsForDate(dateKey);

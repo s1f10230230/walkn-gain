@@ -664,7 +664,7 @@ export default function SettingsScreen({ navigation }) {
             />
           </View>
           {/* 履歴データ再インポートボタン */}
-          {Platform.OS === 'ios' && toBoolean(healthSync) && (
+          {Platform.OS === 'ios' && (
             <TouchableOpacity
               style={[
                 styles.reimportButton,
