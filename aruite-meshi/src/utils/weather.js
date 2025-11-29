@@ -1,7 +1,29 @@
 import * as Location from 'expo-location';
+import { getCache, setCache, cacheKeys } from './memoryCache';
 
 // OpenMeteo API (Free, No Key)
 const BASE_URL = 'https://api.open-meteo.com/v1/forecast';
+
+// キャッシュ付き位置情報取得（5分間有効）
+const getCachedLocation = async () => {
+  const cached = getCache(cacheKeys.location());
+  if (cached) {
+    return cached;
+  }
+
+  const { status } = await Location.requestForegroundPermissionsAsync();
+  if (status !== 'granted') {
+    // デフォルト: 東京
+    const defaultLocation = { latitude: 35.6895, longitude: 139.6917 };
+    setCache(cacheKeys.location(), defaultLocation);
+    return defaultLocation;
+  }
+
+  const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
+  const coords = { latitude: location.coords.latitude, longitude: location.coords.longitude };
+  setCache(cacheKeys.location(), coords);
+  return coords;
+};
 
 // WMO Weather Codes mapping
 // https://open-meteo.com/en/docs
@@ -72,19 +94,26 @@ export const getWeatherDescription = (code, t) => {
 
 export const fetchWeatherForLocation = async () => {
   try {
-    // 1. Get Location Permission
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      console.log('Location permission denied, using default (Tokyo)');
-      return await fetchWeather(35.6895, 139.6917); // Default to Tokyo
+    // 今日の日付キー
+    const today = new Date().toISOString().split('T')[0];
+
+    // キャッシュチェック（1時間有効）
+    const cached = getCache(cacheKeys.weather(today));
+    if (cached) {
+      return cached;
     }
 
-    // 2. Get Current Location
-    const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
-    const { latitude, longitude } = location.coords;
+    // キャッシュ付き位置情報取得
+    const { latitude, longitude } = await getCachedLocation();
 
-    // 3. Fetch Weather
-    return await fetchWeather(latitude, longitude);
+    // 天気取得
+    const weather = await fetchWeather(latitude, longitude);
+
+    if (weather) {
+      setCache(cacheKeys.weather(today), weather);
+    }
+
+    return weather;
 
   } catch (error) {
     console.error('Error fetching weather:', error);
@@ -118,37 +147,35 @@ const fetchWeather = async (lat, lon) => {
 
 export const fetchWeatherHistory = async (days = 30) => {
   try {
-    // 1. Get Location (Reuse permission check logic if possible, or just request)
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    let lat = 35.6895;
-    let lon = 139.6917;
+    // キャッシュ付き位置情報取得
+    const { latitude: lat, longitude: lon } = await getCachedLocation();
 
-    if (status === 'granted') {
-      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
-      lat = location.coords.latitude;
-      lon = location.coords.longitude;
-    }
-
-    // 2. Fetch History (Forecast API supports past_days up to 92)
-    // daily=weathercode,temperature_2m_max,temperature_2m_min
+    // Fetch History (Forecast API supports past_days up to 92)
     const url = `${BASE_URL}?latitude=${lat}&longitude=${lon}&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto&past_days=${days}&forecast_days=1`;
-    
+
     const response = await fetch(url);
     const data = await response.json();
 
     if (!data.daily) return [];
 
     const { time, weathercode, temperature_2m_max, temperature_2m_min } = data.daily;
-    
-    // Map to array of objects
-    return time.map((date, index) => ({
-      date,
-      weather: {
-        code: weathercode[index],
-        maxTemp: temperature_2m_max[index],
-        minTemp: temperature_2m_min[index],
-      }
-    }));
+
+    // 各日の天気をキャッシュに保存（永久キャッシュ）
+    const results = time.map((date, index) => {
+      const weatherData = {
+        date,
+        weather: {
+          code: weathercode[index],
+          maxTemp: temperature_2m_max[index],
+          minTemp: temperature_2m_min[index],
+        }
+      };
+      // 過去の天気は永久キャッシュ
+      setCache(cacheKeys.pastWeather(date), weatherData.weather, Infinity);
+      return weatherData;
+    });
+
+    return results;
 
   } catch (e) {
     console.error('OpenMeteo history fetch error:', e);
@@ -158,33 +185,36 @@ export const fetchWeatherHistory = async (days = 30) => {
 
 export const fetchHourlyWeather = async (date = new Date()) => {
   try {
-    // Get Location
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    let lat = 35.6895;
-    let lon = 139.6917;
+    // Format date as YYYY-MM-DD
+    const dateStr = date instanceof Date ? date.toISOString().split('T')[0] : date;
+    const today = new Date().toISOString().split('T')[0];
+    const isPastDay = dateStr < today;
 
-    if (status === 'granted') {
-      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
-      lat = location.coords.latitude;
-      lon = location.coords.longitude;
+    // キャッシュチェック（過去日は永久、今日は1時間）
+    const cached = getCache(cacheKeys.hourlyWeather(dateStr));
+    if (cached) {
+      return cached;
     }
 
-    // Format date as YYYY-MM-DD
-    const dateStr = date.toISOString().split('T')[0];
-    
+    // キャッシュ付き位置情報取得
+    const { latitude: lat, longitude: lon } = await getCachedLocation();
+
     // Fetch hourly data for the specific date
-    // Using forecast API with start_date and end_date
     const url = `${BASE_URL}?latitude=${lat}&longitude=${lon}&hourly=weathercode&timezone=auto&start_date=${dateStr}&end_date=${dateStr}`;
-    
+
     const response = await fetch(url);
     const data = await response.json();
 
     if (!data.hourly) return Array(24).fill(null);
 
     const { weathercode } = data.hourly;
-    
-    // Return array of 24 hourly weather codes
-    return weathercode.slice(0, 24);
+    const hourlyData = weathercode.slice(0, 24);
+
+    // キャッシュに保存（過去日は永久、今日は1時間）
+    const ttl = isPastDay ? Infinity : 60 * 60 * 1000;
+    setCache(cacheKeys.hourlyWeather(dateStr), hourlyData, ttl);
+
+    return hourlyData;
 
   } catch (e) {
     console.error('OpenMeteo hourly fetch error:', e);

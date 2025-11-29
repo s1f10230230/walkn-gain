@@ -18,6 +18,7 @@ import LanguageSelectScreen from '../screens/onboarding/LanguageSelectScreen';
 // メインアプリ
 import AppNavigator from './AppNavigator';
 import AppSplashScreen from '../screens/AppSplashScreen';
+import UpgradeScreen from '../screens/UpgradeScreen';
 
 const Stack = createStackNavigator();
 
@@ -133,6 +134,15 @@ export default function RootNavigator() {
           name="Onboarding"
           component={OnboardingStack}
           options={{ detachPreviousScreen: false }}
+        />
+        <Stack.Screen
+          name="Upgrade"
+          component={UpgradeScreen}
+          options={{
+            presentation: 'modal',
+            cardStyleInterpolator: CardStyleInterpolators.forModalPresentationIOS,
+            detachPreviousScreen: false,
+          }}
         />
       </Stack.Navigator>
     </NavigationContainer>

@@ -11,9 +11,11 @@ import {
   StatusBar,
   Platform,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getMultipleDaysData, getDailyData, saveDailyData } from '../utils/storage';
 import { toDateKeyLocal } from '../utils/calculations';
+import { useSubscription, FREE_LIMITS, PREMIUM_LIMITS } from '../contexts/SubscriptionContext';
 import DiaryModal from '../components/DiaryModal';
 
 // --- Constants & Theme Colors ---
@@ -151,6 +153,8 @@ const StoryCard = ({ item, onJournalChange }) => {
 // Main Screen: 全体の組み立て
 // ==========================================
 export default function StoryScreen() {
+  const navigation = useNavigation();
+  const { isPremium, limits } = useSubscription();
   const [data, setData] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showDiaryModal, setShowDiaryModal] = useState(false);
@@ -158,13 +162,14 @@ export default function StoryScreen() {
 
   useEffect(() => {
     loadHistory();
-  }, []);
+  }, [isPremium]);
 
   const loadHistory = async () => {
-    // 過去7日分のデータを取得
+    // プレミアムは30日、無料は7日
+    const daysToLoad = isPremium ? 30 : limits.storyDays;
     const dates = [];
     const today = new Date();
-    for (let i = 6; i >= 0; i--) {
+    for (let i = daysToLoad - 1; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
       dates.push(toDateKeyLocal(d));
@@ -245,6 +250,18 @@ export default function StoryScreen() {
       {/* Header Title */}
       <Text style={styles.headerTitle}>MY JOURNEY</Text>
 
+      {/* Free User Upgrade Banner */}
+      {!isPremium && (
+        <TouchableOpacity
+          style={styles.upgradeBanner}
+          onPress={() => navigation.navigate('Upgrade')}
+        >
+          <Text style={styles.upgradeBannerText}>
+            🔓 過去30日のストーリーを見る
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {/* Calendar Strip */}
       <CalendarStrip 
         data={data} 
@@ -300,6 +317,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
     fontFamily: Platform.OS === 'ios' ? 'Avenir Next' : 'Roboto',
+  },
+  upgradeBanner: {
+    backgroundColor: 'rgba(0, 168, 150, 0.1)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  upgradeBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.teal,
   },
   calendarStripContainer: {
     height: 80,

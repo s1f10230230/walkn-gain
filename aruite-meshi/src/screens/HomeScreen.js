@@ -29,6 +29,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { Pedometer } from "expo-sensors";
 import { getTheme } from "../utils/theme";
 import { useI18n } from "../i18n/I18nProvider";
+import { useSubscription } from "../contexts/SubscriptionContext";
 import {
   calculateCalories,
   calculateDistance,
@@ -152,6 +153,9 @@ import {
 export default function HomeScreen({ navigation, route }) {
   // RecentNotesコンポーネントへの参照
   const recentNotesRef = useRef(null);
+
+  // 課金状態
+  const { isPremium } = useSubscription();
 
   // 日付関連（週単位のスライドウィンドウ）
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -513,6 +517,22 @@ export default function HomeScreen({ navigation, route }) {
               return;
             }
 
+            // 無料ユーザーは7日前まで
+            if (!isPremium && direction < 0) {
+              const limitDate = new Date();
+              limitDate.setDate(limitDate.getDate() - 6); // 今日を含めて7日
+              limitDate.setHours(0, 0, 0, 0);
+              if (candidate < limitDate) {
+                Animated.timing(slideAnim, {
+                  toValue: 0,
+                  duration: 150,
+                  useNativeDriver: true,
+                }).start();
+                navigation.navigate('Upgrade');
+                return;
+              }
+            }
+
             const outTo = direction < 0 ? width : -width;
             // スライドアウト：超高速化
             Animated.timing(slideAnim, {
@@ -605,6 +625,17 @@ export default function HomeScreen({ navigation, route }) {
 
     if (candidate > today) {
       return;
+    }
+
+    // 無料ユーザーは7日前まで
+    if (!isPremium && direction < 0) {
+      const limitDate = new Date();
+      limitDate.setDate(limitDate.getDate() - 6); // 今日を含めて7日
+      limitDate.setHours(0, 0, 0, 0);
+      if (candidate < limitDate) {
+        navigation.navigate('Upgrade');
+        return;
+      }
     }
 
     // スライドアニメーション付きで日付変更
@@ -766,6 +797,25 @@ export default function HomeScreen({ navigation, route }) {
 
   // 週を前後に移動
   const changeWeek = (direction) => {
+    // 無料ユーザーは過去の週に移動できない
+    if (!isPremium && direction < 0) {
+      const limitDate = new Date();
+      limitDate.setDate(limitDate.getDate() - 6); // 今日を含めて7日
+      limitDate.setHours(0, 0, 0, 0);
+
+      const newWeekStart = new Date(weekStartDate);
+      newWeekStart.setDate(weekStartDate.getDate() + direction * 7);
+
+      // 新しい週の最終日が制限日より前なら移動しない
+      const newWeekEnd = new Date(newWeekStart);
+      newWeekEnd.setDate(newWeekStart.getDate() + 6);
+
+      if (newWeekEnd < limitDate) {
+        navigation.navigate('Upgrade');
+        return;
+      }
+    }
+
     isChangingWeekRef.current = true;
     const newWeekStart = new Date(weekStartDate);
     newWeekStart.setDate(weekStartDate.getDate() + direction * 7);
@@ -1962,24 +2012,38 @@ export default function HomeScreen({ navigation, route }) {
             style={{ position: "absolute", left: 20, top: insets.top + 16 }}
           >
             {/* Free/Pro Badge - Subtle & Clickable */}
-            <TouchableOpacity 
-              style={{ 
+            <TouchableOpacity
+              style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                backgroundColor: 'rgba(0,0,0,0.05)', 
-                paddingHorizontal: 8, 
-                paddingVertical: 4, 
-                borderRadius: 12, 
+                backgroundColor: isPremium ? 'rgba(255,215,0,0.15)' : 'rgba(0,0,0,0.05)',
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 12,
                 alignSelf: 'flex-start',
                 marginBottom: 4
               }}
+              onPress={() => {
+                if (!isPremium) {
+                  navigation.navigate('Upgrade');
+                }
+              }}
+              activeOpacity={isPremium ? 1 : 0.7}
             >
-              <Text style={{ fontSize: 10, fontWeight: '700', color: theme.text, opacity: 0.7, letterSpacing: 0.5 }}>
-                FREE
+              <Text style={{
+                fontSize: 10,
+                fontWeight: '700',
+                color: isPremium ? '#DAA520' : theme.text,
+                opacity: isPremium ? 1 : 0.7,
+                letterSpacing: 0.5
+              }}>
+                {isPremium ? 'PRO' : 'FREE'}
               </Text>
-              <Text style={{ fontSize: 10, fontWeight: '700', color: theme.text, opacity: 0.4, marginLeft: 2 }}>
-                {'>'}
-              </Text>
+              {!isPremium && (
+                <Text style={{ fontSize: 10, fontWeight: '700', color: theme.text, opacity: 0.4, marginLeft: 2 }}>
+                  {'>'}
+                </Text>
+              )}
             </TouchableOpacity>
 
             <HeaderStats
@@ -2053,6 +2117,7 @@ export default function HomeScreen({ navigation, route }) {
           calendarDates={calendarDates}
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
+          onUpgrade={() => navigation.navigate('Upgrade')}
           weeklyData={weeklyData}
           weeklyDisplayMode={weeklyDisplayMode}
           goal={goal}
@@ -2432,6 +2497,10 @@ export default function HomeScreen({ navigation, route }) {
           onSelectDate={(date) => {
             setSelectedDate(date);
             setShowCalendarModal(false);
+          }}
+          onUpgrade={() => {
+            setShowCalendarModal(false);
+            navigation.navigate('Upgrade');
           }}
         />
       </ScrollView>

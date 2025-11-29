@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTheme } from '../utils/theme';
 import { useI18n } from '../i18n/I18nProvider';
+import { useSubscription } from '../contexts/SubscriptionContext';
 import { getDailyData, getMultipleDaysData } from '../utils/storage';
 import { toDateKeyLocal } from '../utils/calculations';
 import { AppIcon } from './AppIcon';
@@ -22,11 +23,28 @@ const MODAL_WIDTH = Math.min(SCREEN_WIDTH - 40, 360);
 
 const serifFont = Platform.select({ ios: 'Georgia', android: 'serif' });
 
-export default function CalendarModal({ visible, onClose, onSelectDate, initialDate }) {
+export default function CalendarModal({ visible, onClose, onSelectDate, initialDate, onUpgrade }) {
   const theme = getTheme();
   const { t } = useI18n();
+  const { isPremium } = useSubscription();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [monthlyData, setMonthlyData] = useState({});
+
+  // 7日前の制限日を計算
+  const limitDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6); // 今日を含めて7日
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  // 日付がロックされているかチェック
+  const isDateLocked = (date) => {
+    if (isPremium) return false;
+    const checkDate = new Date(date);
+    checkDate.setHours(0, 0, 0, 0);
+    return checkDate < limitDate;
+  };
 
   useEffect(() => {
     if (visible && initialDate) {
@@ -130,38 +148,53 @@ export default function CalendarModal({ visible, onClose, onSelectDate, initialD
               const stepsAchieved = steps >= goal;
               const caloriesAchieved = calories >= goalCalories;
 
+              const locked = isDateLocked(date);
+
               return (
                 <TouchableOpacity
                   key={dIndex}
                   style={[
                     styles.dayCell,
-                    isSelected && styles.selectedDayCell
+                    isSelected && styles.selectedDayCell,
+                    locked && styles.lockedDayCell
                   ]}
-                  onPress={() => onSelectDate(date)}
+                  onPress={() => {
+                    if (locked) {
+                      onUpgrade?.();
+                    } else {
+                      onSelectDate(date);
+                    }
+                  }}
                 >
                   {/* Achievement Background Circle */}
-                  {stepsAchieved && (
+                  {stepsAchieved && !locked && (
                     <View style={[
-                      styles.achievementCircle, 
+                      styles.achievementCircle,
                       { backgroundColor: 'rgba(255, 107, 53, 0.15)' }
                     ]} />
                   )}
-                  
-                  <Text style={[
-                    styles.dayText,
-                    isToday && styles.todayText,
-                    isSelected && styles.selectedDayText,
-                    stepsAchieved && { color: theme.primary, fontWeight: 'bold' }
-                  ]}>
-                    {date.getDate()}
-                  </Text>
+
+                  {locked ? (
+                    <Text style={styles.lockIcon}>🔒</Text>
+                  ) : (
+                    <Text style={[
+                      styles.dayText,
+                      isToday && styles.todayText,
+                      isSelected && styles.selectedDayText,
+                      stepsAchieved && { color: theme.primary, fontWeight: 'bold' }
+                    ]}>
+                      {date.getDate()}
+                    </Text>
+                  )}
 
                   {/* Indicators */}
-                  <View style={styles.indicatorsRow}>
-                    {caloriesAchieved && (
-                      <View style={[styles.dot, { backgroundColor: theme.success }]} />
-                    )}
-                  </View>
+                  {!locked && (
+                    <View style={styles.indicatorsRow}>
+                      {caloriesAchieved && (
+                        <View style={[styles.dot, { backgroundColor: theme.success }]} />
+                      )}
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -280,6 +313,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#333',
     borderRadius: 20,
+  },
+  lockedDayCell: {
+    opacity: 0.5,
+  },
+  lockIcon: {
+    fontSize: 14,
   },
   achievementCircle: {
     position: 'absolute',

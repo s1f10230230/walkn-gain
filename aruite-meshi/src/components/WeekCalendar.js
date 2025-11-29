@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Animated, Alert } from 'react-native';
 import * as Progress from 'react-native-progress';
 import { toDateKeyLocal } from '../utils/calculations';
 import { AppIcon } from './AppIcon';
+import { useSubscription } from '../contexts/SubscriptionContext';
 
 export default function WeekCalendar({
   theme,
@@ -11,6 +12,7 @@ export default function WeekCalendar({
   calendarDates,
   selectedDate,
   onSelectDate,
+  onUpgrade,
   weeklyData,
   weeklyDisplayMode,
   goal,
@@ -24,6 +26,23 @@ export default function WeekCalendar({
   handleCalendarScroll,
   handleCalendarScrollEnd,
 }) {
+  const { isPremium } = useSubscription();
+
+  // 7日前の制限日を計算
+  const limitDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6); // 今日を含めて7日
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  // 日付がロックされているかチェック
+  const isDateLocked = (date) => {
+    if (isPremium) return false;
+    const checkDate = new Date(date);
+    checkDate.setHours(0, 0, 0, 0);
+    return checkDate < limitDate;
+  };
   return (
     <View style={{ position: 'relative', zIndex: 20, elevation: 20 }}>
       <ScrollView
@@ -44,6 +63,7 @@ export default function WeekCalendar({
           const selected = date.toDateString() === selectedDate.toDateString();
           const today = isToday(date);
           const future = isFuture(date);
+          const locked = isDateLocked(date);
           const dateKey = toDateKeyLocal(date);
           const dayData = weeklyData[dateKey];
 
@@ -58,6 +78,10 @@ export default function WeekCalendar({
                 onPress={() => {
                   if (future) {
                     Alert.alert("", t("home.futureDateAlert"));
+                    return;
+                  }
+                  if (locked) {
+                    onUpgrade?.();
                     return;
                   }
                   onSelectDate(date);
@@ -88,24 +112,28 @@ export default function WeekCalendar({
                     })();
                     const ringColor = ratio >= 1 ? theme.success : theme.accent;
                     return (
-                      <View style={{ alignItems: 'center', justifyContent: 'center', opacity: future ? 0.4 : 1 }}>
+                      <View style={{ alignItems: 'center', justifyContent: 'center', opacity: future || locked ? 0.4 : 1 }}>
                         <Progress.Circle
                           size={34}
-                          progress={ratio}
+                          progress={locked ? 0 : ratio}
                           thickness={3}
                           borderWidth={0}
                           color={ringColor}
                           unfilledColor={theme.circleUnfilled}
                         />
-                        <Text
-                          style={[
-                            styles.calendarRingDay,
-                            { position: 'absolute', color: selected ? theme.text : (future ? theme.textTertiary : theme.textSecondary) },
-                          ]}
-                        >
-                          {date.getDate()}
-                        </Text>
-                        {ratio >= 1 && (
+                        {locked ? (
+                          <Text style={{ position: 'absolute', fontSize: 14 }}>🔒</Text>
+                        ) : (
+                          <Text
+                            style={[
+                              styles.calendarRingDay,
+                              { position: 'absolute', color: selected ? theme.text : (future ? theme.textTertiary : theme.textSecondary) },
+                            ]}
+                          >
+                            {date.getDate()}
+                          </Text>
+                        )}
+                        {ratio >= 1 && !locked && (
                           <View style={{ position: 'absolute', top: -10, left: -10 }}>
                             <AppIcon name="trophy" size={14} color={theme.success} />
                           </View>

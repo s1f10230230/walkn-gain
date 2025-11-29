@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppState, Animated, Image, View, useColorScheme } from 'react-native';
 import RootNavigator from './src/navigation/RootNavigator';
 import { I18nProvider } from './src/i18n/I18nProvider';
+import { SubscriptionProvider } from './src/contexts/SubscriptionContext';
 import { initAnalytics, logEvent } from './src/utils/analytics';
 // HealthKitの初期化はオンボーディング/設定で行う
 import { getTheme } from './src/utils/theme';
@@ -81,9 +82,10 @@ export default function App() {
   }, []);
   return (
     <SafeAreaProvider>
-      <I18nProvider>
-        <RootNavigator />
-        <StatusBar style="auto" />
+      <SubscriptionProvider>
+        <I18nProvider>
+          <RootNavigator />
+          <StatusBar style="auto" />
         {resumeSplashVisible && (
           <View
             pointerEvents="none"
@@ -98,7 +100,8 @@ export default function App() {
             </Animated.View>
           </View>
         )}
-      </I18nProvider>
+        </I18nProvider>
+      </SubscriptionProvider>
     </SafeAreaProvider>
   );
 }

@@ -40,12 +40,14 @@ import { Pedometer } from 'expo-sensors';
 import { PermissionsAndroid, Linking, Platform } from 'react-native';
 import { requestNotificationPermissions } from '../utils/notifications';
 import { requestPedometerPermissions } from '../utils/pedometer';
+import { useSubscription } from '../contexts/SubscriptionContext';
 
 export default function SettingsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { t, setLocale } = useI18n();
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
+  const { isPremium, setDebugPremium } = useSubscription();
 
   // "true" / "false" などの文字列も正しい boolean に正規化
   const toBoolean = (v) => {
@@ -683,7 +685,67 @@ export default function SettingsScreen({ navigation }) {
         </View>
       </View>
 
-      {/* 提出用: データ削除・オンボーディングリセットは非表示 */}
+      {/* プレミアム */}
+      <View style={styles.section}>
+        <View style={styles.sectionTitleContainer}>
+          <Text style={{ fontSize: 20 }}>⭐</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>プレミアム</Text>
+          <View style={{
+            marginLeft: 8,
+            paddingHorizontal: 8,
+            paddingVertical: 2,
+            borderRadius: 8,
+            backgroundColor: isPremium ? 'rgba(255,215,0,0.2)' : 'rgba(0,0,0,0.08)'
+          }}>
+            <Text style={{
+              fontSize: 11,
+              fontWeight: '700',
+              color: isPremium ? '#DAA520' : theme.textSecondary
+            }}>
+              {isPremium ? 'PRO' : 'FREE'}
+            </Text>
+          </View>
+        </View>
+        <View style={[styles.card, { backgroundColor: theme.card }]}>
+          {isPremium ? (
+            <>
+              <Text style={[styles.inputLabel, { color: theme.text, marginBottom: 8 }]}>
+                プレミアムプラン利用中
+              </Text>
+              <Text style={[styles.helperText, { color: theme.textSecondary, marginBottom: 12 }]}>
+                すべての機能がアンロックされています
+              </Text>
+              {/* デバッグ用：FREEに戻す */}
+              {__DEV__ && (
+                <TouchableOpacity
+                  style={[styles.reimportButton, { backgroundColor: theme.border }]}
+                  onPress={() => setDebugPremium(false)}
+                >
+                  <Text style={[styles.reimportButtonText, { color: theme.text }]}>FREEに戻す（デバッグ）</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          ) : (
+            <>
+              <Text style={[styles.inputLabel, { color: theme.text, marginBottom: 8 }]}>
+                より多くの機能をアンロック
+              </Text>
+              <Text style={[styles.helperText, { color: theme.textSecondary, marginBottom: 12 }]}>
+                履歴無制限、写真4枚/日、詳細統計など
+              </Text>
+              <TouchableOpacity
+                style={[styles.reimportButton, { backgroundColor: theme.primary }]}
+                onPress={() => {
+                  const parent = navigation.getParent?.() || navigation;
+                  parent.navigate('Upgrade');
+                }}
+              >
+                <Text style={styles.reimportButtonText}>アップグレード</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      </View>
 
       {/* 権限（OS） */}
       <View style={styles.section}>
