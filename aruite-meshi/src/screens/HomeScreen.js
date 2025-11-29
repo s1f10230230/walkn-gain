@@ -103,6 +103,8 @@ import HourlyChart from "../components/HourlyChart";
 // MetricTabs removed - カロリー・距離はリング下に統合表示
 import StatsCards from "../components/StatsCards";
 import EventsCard from "../components/EventsCard";
+import StoryPage from "../components/StoryPage";
+import DataPage from "../components/DataPage";
 import { computeTrophiesStreak } from "../utils/stats";
 import { AppIcon } from "../components/AppIcon";
 import { seedPastDaysPedometer } from "../utils/pedometerSeed";
@@ -197,6 +199,9 @@ export default function HomeScreen({ navigation, route }) {
   });
   const [calendarDates, setCalendarDates] = useState([]);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
+  // ページ切り替え（0: データページ, 1: ストーリーページ）
+  const [currentPage, setCurrentPage] = useState(0);
+  const pageAnim = useRef(new Animated.Value(0)).current;
   const [weeklyData, setWeeklyData] = useState({}); // 週間データ { 'YYYY-MM-DD': { steps, calories } }
   const [monthlyData, setMonthlyData] = useState({}); // 月間データ { 'YYYY-MM-DD': { steps, calories } }
   const [allTimeData, setAllTimeData] = useState({}); // 全期間データ（トロフィー・ストリーク計算用）
@@ -459,24 +464,43 @@ export default function HomeScreen({ navigation, route }) {
   }, []);
 
   // 日付変更用のスワイプジェスチャー
+  // ページ切り替えアニメーション
+  const animateToPage = (targetPage) => {
+    setCurrentPage(targetPage);
+    Animated.spring(pageAnim, {
+      toValue: targetPage,
+      tension: 50,
+      friction: 10,
+      useNativeDriver: true,
+    }).start();
+    if (Haptics?.impactAsync) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+  };
+
+  // 現在のページを参照用に保持
+  const currentPageRef = useRef(currentPage);
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (evt, gestureState) => {
-          // 画面端60px以内ではPanResponderを無効化（戻るジェスチャー優先）
+          // 画面端30px以内ではPanResponderを無効化（戻るジェスチャー優先）
           const touchX = evt.nativeEvent.pageX;
           const edgeThreshold = 30;
           if (touchX < edgeThreshold || touchX > width - edgeThreshold) {
             return false;
           }
 
-          // 横方向のスワイプを軽く検出 + フリックも許容
+          // 横方向のスワイプを検出
           const horizontalBias =
             Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.1 ||
             Math.abs(gestureState.vx) > Math.abs(gestureState.vy);
           return (
-            (Math.abs(gestureState.dx) > 1 || // 超軽量設定
-              Math.abs(gestureState.vx) > 0.01) && // 超軽量設定
+            (Math.abs(gestureState.dx) > 1 || Math.abs(gestureState.vx) > 0.01) &&
             horizontalBias
           );
         },
@@ -485,119 +509,54 @@ export default function HomeScreen({ navigation, route }) {
           setMainSwipeIndicator({ left: false, right: false });
         },
         onPanResponderMove: (evt, gestureState) => {
-          // 指に追従して滑らかにスライド（抵抗感を減らす）
-          const damping = 0.8; // 抵抗係数を下げて滑らかに
+          const damping = 0.8;
           slideAnim.setValue(gestureState.dx * damping);
-
-          // インジケーター表示は削除（インスタ風）
         },
         onPanResponderRelease: (evt, gestureState) => {
-          // インジケーターを非表示
           setMainSwipeIndicator({ left: false, right: false });
-          const distThreshold = 3; // 距離の閾値（超軽量設定）
-          const velocityThreshold = 0.01; // 速度閾値（超軽量設定）
+          const distThreshold = 30;
+          const velocityThreshold = 0.3;
           const dx = gestureState.dx;
           const vx = gestureState.vx;
           const absVx = Math.abs(vx);
           const absDx = Math.abs(dx);
 
-          const tryChange = async (direction) => {
-            // 未来日は不可判定
-            const base = selectedDateRef.current;
-            const candidate = new Date(base);
-            candidate.setDate(base.getDate() + direction);
-            const todayEnd = new Date();
-            todayEnd.setHours(23, 59, 59, 999);
-            if (candidate > todayEnd) {
-              Animated.timing(slideAnim, {
-                toValue: 0,
-                duration: 150,
-                useNativeDriver: true,
-              }).start();
-              return;
-            }
-
-            // 無料ユーザーは7日前まで
-            if (!isPremium && direction < 0) {
-              const limitDate = new Date();
-              limitDate.setDate(limitDate.getDate() - 6); // 今日を含めて7日
-              limitDate.setHours(0, 0, 0, 0);
-              if (candidate < limitDate) {
-                Animated.timing(slideAnim, {
-                  toValue: 0,
-                  duration: 150,
-                  useNativeDriver: true,
-                }).start();
-                navigation.navigate('Upgrade');
-                return;
-              }
-            }
-
-            const outTo = direction < 0 ? width : -width;
-            // スライドアウト：超高速化
-            Animated.timing(slideAnim, {
-              toValue: outTo,
-              duration: 120, // 超高速化（インスタ並み）
-              useNativeDriver: true,
-            }).start(() => {
-              // 日付更新（週も必要なら更新）
-              const oldWeekStart = weekStartDateRef.current;
-              const newDate = candidate;
-
-              // 週の範囲チェック
-              const weekEnd = new Date(oldWeekStart);
-              weekEnd.setDate(oldWeekStart.getDate() + 6);
-              if (newDate < oldWeekStart || newDate > weekEnd) {
-                const day = newDate.getDay();
-                const diff = day === 0 ? -6 : 1 - day;
-                const newWeekStart = new Date(newDate);
-                newWeekStart.setDate(newDate.getDate() + diff);
-                newWeekStart.setHours(0, 0, 0, 0);
-                setWeekStartDate(newWeekStart);
-              }
-              setSelectedDate(newDate);
-              // 振動フィードバック（Medium：はっきり感じる振動）
-              if (Haptics?.impactAsync) {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(
-                  () => {}
-                );
-              }
-
-              // 反対側から戻す：超高速化
-              slideAnim.setValue(direction < 0 ? -width : width);
-              Animated.timing(slideAnim, {
-                toValue: 0,
-                duration: 140, // 超高速化
-                useNativeDriver: true,
-              }).start();
-            });
-          };
-
-          // 速度優先判定：超一瞬の速いスワイプで即反応
-          // 1. まず速度でチェック（速ければ距離は問わない）
+          // スワイプ方向: -1=右へ（前へ）, 1=左へ（次へ）
+          let direction = 0;
           if (absVx > velocityThreshold) {
-            if (vx > 0) {
-              tryChange(-1); // 右スワイプ: 前の日
-            } else {
-              tryChange(1); // 左スワイプ: 次の日
-            }
+            direction = vx > 0 ? -1 : 1;
+          } else if (absDx > distThreshold) {
+            direction = dx > 0 ? -1 : 1;
           }
-          // 2. 速度が遅い場合は距離でチェック
-          else if (absDx > distThreshold) {
-            if (dx > 0) {
-              tryChange(-1); // 右スワイプ: 前の日
-            } else {
-              tryChange(1); // 左スワイプ: 次の日
-            }
-          }
-          // 3. どちらも閾値未満の場合は元の位置に戻す
-          else {
+
+          if (direction === 0) {
+            // スワイプが不十分→元に戻す
             Animated.spring(slideAnim, {
               toValue: 0,
               tension: 100,
               friction: 10,
               useNativeDriver: true,
             }).start();
+            return;
+          }
+
+          const page = currentPageRef.current;
+
+          // ページ切り替えロジック
+          if (page === 0 && direction === 1) {
+            // データページで左スワイプ → ストーリーページへ
+            Animated.spring(slideAnim, { toValue: 0, tension: 100, friction: 10, useNativeDriver: true }).start();
+            animateToPage(1);
+          } else if (page === 1 && direction === -1) {
+            // ストーリーページで右スワイプ → データページへ
+            Animated.spring(slideAnim, { toValue: 0, tension: 100, friction: 10, useNativeDriver: true }).start();
+            animateToPage(0);
+          } else if (page === 0 && direction === -1) {
+            // データページで右スワイプ → 前日へ
+            tryChangeDate(-1);
+          } else if (page === 1 && direction === 1) {
+            // ストーリーページで左スワイプ → 翌日へ
+            tryChangeDate(1);
           }
         },
         onPanResponderTerminationRequest: () => true,
@@ -608,8 +567,60 @@ export default function HomeScreen({ navigation, route }) {
           }).start();
         },
       }),
-    [slideAnim, width, selectedDateRef, weekStartDateRef, Haptics]
+    [slideAnim, width, selectedDateRef, weekStartDateRef, Haptics, isPremium, navigation]
   );
+
+  // 日付変更関数（スワイプ用）
+  const tryChangeDate = async (direction) => {
+    const base = selectedDateRef.current;
+    const candidate = new Date(base);
+    candidate.setDate(base.getDate() + direction);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // 未来日チェック
+    if (candidate > todayEnd) {
+      Animated.timing(slideAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start();
+      return;
+    }
+
+    // 無料ユーザーは7日前まで
+    if (!isPremium && direction < 0) {
+      const limitDate = new Date();
+      limitDate.setDate(limitDate.getDate() - 6);
+      limitDate.setHours(0, 0, 0, 0);
+      if (candidate < limitDate) {
+        Animated.timing(slideAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start();
+        navigation.navigate('Upgrade');
+        return;
+      }
+    }
+
+    const outTo = direction < 0 ? width : -width;
+    Animated.timing(slideAnim, {
+      toValue: outTo,
+      duration: 120,
+      useNativeDriver: true,
+    }).start(() => {
+      const oldWeekStart = weekStartDateRef.current;
+      const weekEnd = new Date(oldWeekStart);
+      weekEnd.setDate(oldWeekStart.getDate() + 6);
+      if (candidate < oldWeekStart || candidate > weekEnd) {
+        const day = candidate.getDay();
+        const diff = day === 0 ? -6 : 1 - day;
+        const newWeekStart = new Date(candidate);
+        newWeekStart.setDate(candidate.getDate() + diff);
+        newWeekStart.setHours(0, 0, 0, 0);
+        setWeekStartDate(newWeekStart);
+      }
+      setSelectedDate(candidate);
+      if (Haptics?.impactAsync) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+      }
+      slideAnim.setValue(direction < 0 ? -width : width);
+      Animated.timing(slideAnim, { toValue: 0, duration: 140, useNativeDriver: true }).start();
+    });
+  };
 
   // 月モーダル内の左右スワイプで月移動
   // 月モーダルのスワイプ操作は削除（◀/▶ボタンのみで切替）
@@ -2132,18 +2143,37 @@ export default function HomeScreen({ navigation, route }) {
           handleCalendarScrollEnd={handleCalendarScrollEnd}
         />
 
-        {/* 今日へ戻るチップ（横スクロール週の直下・右寄せ） */}
-        {!isToday(selectedDate) && (
-          <View
-            style={{
-              alignItems: "flex-end",
-              marginTop: 6,
-              paddingRight: 20,
-              paddingLeft: 20,
-              zIndex: 10,
-              position: "relative",
-            }}
-          >
+        {/* 今日へ戻るチップ + ページインジケーター */}
+        <View style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginTop: 6,
+          paddingHorizontal: 20,
+          zIndex: 10,
+        }}>
+          {/* ページインジケーター（左） */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <TouchableOpacity onPress={() => animateToPage(0)}>
+              <View style={{
+                width: currentPage === 0 ? 20 : 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: currentPage === 0 ? theme.primary : theme.border,
+              }} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => animateToPage(1)}>
+              <View style={{
+                width: currentPage === 1 ? 20 : 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: currentPage === 1 ? theme.primary : theme.border,
+              }} />
+            </TouchableOpacity>
+          </View>
+
+          {/* 今日へ戻るボタン（右） */}
+          {!isToday(selectedDate) ? (
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel={t("home.a11y.backToToday")}
@@ -2166,15 +2196,14 @@ export default function HomeScreen({ navigation, route }) {
                 backgroundColor: theme.card,
                 borderWidth: 1,
                 borderColor: theme.border,
-                zIndex: 10,
               }}
             >
               <Text style={{ color: theme.textSecondary, fontWeight: "700" }}>
                 {t("home.backToToday")}
               </Text>
             </TouchableOpacity>
-          </View>
-        )}
+          ) : <View />}
+        </View>
 
         {/* スワイプ可能なメインコンテンツエリア */}
         <Animated.View
@@ -2185,6 +2214,22 @@ export default function HomeScreen({ navigation, route }) {
             zIndex: 5,
           }}
         >
+          {currentPage === 1 ? (
+            /* ========== ストーリーページ（右ページ） ========== */
+            <StoryPage
+              theme={theme}
+              selectedDate={selectedDate}
+              weather={weather}
+              onUpgrade={() => navigation.navigate('Upgrade')}
+              isPremium={isPremium}
+              steps={steps}
+              calories={calories}
+              distance={distance}
+              todayEvents={todayEvents}
+            />
+          ) : (
+          /* ========== データページ（左ページ） ========== */
+          <>
           {/* 円形プログレス（タブ切替） */}
           <View style={styles.circleContainer}>
             {/* 背面グロー（段階グラデーション） */}
@@ -2341,80 +2386,9 @@ export default function HomeScreen({ navigation, route }) {
             setChartWidth={setChartWidth}
           />
 
-          {/* 今日のひとこと */}
-          <TodayNote
-            theme={theme}
-            date={toDateKeyLocal(selectedDate)}
-            onNoteChange={async (text) => {
-              // 最近のひとこと一覧を更新
-              if (recentNotesRef.current) {
-                recentNotesRef.current.reload();
-              }
-              // コメントマップを更新
-              const dateKey = toDateKeyLocal(selectedDate);
-              setNotesMap((prev) => ({ ...prev, [dateKey]: !!text }));
-            }}
-          />
 
-          {/* Daily Feedback Message */}
-
-
-          {/* Stats カード（タブ切替） */}
-
-
-          {/* 今日の予定（常に表示） */}
-          <EventsCard
-            styles={styles}
-            theme={theme}
-            t={t}
-            todayEvents={todayEvents}
-          />
-
-          {/* Daily Feedback Message */}
-          {dailyFeedback && (
-            <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
-              <View style={{
-                backgroundColor: theme.card,
-                borderRadius: 16,
-                padding: 16,
-                shadowColor: theme.shadow,
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.05,
-                shadowRadius: 8,
-                elevation: 2,
-                borderWidth: 1,
-                borderColor: theme.border,
-              }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                  <AppIcon name="lightbulb" size={18} color={theme.primary} style={{ marginRight: 6 }} />
-                  <Text style={{ fontSize: 13, color: theme.textSecondary, fontWeight: '600' }}>
-                    昨日のフィードバック
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 14, lineHeight: 22, color: theme.text, fontWeight: '500' }}>
-                  {dailyFeedback}
-                </Text>
-              </View>
-            </View>
+          </>
           )}
-
-          {/* 今日のひとこと */}
-
-
-          {/* 時間帯別グラフ */}
-
-
-
-          {/* 最近のひとこと */}
-          <RecentNotes
-            ref={recentNotesRef}
-            theme={theme}
-            onNotePress={(date) => {
-              // その日の詳細へジャンプ
-              const targetDate = new Date(date);
-              setSelectedDate(targetDate);
-            }}
-          />
         </Animated.View>
 
         {/* 画面端タップで日付切り替え */}
