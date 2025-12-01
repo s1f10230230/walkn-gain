@@ -29,7 +29,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { Pedometer } from "expo-sensors";
 import { getTheme } from "../utils/theme";
 import { useI18n } from "../i18n/I18nProvider";
-import { useSubscription } from "../contexts/SubscriptionContext";
+import { useSubscription, isDateWithinLimit } from "../contexts/SubscriptionContext";
 import {
   calculateCalories,
   calculateDistance,
@@ -79,7 +79,7 @@ import {
 } from "../utils/notifications";
 import { saveReminderEnabled } from "../utils/storage";
 import { logEvent } from "../utils/analytics";
-import { getStepsInRange, syncPastDaysToStorage } from "../utils/healthKit";
+import { getStepsInRange, syncPastDaysToStorage, importExtendedHistoricalData, isExtendedImportCompleted } from "../utils/healthKit";
 import { registerBackgroundStepsTask } from "../tasks/backgroundStepsTask";
 
 // Swiftモジュール（時間帯別歩数の高速取得）
@@ -97,16 +97,22 @@ import RecentNotes from "../components/RecentNotes";
 import { hasNote } from "../utils/dayNotes";
 import HeaderStats from "../components/HeaderStats";
 import ProgressRing from "../components/ProgressRing";
+import AchievementStamp from "../components/AchievementStamp";
+import PaperTexture from "../components/PaperTexture";
 import ShareCTA from "../components/ShareCTA";
 import WeekCalendar from "../components/WeekCalendar";
 import HourlyChart from "../components/HourlyChart";
 // MetricTabs removed - カロリー・距離はリング下に統合表示
 import StatsCards from "../components/StatsCards";
 import EventsCard from "../components/EventsCard";
-import StoryPage from "../components/StoryPage";
+import DiaryCard from "../components/DiaryCard";
+import FlipCard from "../components/FlipCard";
+import * as ImagePicker from "expo-image-picker";
 import DataPage from "../components/DataPage";
+import DataFlipCard from "../components/DataFlipCard";
 import { computeTrophiesStreak } from "../utils/stats";
 import { AppIcon } from "../components/AppIcon";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { seedPastDaysPedometer } from "../utils/pedometerSeed";
 import styles from "./home/styles";
 import {
@@ -157,7 +163,7 @@ export default function HomeScreen({ navigation, route }) {
   const recentNotesRef = useRef(null);
 
   // 課金状態
-  const { isPremium } = useSubscription();
+  const { isPremium, limits, presentPaywall } = useSubscription();
 
   // 日付関連（週単位のスライドウィンドウ）
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -514,19 +520,20 @@ export default function HomeScreen({ navigation, route }) {
         },
         onPanResponderRelease: (evt, gestureState) => {
           setMainSwipeIndicator({ left: false, right: false });
-          const distThreshold = 30;
-          const velocityThreshold = 0.3;
+          const distThreshold = 50; // 距離しきい値を上げてスワイプしやすく
+          const velocityThreshold = 0.5; // フリック感度を下げる
           const dx = gestureState.dx;
           const vx = gestureState.vx;
           const absVx = Math.abs(vx);
           const absDx = Math.abs(dx);
 
           // スワイプ方向: -1=右へ（前へ）, 1=左へ（次へ）
+          // 距離ベースを優先し、フリックは補助的に
           let direction = 0;
-          if (absVx > velocityThreshold) {
-            direction = vx > 0 ? -1 : 1;
-          } else if (absDx > distThreshold) {
+          if (absDx > distThreshold) {
             direction = dx > 0 ? -1 : 1;
+          } else if (absVx > velocityThreshold && absDx > 20) {
+            direction = vx > 0 ? -1 : 1;
           }
 
           if (direction === 0) {
@@ -540,22 +547,12 @@ export default function HomeScreen({ navigation, route }) {
             return;
           }
 
-          const page = currentPageRef.current;
-
-          // ページ切り替えロジック
-          if (page === 0 && direction === 1) {
-            // データページで左スワイプ → ストーリーページへ
-            Animated.spring(slideAnim, { toValue: 0, tension: 100, friction: 10, useNativeDriver: true }).start();
-            animateToPage(1);
-          } else if (page === 1 && direction === -1) {
-            // ストーリーページで右スワイプ → データページへ
-            Animated.spring(slideAnim, { toValue: 0, tension: 100, friction: 10, useNativeDriver: true }).start();
-            animateToPage(0);
-          } else if (page === 0 && direction === -1) {
-            // データページで右スワイプ → 前日へ
+          // スワイプで日付変更（ページ切り替えはフリップで行う）
+          if (direction === -1) {
+            // 右スワイプ → 前日へ
             tryChangeDate(-1);
-          } else if (page === 1 && direction === 1) {
-            // ストーリーページで左スワイプ → 翌日へ
+          } else if (direction === 1) {
+            // 左スワイプ → 翌日へ
             tryChangeDate(1);
           }
         },
@@ -584,17 +581,7 @@ export default function HomeScreen({ navigation, route }) {
       return;
     }
 
-    // 無料ユーザーは7日前まで
-    if (!isPremium && direction < 0) {
-      const limitDate = new Date();
-      limitDate.setDate(limitDate.getDate() - 6);
-      limitDate.setHours(0, 0, 0, 0);
-      if (candidate < limitDate) {
-        Animated.timing(slideAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start();
-        navigation.navigate('Upgrade');
-        return;
-      }
-    }
+    // 歩数データの閲覧は無期限（履歴制限なし）
 
     const outTo = direction < 0 ? width : -width;
     Animated.timing(slideAnim, {
@@ -638,16 +625,7 @@ export default function HomeScreen({ navigation, route }) {
       return;
     }
 
-    // 無料ユーザーは7日前まで
-    if (!isPremium && direction < 0) {
-      const limitDate = new Date();
-      limitDate.setDate(limitDate.getDate() - 6); // 今日を含めて7日
-      limitDate.setHours(0, 0, 0, 0);
-      if (candidate < limitDate) {
-        navigation.navigate('Upgrade');
-        return;
-      }
-    }
+    // 歩数データの閲覧は無期限（履歴制限なし）
 
     // スライドアニメーション付きで日付変更
     const outTo = direction < 0 ? width : -width;
@@ -695,17 +673,28 @@ export default function HomeScreen({ navigation, route }) {
     weekStartDateRef.current = weekStartDate;
   }, [weekStartDate]);
 
-  // カレンダー用の日付配列を生成（週の7日分）
+  // カレンダー用の日付配列を生成（1ヶ月分: 過去21日 + 今日 + 未来7日）
   useEffect(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     const dates = [];
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(weekStartDate);
-      date.setDate(weekStartDate.getDate() + i);
+    // 過去21日
+    for (let i = 21; i >= 1; i--) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - i);
+      dates.push(date);
+    }
+    // 今日
+    dates.push(new Date(today));
+    // 未来7日
+    for (let i = 1; i <= 7; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + i);
       dates.push(date);
     }
     setCalendarDates(dates);
 
-    // 週が変わったら、その週のデータを取得
+    // データを取得
     loadWeeklyData(dates);
 
     // 各日付のコメント有無をチェック
@@ -718,7 +707,7 @@ export default function HomeScreen({ navigation, route }) {
       setNotesMap(map);
     };
     checkNotes();
-  }, [weekStartDate]);
+  }, []);
 
   // 月データを取得
   const loadMonthlyData = async (baseDate = new Date()) => {
@@ -955,10 +944,70 @@ export default function HomeScreen({ navigation, route }) {
         }
       }
 
-      // 3. 時間別データの取得
+      // 3. 時間別データの取得（キャッシュ → Swift → Pedometer）
       try {
-        const hourly = await getHourlyStepsForDate(dateKey);
-        setHourlySteps(hourly);
+        let hourlyData = await getHourlyStepsForDate(dateKey);
+        const hasValidCache = hourlyData && hourlyData.some((v) => v > 0);
+        console.log("[updateData] Cache check for", dateKey, "- hasData:", hasValidCache);
+
+        if (!hasValidCache) {
+          // キャッシュにデータがない場合、Swift/Pedometerで取得
+          hourlyData = null;
+
+          // Swift HealthKit（高速）
+          if (HealthKitSwift && typeof HealthKitSwift.getHourlyStepsForDate === "function") {
+            try {
+              console.log("[updateData] Trying Swift HealthKit for", dateKey);
+              const swiftHourly = await HealthKitSwift.getHourlyStepsForDate(dateKey);
+              if (Array.isArray(swiftHourly) && swiftHourly.length === 24) {
+                hourlyData = swiftHourly.map((v) => Number(v) || 0);
+                const swiftTotal = hourlyData.reduce((a, b) => a + b, 0);
+                console.log("[updateData] Swift hourly total:", swiftTotal);
+              }
+            } catch (swiftErr) {
+              console.warn("[updateData] Swift failed:", swiftErr);
+            }
+          }
+
+          // Pedometerフォールバック
+          if (!hourlyData || !hourlyData.some((v) => v > 0)) {
+            console.log("[updateData] Pedometer fallback for", dateKey);
+            hourlyData = Array(24).fill(0);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const targetDate = new Date(selectedDate);
+            targetDate.setHours(0, 0, 0, 0);
+            const isSelectedToday = targetDate.getTime() === today.getTime();
+            const maxHour = isSelectedToday ? new Date().getHours() : 23;
+
+            for (let hour = 0; hour <= maxHour; hour++) {
+              const hourStart = new Date(selectedDate);
+              hourStart.setHours(hour, 0, 0, 0);
+              const hourEnd = new Date(selectedDate);
+              hourEnd.setHours(hour, 59, 59, 999);
+              if (isSelectedToday && hour === maxHour) {
+                hourEnd.setTime(Date.now());
+              }
+              try {
+                const hourResult = await Pedometer.getStepCountAsync(hourStart, hourEnd);
+                hourlyData[hour] = hourResult.steps;
+              } catch (err) {
+                // 個別エラーは無視
+              }
+            }
+            const pedometerTotal = hourlyData.reduce((a, b) => a + b, 0);
+            console.log("[updateData] Pedometer hourly total:", pedometerTotal);
+          }
+
+          // キャッシュに保存
+          if (hourlyData && hourlyData.some((v) => v > 0)) {
+            try {
+              await saveHourlyStepsForDate(dateKey, hourlyData);
+            } catch (_) {}
+          }
+        }
+
+        setHourlySteps(hourlyData || Array(24).fill(0));
 
         // 天気情報の取得（キャッシュまたはAPI）
         // まずストレージから確認
@@ -967,13 +1016,13 @@ export default function HomeScreen({ navigation, route }) {
           // hourlyWeatherはストレージに保存していない場合が多いので、
           // 必要なら別途保存するか、APIから再取得する
           // ここでは簡易的にAPI取得を試みる（キャッシュが効くはず）
-          const hourlyW = await fetchHourlyWeather();
+          const hourlyW = await fetchHourlyWeather(selectedDate);
           setHourlyWeather(hourlyW);
         } else {
           // データがない場合はAPIから取得
           const w = await fetchWeatherForLocation();
           setWeather(w);
-          const hourlyW = await fetchHourlyWeather();
+          const hourlyW = await fetchHourlyWeather(selectedDate);
           setHourlyWeather(hourlyW);
         }
       } catch (e) {
@@ -1132,8 +1181,12 @@ export default function HomeScreen({ navigation, route }) {
 
         // まずキャッシュを確認
         const cachedHourly = await getHourlyStepsForDate(dateKey);
+        const cacheTotal = cachedHourly ? cachedHourly.reduce((a, b) => a + b, 0) : 0;
+        console.log("[HomeScreen] Cache check for", dateKey, "- total:", cacheTotal, "hasData:", cachedHourly && cachedHourly.some((val) => val > 0));
+
         if (cachedHourly && cachedHourly.some((val) => val > 0)) {
           // キャッシュがあり、データが入っている場合はそれを使う
+          console.log("[HomeScreen] Using cached hourly data");
           setHourlySteps(cachedHourly);
         } else {
           // キャッシュがない場合、Swiftモジュールで高速取得を試みる
@@ -1142,26 +1195,32 @@ export default function HomeScreen({ navigation, route }) {
           // 1. Swift HealthKit（一括取得・高速）
           if (HealthKitSwift && typeof HealthKitSwift.getHourlyStepsForDate === "function") {
             try {
+              console.log("[HomeScreen] Trying Swift HealthKit for", dateKey);
               const swiftHourly = await HealthKitSwift.getHourlyStepsForDate(dateKey);
               if (Array.isArray(swiftHourly) && swiftHourly.length === 24) {
                 hourlyData = swiftHourly.map((v) => Number(v) || 0);
                 console.log("[HomeScreen] Hourly data from Swift:", hourlyData.reduce((a, b) => a + b, 0), "steps");
+              } else {
+                console.log("[HomeScreen] Swift returned invalid data:", swiftHourly?.length || "null");
               }
             } catch (swiftErr) {
               console.warn("[HomeScreen] Swift hourly fetch failed:", swiftErr);
             }
+          } else {
+            console.log("[HomeScreen] Swift HealthKit not available");
           }
 
           // 2. フォールバック: Pedometer（24回ループ・遅い）
           if (!hourlyData || !hourlyData.some((v) => v > 0)) {
+            console.log("[HomeScreen] Pedometer fallback for hourly data, date:", dateKey);
             hourlyData = Array(24).fill(0);
             const isSelectedToday =
               currentSelected.toDateString() === today.toDateString();
             const maxHour = isSelectedToday ? new Date().getHours() : 23;
             for (let hour = 0; hour <= maxHour; hour++) {
-              const hourStart = new Date(selectedDate);
+              const hourStart = new Date(currentSelected);
               hourStart.setHours(hour, 0, 0, 0);
-              const hourEnd = new Date(selectedDate);
+              const hourEnd = new Date(currentSelected);
               hourEnd.setHours(hour, 59, 59, 999);
               if (isSelectedToday && hour === maxHour) {
                 hourEnd.setTime(Date.now());
@@ -1176,6 +1235,8 @@ export default function HomeScreen({ navigation, route }) {
                 console.warn(`Failed to get steps for hour ${hour}:`, error);
               }
             }
+            const totalFromPedometer = hourlyData.reduce((a, b) => a + b, 0);
+            console.log("[HomeScreen] Pedometer hourly total:", totalFromPedometer, "steps");
           }
 
           setHourlySteps(hourlyData);
@@ -1230,6 +1291,36 @@ export default function HomeScreen({ navigation, route }) {
     }
     initializeApp();
 
+    // バックグラウンド通知タスクを登録（通知が有効な場合）
+    (async () => {
+      try {
+        const settings = await getSettings();
+        if (settings?.notifications) {
+          const registered = await registerBackgroundStepsTask();
+          console.log("[HomeScreen] Background task registered:", registered);
+        }
+      } catch (e) {
+        console.warn("[HomeScreen] Failed to register background task:", e);
+      }
+    })();
+
+    // 拡張インポート（31日〜365日）をバックグラウンドで実行
+    // 初回ロード完了後に開始（5秒遅延でUIをブロックしない）
+    const extendedImportTimer = setTimeout(async () => {
+      try {
+        const alreadyDone = await isExtendedImportCompleted();
+        if (!alreadyDone) {
+          console.log("[HomeScreen] Starting extended import (31-365 days)...");
+          const result = await importExtendedHistoricalData((imported, total) => {
+            console.log(`[HomeScreen] Extended import progress: ${imported}/${total}`);
+          });
+          console.log("[HomeScreen] Extended import result:", result);
+        }
+      } catch (e) {
+        console.warn("[HomeScreen] Extended import failed:", e);
+      }
+    }, 5000);
+
     // 前回選択していた日付を復元（存在すれば）
     (async () => {
       // 履歴などから指定されている場合は復元しない
@@ -1272,6 +1363,8 @@ export default function HomeScreen({ navigation, route }) {
 
     return () => {
       subscription?.remove();
+      clearTimeout(extendedImportTimer);
+      clearTimeout(fallbackTimer);
     };
   }, []);
 
@@ -1299,15 +1392,8 @@ export default function HomeScreen({ navigation, route }) {
         const s = await getSettings();
         setGoal(s.dailyGoal);
         setGoalCalories(s.goalCalories || 500);
-        // 現在の値を新しい目標で再計算
-        const stepGoal = Number(s.dailyGoal || goal || 10000);
-        const calGoal = Number(s.goalCalories || 500);
-        setProgress(
-          clamp01(calculateGoalProgress(steps, stepGoal) / 100)
-        );
-        setCaloriesProgress(
-          clamp01(calGoal > 0 ? calories / calGoal : 0)
-        );
+        // 注意: progressの再計算は useEffect([steps, goal]) に任せる
+        // ここで計算すると steps のクロージャが古い値を参照してしまう
       };
       reloadFavorites();
       reloadSettings();
@@ -1796,7 +1882,7 @@ export default function HomeScreen({ navigation, route }) {
   const isStepGoalAchieved = progress >= 1.0;
   const progressColor = isStepGoalAchieved ? theme.success : theme.accent;
 
-  // トロフィー・ストリーク計算（バックグラウンドで実行）
+  // トロフィー・ストリーク計算（HealthKitから直接取得）
   useEffect(() => {
     const calculateStats = async () => {
       // キャッシュから読み込み
@@ -1807,37 +1893,93 @@ export default function HomeScreen({ navigation, route }) {
         setMaxStreak(cached.maxStreak);
       }
 
-      // allTimeDataがあればバックグラウンドで再計算
-      if (Object.keys(allTimeData).length > 0) {
-        setIsCalculatingStats(true);
+      // HealthKitからデータを取得して計算
+      setIsCalculatingStats(true);
+      try {
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        const start = new Date(today);
+        start.setDate(today.getDate() - 364); // 1年分
+        start.setHours(0, 0, 0, 0);
 
-        // 少し待ってから計算開始（UI優先）
-        setTimeout(() => {
-          // 今日の最新歩数・目標を allTimeData に反映してから計算（リアルタイム追従）
-          const todayKey = getTodayDateString();
-          const mergedAllData = {
-            ...allTimeData,
-            [todayKey]: {
-              ...(allTimeData[todayKey] || {}),
-              steps: todayStepsSnapshot,
-              goal: goal,
-            },
-          };
-          const { totalTrophies, currentStreak, maxStreak } =
-            computeTrophiesStreak(mergedAllData, 10000, new Date());
-          setTotalTrophies(totalTrophies);
-          setCurrentStreak(currentStreak);
-          setMaxStreak(maxStreak);
+        const list = await getStepsInRange(start, today);
+        if (!Array.isArray(list) || list.length === 0) {
           setIsCalculatingStats(false);
+          return;
+        }
 
-          // キャッシュに保存
-          saveStatsCache(totalTrophies, currentStreak, maxStreak);
-        }, 100);
+        // 今日の日付
+        const todayStr = getTodayDateString();
+
+        // 今日のデータはPedometer（todayStepsSnapshot）を使用
+        const mergedList = list.map(it => {
+          if (it?.date === todayStr) {
+            return { ...it, steps: todayStepsSnapshot };
+          }
+          return it;
+        });
+        // 今日のデータがなければ追加
+        if (!mergedList.find(it => it?.date === todayStr)) {
+          mergedList.push({ date: todayStr, steps: todayStepsSnapshot });
+        }
+
+        // トロフィー数（達成日数）
+        const trophies = mergedList.reduce(
+          (acc, it) => acc + (Number(it?.steps || 0) >= goal ? 1 : 0),
+          0
+        );
+
+        // 日付順にソート
+        const sorted = [...mergedList].sort((a, b) =>
+          new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
+
+        // 最大ストリーク
+        let maxS = 0;
+        let run = 0;
+        for (const it of sorted) {
+          if (Number(it?.steps || 0) >= goal) {
+            run += 1;
+            if (run > maxS) maxS = run;
+          } else {
+            run = 0;
+          }
+        }
+
+        // 現在ストリーク（今日から遡る）
+        const todayAchieved = todayStepsSnapshot >= goal;
+
+        // 降順ソート（最新から過去へ）
+        const descSorted = [...mergedList].sort((a, b) =>
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+
+        let currentS = 0;
+        let startIdx = 0;
+        // 今日未達成なら昨日から開始
+        if (!todayAchieved && descSorted.length > 0 && descSorted[0]?.date === todayStr) {
+          startIdx = 1;
+        }
+        for (let i = startIdx; i < descSorted.length; i++) {
+          if (Number(descSorted[i]?.steps || 0) >= goal) {
+            currentS += 1;
+          } else {
+            break;
+          }
+        }
+
+        setTotalTrophies(trophies);
+        setCurrentStreak(currentS);
+        setMaxStreak(maxS);
+        saveStatsCache(trophies, currentS, maxS);
+      } catch (error) {
+        console.error('Error calculating stats from HealthKit:', error);
       }
+      setIsCalculatingStats(false);
     };
 
     calculateStats();
-  }, [allTimeData, todayStepsSnapshot, goal]);
+  }, [todayStepsSnapshot, goal]);
 
   // シェア画面用の集計データ（選択日基準）
   const shareStats = useMemo(() => {
@@ -2020,7 +2162,7 @@ export default function HomeScreen({ navigation, route }) {
         <View style={[styles.dateNavigation, { paddingTop: insets.top + 20 }]}>
           {/* トロフィー数とストリーク（縦2行） */}
           <View
-            style={{ position: "absolute", left: 20, top: insets.top + 16 }}
+            style={{ position: "absolute", left: 20, top: insets.top + 12 }}
           >
             {/* Free/Pro Badge - Subtle & Clickable */}
             <TouchableOpacity
@@ -2066,36 +2208,21 @@ export default function HomeScreen({ navigation, route }) {
             {/* Weather Summary Badge Removed */}
           </View>
 
-        {/* 日付ナビゲーション */}
-        <View style={[styles.dateNav, { marginTop: 10 }]}>
-          <TouchableOpacity
-            onPress={() => changeDate(-1)}
-            style={[styles.dateNavButton, styles.navButtonLeft]}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          >
-            <Animated.Text style={[styles.dateNavArrow, { color: theme.text, transform: [{ translateX: arrowBounceAnim.interpolate({ inputRange: [0, 10], outputRange: [0, -5] }) }] }]}>◀</Animated.Text>
-          </TouchableOpacity>
-          <View style={styles.dateDisplay}>
-            <TouchableOpacity onPress={() => setCalendarVisible(true)}>
-              <Text style={[styles.dateText, { color: theme.text }]}>
-                {formatMonthDayHelper(selectedDate, locale)}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity
-            onPress={() => changeDate(1)}
-            style={[
-              styles.dateNavButton,
-              styles.navButtonRight,
-              isFuture(selectedDate) && styles.disabledButton,
-            ]}
-            disabled={isFuture(selectedDate)}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          >
-            <Animated.Text style={[styles.dateNavArrow, { color: theme.text, opacity: isFuture(selectedDate) ? 0.3 : 1, transform: [{ translateX: arrowBounceAnim.interpolate({ inputRange: [0, 10], outputRange: [0, 5] }) }] }]}>▶</Animated.Text>
-          </TouchableOpacity>
-        </View>
       </View>
+
+        {/* 日付テキスト（タップでカレンダーを開く）- 週カレンダーの上に配置 */}
+        <TouchableOpacity
+          onPress={() => {
+            setShowCalendarModal(true);
+            loadMonthlyData(calendarMonth);
+          }}
+          style={styles.dateLabelContainer}
+          hitSlop={{ top: 10, bottom: 10, left: 20, right: 20 }}
+        >
+          <Text style={[styles.dateText, { color: theme.text }]}>
+            {formatMonthDayHelper(selectedDate, locale)}
+          </Text>
+        </TouchableOpacity>
 
         {/* 今日へ戻るチップ（右利き向けに右寄せ） */}
         {/* 配置: 横スクロールの週カレンダーの直下に表示 */}
@@ -2106,7 +2233,7 @@ export default function HomeScreen({ navigation, route }) {
           hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
           style={[
             styles.calendarIconButton,
-            { top: insets.top + 10, backgroundColor: theme.card },
+            { top: insets.top + 12, backgroundColor: theme.card },
           ]}
           onPress={() => {
             setShowCalendarModal(true);
@@ -2153,56 +2280,94 @@ export default function HomeScreen({ navigation, route }) {
           zIndex: 10,
         }}>
           {/* ページインジケーター（左） */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <TouchableOpacity onPress={() => animateToPage(0)}>
-              <View style={{
-                width: currentPage === 0 ? 20 : 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: currentPage === 0 ? theme.primary : theme.border,
-              }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => setCurrentPage(0)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 14,
+                backgroundColor: currentPage === 0 ? theme.primary : 'transparent',
+              }}
+            >
+              <MaterialCommunityIcons
+                name="shoe-print"
+                size={14}
+                color={currentPage === 0 ? '#FFF' : theme.textSecondary}
+              />
+              {currentPage === 0 && (
+                <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '600', marginLeft: 4 }}>
+                  歩数
+                </Text>
+              )}
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => animateToPage(1)}>
-              <View style={{
-                width: currentPage === 1 ? 20 : 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: currentPage === 1 ? theme.primary : theme.border,
-              }} />
+            <TouchableOpacity
+              onPress={() => setCurrentPage(1)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 14,
+                backgroundColor: currentPage === 1 ? theme.primary : 'transparent',
+              }}
+            >
+              <MaterialCommunityIcons
+                name="notebook-outline"
+                size={14}
+                color={currentPage === 1 ? '#FFF' : theme.textSecondary}
+              />
+              {currentPage === 1 && (
+                <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '600', marginLeft: 4 }}>
+                  日記
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
 
-          {/* 今日へ戻るボタン（右） */}
-          {!isToday(selectedDate) ? (
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel={t("home.a11y.backToToday")}
-              onPress={() => {
-                const now = new Date();
-                const today = new Date(now);
-                today.setHours(0, 0, 0, 0);
-                const day = today.getDay();
-                const diff = day === 0 ? -6 : 1 - day;
-                const monday = new Date(today);
-                monday.setDate(today.getDate() + diff);
-                monday.setHours(0, 0, 0, 0);
-                setWeekStartDate(monday);
-                setSelectedDate(today);
-              }}
-              style={{
-                paddingVertical: 6,
-                paddingHorizontal: 12,
-                borderRadius: 999,
-                backgroundColor: theme.card,
-                borderWidth: 1,
-                borderColor: theme.border,
-              }}
-            >
-              <Text style={{ color: theme.textSecondary, fontWeight: "700" }}>
-                {t("home.backToToday")}
-              </Text>
-            </TouchableOpacity>
-          ) : <View />}
+          {/* 記録ボタン + 今日へ戻るボタン（右） */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <ShareCTA
+              selectedDate={selectedDate}
+              steps={steps}
+              goal={goal}
+              navigation={navigation}
+              theme={theme}
+              t={t}
+            />
+            {!isToday(selectedDate) && (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={t("home.a11y.backToToday")}
+                onPress={() => {
+                  const now = new Date();
+                  const today = new Date(now);
+                  today.setHours(0, 0, 0, 0);
+                  const day = today.getDay();
+                  const diff = day === 0 ? -6 : 1 - day;
+                  const monday = new Date(today);
+                  monday.setDate(today.getDate() + diff);
+                  monday.setHours(0, 0, 0, 0);
+                  setWeekStartDate(monday);
+                  setSelectedDate(today);
+                }}
+                style={{
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  borderRadius: 999,
+                  backgroundColor: theme.card,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                }}
+              >
+                <Text style={{ color: theme.textSecondary, fontWeight: "700" }}>
+                  {t("home.backToToday")}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* スワイプ可能なメインコンテンツエリア */}
@@ -2214,181 +2379,35 @@ export default function HomeScreen({ navigation, route }) {
             zIndex: 5,
           }}
         >
-          {currentPage === 1 ? (
-            /* ========== ストーリーページ（右ページ） ========== */
-            <StoryPage
+          {/* フリップ可能なデータカード（タブとフリップ連動） */}
+          <ScrollView
+            style={{ flex: 1, width: width }}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <DataFlipCard
               theme={theme}
+              t={t}
               selectedDate={selectedDate}
-              weather={weather}
-              onUpgrade={() => navigation.navigate('Upgrade')}
-              isPremium={isPremium}
               steps={steps}
               calories={calories}
               distance={distance}
+              progress={progress}
+              hourlySteps={hourlySteps}
+              hourlyWeather={hourlyWeather}
+              profile={profile}
+              bumpAnim={bumpAnim}
+              pulseAnim={pulseAnim}
+              isToday={isToday}
+              formatMonthDay={formatMonthDay}
+              formatNumber={formatNumber}
+              clamp01={clamp01}
+              setChartWidth={setChartWidth}
               todayEvents={todayEvents}
+              isFlipped={currentPage === 1}
+              onFlipChange={(flipped) => setCurrentPage(flipped ? 1 : 0)}
             />
-          ) : (
-          /* ========== データページ（左ページ） ========== */
-          <>
-          {/* 円形プログレス（タブ切替） */}
-          <View style={styles.circleContainer}>
-            {/* 背面グロー（段階グラデーション） */}
-            <View style={styles.glowWrapper} pointerEvents="none">
-              {selectedGlowSizes
-                .map((size, index) => ({
-                  size,
-                  color: selectedGlowColors[index],
-                }))
-                .sort((a, b) => b.size - a.size) // 大きいものを背面、小さいものを前面
-                .map(({ size, color }, idx) => (
-                  <View
-                    key={`glow-${size}-${idx}`}
-                    style={[
-                      styles.glow,
-                      {
-                        width: size,
-                        height: size,
-                        borderRadius: size / 2,
-                        backgroundColor:
-                          color || selectedGlowColors[selectedGlowColors.length - 1],
-                      },
-                    ]}
-                  />
-                ))}
-            </View>
-            <TouchableOpacity
-              activeOpacity={1}
-              onLongPress={() => {
-                const now = new Date();
-                const today = new Date(now);
-                today.setHours(0, 0, 0, 0);
-                setSelectedDate(today);
-                const day = today.getDay();
-                const diff = day === 0 ? -6 : 1 - day;
-                const monday = new Date(today);
-                monday.setDate(today.getDate() + diff);
-                monday.setHours(0, 0, 0, 0);
-                setWeekStartDate(monday);
-              }}
-            >
-              <View
-                style={[
-                  styles.circleBackground,
-                  { backgroundColor: theme.card, shadowColor: theme.shadow },
-                ]}
-              >
-                {(() => {
-                  const ringP = clamp01(progress);
-                  const isFull = ringP >= 0.999;
-                  const ringColor = ringP >= 1.0 ? theme.success : theme.accent;
-                  return (
-                    <ProgressRing
-                      size={200}
-                      progress={ringP}
-                      color={ringColor}
-                      unfilledColor={
-                        isFull ? "transparent" : theme.circleUnfilled
-                      }
-                      thickness={12}
-                      bumpAnim={bumpAnim}
-                      pulseAnim={pulseAnim}
-                    />
-                  );
-                })()}
-                <View style={styles.circleCenter}>
-                  <Text style={[styles.percentText, { color: theme.text }]}>
-                    {formatNumber(steps)}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.goalLabel,
-                      { color: theme.textSecondary },
-                    ]}
-                  >
-                    {t("units.steps")}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.progressSubtext,
-                      { color: theme.textSecondary },
-                    ]}
-                  >
-                    {t("home.progress.rate")}: {Math.round(clamp01(progress) * 100)}%
-                  </Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          </View>
-
-          {/* カロリー・距離統合表示 */}
-          <View style={{
-            flexDirection: 'row',
-            justifyContent: 'center',
-            alignItems: 'center',
-            paddingHorizontal: 20,
-            marginTop: 8,
-            marginBottom: 4,
-            gap: 24,
-          }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <AppIcon name="flame" size={18} color={theme.primary} />
-              <Text style={{ marginLeft: 6, fontSize: 15, fontWeight: '600', color: theme.text }}>
-                {calories.toFixed(0)}
-              </Text>
-              <Text style={{ marginLeft: 3, fontSize: 13, color: theme.textSecondary }}>
-                {t("units.kcal")}
-              </Text>
-            </View>
-            <View style={{ width: 1, height: 16, backgroundColor: theme.border }} />
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <AppIcon name="location" size={18} color={theme.accent} />
-              <Text style={{ marginLeft: 6, fontSize: 15, fontWeight: '600', color: theme.text }}>
-                {distance.toFixed(1)}
-              </Text>
-              <Text style={{ marginLeft: 3, fontSize: 13, color: theme.textSecondary }}>
-                km
-              </Text>
-            </View>
-          </View>
-
-          {/* Action Row: ShareCTA */}
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'flex-end', paddingHorizontal: 20, marginTop: 6, marginBottom: 12, zIndex: 10 }}>
-            {/* Finger Icon */}
-            {/* Finger Icon Removed */}
-
-            {/* Share CTA */}
-            <ShareCTA
-              selectedDate={selectedDate}
-              steps={steps}
-              goal={goal}
-              navigation={navigation}
-              theme={theme}
-              t={t}
-            />
-          </View>
-
-
-
-          {/* 時間帯別グラフ */}
-          <HourlyChart
-            styles={styles}
-            theme={theme}
-            t={t}
-            isToday={isToday}
-            selectedDate={selectedDate}
-            formatMonthDay={formatMonthDay}
-            hourlyDetailTooltip={hourlyDetailTooltip}
-            setHourlyDetailTooltip={setHourlyDetailTooltip}
-            hourlyDetailTimerRef={hourlyDetailTimerRef}
-            hourlySteps={hourlySteps}
-            hourlyWeather={hourlyWeather}
-            profile={profile}
-            setChartWidth={setChartWidth}
-          />
-
-
-          </>
-          )}
+          </ScrollView>
         </Animated.View>
 
         {/* 画面端タップで日付切り替え */}
@@ -2469,6 +2488,30 @@ export default function HomeScreen({ navigation, route }) {
           initialDate={selectedDate}
           onClose={() => setShowCalendarModal(false)}
           onSelectDate={(date) => {
+            // 選択した日付の週の月曜日を計算
+            const day = date.getDay();
+            const diff = day === 0 ? -6 : 1 - day;
+            const monday = new Date(date);
+            monday.setDate(date.getDate() + diff);
+            monday.setHours(0, 0, 0, 0);
+            setWeekStartDate(monday);
+
+            // calendarDatesを選択日を中心に再生成（±14日）
+            const newDates = [];
+            for (let i = 14; i >= 1; i--) {
+              const d = new Date(date);
+              d.setDate(date.getDate() - i);
+              newDates.push(d);
+            }
+            newDates.push(new Date(date)); // 選択日
+            for (let i = 1; i <= 14; i++) {
+              const d = new Date(date);
+              d.setDate(date.getDate() + i);
+              newDates.push(d);
+            }
+            setCalendarDates(newDates);
+            loadWeeklyData(newDates);
+
             setSelectedDate(date);
             setShowCalendarModal(false);
           }}

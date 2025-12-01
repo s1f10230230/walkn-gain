@@ -24,6 +24,8 @@ try {
 }
 
 const HISTORICAL_IMPORT_KEY = 'healthkit_historical_import_v2';
+const EXTENDED_IMPORT_KEY = 'healthkit_extended_import_365';
+const EXTENDED_IMPORT_PROGRESS_KEY = 'healthkit_extended_import_progress';
 const isIOS = Platform.OS === 'ios';
 
 const STEP_TYPE =
@@ -329,38 +331,48 @@ export const getStepsInRange = async (startDate, endDate) => {
   const start = new Date(startDate);
   const end = new Date(endDate);
 
-  // Kingstinct HealthKitはSwiftモジュールと競合してクラッシュするため無効化
-  // オンボーディングでSwiftモジュールが30日分をStorageにインポート済み
-  // ここではPedometer + Storageのみ使用
+  // Pedometer（最新7日程度）と Storage（過去の履歴）をマージして返す
+  // Pedometerの方がリアルタイムなので、重複する日付はPedometerを優先
 
-  // 1. Pedometer
+  const dataMap = new Map(); // date -> { date, steps }
+
+  // 1. まずStorageから全期間のデータを取得（過去の履歴）
+  try {
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      const key = toDateKeyLocal(cursor);
+      const stored = await getDailyData(key);
+      if (stored && stored.steps > 0) {
+        dataMap.set(key, { date: key, steps: stored.steps || 0 });
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  } catch (error) {
+    console.warn('[healthKit] getStepsInRange: Storage read failed:', error);
+  }
+
+  // 2. Pedometerから最新データを取得（上書きで優先）
   try {
     const pedometer = await getPedometerStepsInRange(start, end);
     if (Array.isArray(pedometer) && pedometer.length) {
-      return pedometer
-        .map((item) => ({ ...item, date: normalizeDateKey(item?.date) }))
-        .filter((item) => !!item.date);
+      for (const item of pedometer) {
+        const dateKey = normalizeDateKey(item?.date);
+        if (dateKey && item.steps > 0) {
+          // Pedometerのデータで上書き（より正確）
+          dataMap.set(dateKey, { date: dateKey, steps: item.steps });
+        }
+      }
     }
   } catch (error) {
     console.warn('[healthKit] getStepsInRange: Pedometer failed:', error);
   }
 
-  // 2. Storage fallback (HealthKitインポート済みデータ)
-  try {
-    const cursor = new Date(start);
-    const list = [];
-    while (cursor <= end) {
-      const key = toDateKeyLocal(cursor);
-      const stored = await getDailyData(key);
-      if (stored) list.push({ date: key, steps: stored.steps || 0 });
-      cursor.setDate(cursor.getDate() + 1);
-    }
-    return list
-      .map((item) => ({ ...item, date: normalizeDateKey(item?.date) }))
-      .filter((item) => !!item.date);
-  } catch (_) {
-    return [];
-  }
+  // 3. Mapを配列に変換して日付順にソート
+  const result = Array.from(dataMap.values())
+    .filter((item) => !!item.date)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  return result;
 };
 
 export const getStepsToday = async () => {
@@ -640,5 +652,184 @@ export const syncPastDaysToStorage = async (daysBack = 7) => {
   } catch (error) {
     console.warn('[healthKit] syncPastDaysToStorage failed:', error);
     return { synced: 0, skipped: false, error: error?.message };
+  }
+};
+
+// ========== 拡張インポート（365日分）==========
+
+/**
+ * 拡張インポート（365日）が完了しているかチェック
+ */
+export const isExtendedImportCompleted = async () => {
+  try {
+    const value = await AsyncStorage.getItem(EXTENDED_IMPORT_KEY);
+    return value === 'true';
+  } catch (_) {
+    return false;
+  }
+};
+
+/**
+ * 拡張インポート完了をマーク
+ */
+export const markExtendedImportCompleted = async () => {
+  try {
+    await AsyncStorage.setItem(EXTENDED_IMPORT_KEY, 'true');
+  } catch (_) {}
+};
+
+/**
+ * 拡張インポートの進捗を取得
+ * @returns {{ imported: number, total: number, inProgress: boolean }}
+ */
+export const getExtendedImportProgress = async () => {
+  try {
+    const value = await AsyncStorage.getItem(EXTENDED_IMPORT_PROGRESS_KEY);
+    if (value) {
+      return JSON.parse(value);
+    }
+  } catch (_) {}
+  return { imported: 0, total: 335, inProgress: false };
+};
+
+/**
+ * 拡張インポートの進捗を保存
+ */
+export const saveExtendedImportProgress = async (imported, total, inProgress) => {
+  try {
+    await AsyncStorage.setItem(EXTENDED_IMPORT_PROGRESS_KEY, JSON.stringify({
+      imported,
+      total,
+      inProgress,
+      lastUpdated: new Date().toISOString(),
+    }));
+  } catch (_) {}
+};
+
+/**
+ * 拡張インポート（31日〜365日前のデータ）をバックグラウンドで実行
+ * @param {Function} onProgress - 進捗コールバック (imported, total)
+ * @returns {Promise<{ success: boolean, importedDays: number, totalDays: number }>}
+ */
+export const importExtendedHistoricalData = async (onProgress = null) => {
+  // 既に完了している場合はスキップ
+  const alreadyCompleted = await isExtendedImportCompleted();
+  if (alreadyCompleted) {
+    console.log('[healthKit] Extended import already completed, skipping');
+    return { success: true, importedDays: 0, totalDays: 0, skipped: true };
+  }
+
+  // Swiftモジュールがない場合はスキップ
+  if (!HealthKitSwift || typeof HealthKitSwift.isAvailable !== 'function') {
+    console.log('[healthKit] Swift module not available for extended import');
+    return { success: false, importedDays: 0, totalDays: 0, error: 'Swift module not available' };
+  }
+
+  try {
+    const available = await HealthKitSwift.isAvailable();
+    if (!available) {
+      return { success: false, importedDays: 0, totalDays: 0, error: 'HealthKit not available' };
+    }
+
+    console.log('[healthKit] Starting extended import (31-365 days)');
+    await saveExtendedImportProgress(0, 335, true);
+
+    // 365日分のデータを取得
+    const stepsDict = await HealthKitSwift.getStepsForDays(365);
+    if (!stepsDict || Object.keys(stepsDict).length === 0) {
+      await saveExtendedImportProgress(0, 335, false);
+      return { success: false, importedDays: 0, totalDays: 0, error: 'No data from HealthKit' };
+    }
+
+    const settings = await getSettings();
+    const profile = await getUserProfile();
+    const weight = Number(profile?.weight) || 65;
+    const stride = Number(profile?.stride) || 72;
+    const goal = Number(settings?.dailyGoal) || 10000;
+
+    // 日付でソートして、31日目以降のみ処理
+    const allEntries = Object.entries(stepsDict).sort((a, b) => a[0].localeCompare(b[0]));
+
+    // 過去30日分はすでにインポート済みなので、31日〜365日前のデータのみ
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const cutoffDate = new Date(today);
+    cutoffDate.setDate(cutoffDate.getDate() - 30); // 30日前
+    const cutoffKey = toDateKeyLocal(cutoffDate);
+
+    // 30日より前のデータのみフィルタ
+    const extendedEntries = allEntries.filter(([dateKey]) => dateKey < cutoffKey);
+
+    if (extendedEntries.length === 0) {
+      console.log('[healthKit] No extended data to import');
+      await markExtendedImportCompleted();
+      await saveExtendedImportProgress(0, 0, false);
+      return { success: true, importedDays: 0, totalDays: 0 };
+    }
+
+    let importedCount = 0;
+    const totalEntries = extendedEntries.length;
+
+    for (let i = 0; i < extendedEntries.length; i += 1) {
+      const [dateKey, steps] = extendedEntries[i];
+
+      try {
+        const existing = await getDailyData(dateKey);
+        const shouldUpdate = !existing?.steps || existing.steps < steps;
+
+        if (shouldUpdate) {
+          const calories = Math.round(calculateCalories(steps, weight));
+          const distance = calculateDistance(steps, stride);
+          const payload = {
+            ...(existing || {}),
+            date: dateKey,
+            steps,
+            calories,
+            distance,
+            goal,
+            importedFromHealthKit: true,
+            importedAt: new Date().toISOString(),
+          };
+          await saveDailyData(dateKey, payload);
+        }
+
+        // 時間帯別データも取得・保存
+        if (typeof HealthKitSwift.getHourlyStepsForDate === 'function') {
+          try {
+            const hourlyData = await HealthKitSwift.getHourlyStepsForDate(dateKey);
+            if (Array.isArray(hourlyData) && hourlyData.length === 24) {
+              await saveHourlyStepsForDate(dateKey, hourlyData.map((v) => Number(v) || 0));
+            }
+          } catch (_) {}
+        }
+
+        importedCount += 1;
+
+        // 進捗を10日ごとに保存（頻繁な保存を避ける）
+        if (i % 10 === 0) {
+          await saveExtendedImportProgress(importedCount, totalEntries, true);
+          if (onProgress) onProgress(importedCount, totalEntries);
+        }
+      } catch (error) {
+        console.warn(`[healthKit] Extended import: Failed to import ${dateKey}:`, error);
+      }
+    }
+
+    // 完了
+    await markExtendedImportCompleted();
+    await saveExtendedImportProgress(importedCount, totalEntries, false);
+
+    if (onProgress) onProgress(importedCount, totalEntries);
+    console.log(`[healthKit] Extended import complete: ${importedCount}/${totalEntries} days`);
+
+    return {
+      success: true,
+      importedDays: importedCount,
+      totalDays: totalEntries,
+    };
+  } catch (error) {
+    console.error('[healthKit] Extended import failed:', error);
+    await saveExtendedImportProgress(0, 335, false);
+    return { success: false, importedDays: 0, totalDays: 0, error: error?.message };
   }
 };

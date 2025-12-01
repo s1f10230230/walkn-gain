@@ -6,11 +6,11 @@
 export const COLORS = {
   // Journal Color Palette (Teal × Orange)
   primary: '#FF6B35',            // Coral Orange (accent, CTAs)
-  primaryDark: '#FF8050',
+  primaryDark: '#FFB396',        // チョーク風ピーチ（パステル）
   accent: '#00A896',             // Teal Green (brand color)
-  accentDark: '#14B8A6',
+  accentDark: '#7FCFC4',         // チョーク風ティール（パステル）
   success: '#16A34A',            // Green 600
-  successDark: '#22C55E',
+  successDark: '#8ED9A6',        // チョーク風グリーン（パステル）
 
   // Light Mode (Journal Paper)
   light: {
@@ -28,20 +28,20 @@ export const COLORS = {
     chartBar: '#D4CFC0',         // Muted tan bar
   },
 
-  // Dark Mode (Dark Paper/Parchment)
+  // Dark Mode (Chalkboard / 黒板風)
   dark: {
-    background: '#1C1917',       // Dark brown-gray
-    card: '#292524',             // Warm dark card
-    cardWarm: '#292524',
-    text: '#F5F5F4',             // Warm white
-    textSecondary: '#A8A29E',    // Warm gray
-    textTertiary: '#78716C',     // Muted warm gray
-    border: '#44403C',           // Dark border
-    lineGray: '#57534E',         // Dark ruled line
-    shadow: '#000000',
-    progressUnfilled: '#44403C',
-    circleUnfilled: '#1C1917',
-    chartBar: '#57534E',
+    background: '#1E2B23',       // 黒板の深い緑
+    card: '#253129',             // やや明るい黒板色
+    cardWarm: '#283330',
+    text: '#F0EDE5',             // チョークの白（少しクリーム）
+    textSecondary: '#B5C4B8',    // くすんだチョーク
+    textTertiary: '#7A8C7E',     // 薄いチョーク
+    border: '#3D4F43',           // 黒板の縁
+    lineGray: '#4A5C4E',         // チョークで引いた線
+    shadow: '#0A120C',           // 深い影
+    progressUnfilled: '#3D4F43',
+    circleUnfilled: '#1E2B23',
+    chartBar: '#4A5C4E',
   },
 };
 

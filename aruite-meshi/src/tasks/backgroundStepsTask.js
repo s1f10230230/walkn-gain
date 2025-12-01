@@ -63,8 +63,8 @@ TaskManager.defineTask(BACKGROUND_STEPS_TASK, async () => {
       return BackgroundFetch.BackgroundFetchResult.NewData;
     }
 
-    // 進捗に応じた励ましの通知（50%, 75%, 90%）
-    const milestones = [50, 75, 90];
+    // 進捗に応じた励ましの通知（50%, 75%）
+    const milestones = [50, 75];
     for (const milestone of milestones) {
       const milestoneKey = `milestone_${milestone}_${getTodayDateString()}`;
       const alreadySent = await AsyncStorage.getItem(milestoneKey);

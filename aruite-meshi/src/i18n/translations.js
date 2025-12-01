@@ -119,6 +119,7 @@ export const TRANSLATIONS = {
       settings: '設定',
       food: '食べたもの',
       story: 'ストーリー',
+      report: 'レポート',
     },
     settings: {
       privacyPolicy: 'プライバシーポリシー',
@@ -578,6 +579,7 @@ export const TRANSLATIONS = {
       settings: 'Settings',
       food: 'Food',
       story: 'Story',
+      report: 'Report',
     },
     settings: {
       privacyPolicy: 'Privacy Policy',
@@ -1067,6 +1069,7 @@ export const TRANSLATIONS = {
       settings: '设置',
       food: '食物',
       story: '故事',
+      report: '报告',
     },
     settings: {
       privacyPolicy: '隐私政策',

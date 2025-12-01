@@ -1,4 +1,7 @@
-import { StyleSheet } from "react-native";
+import { StyleSheet, Platform } from "react-native";
+
+// セリフ体フォント
+const serifFont = Platform.OS === 'ios' ? 'Georgia' : 'serif';
 
 const styles = StyleSheet.create({
   loadingContainer: {
@@ -67,10 +70,15 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#212121",
     marginHorizontal: 4,
-    minWidth: 120, // Reduced to bring arrows inward
+    minWidth: 120,
     textAlign: "center",
-    // fontFamily: serifFont, // This variable is not defined in the provided context, commenting out to avoid error
     letterSpacing: 0.5,
+  },
+  dateLabelContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    marginTop: 4,
   },
   // Calendar modal
   modalOverlay: {
@@ -166,36 +174,62 @@ const styles = StyleSheet.create({
   calendarModalSteps: { fontSize: 9, fontWeight: "600", marginBottom: 1 },
   calendarModalCalories: { fontSize: 8 },
   calendarWeek: { flexDirection: "row", marginBottom: 8 },
+  // ページタイトル（Avenir Next太字）
+  pageTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#00A896",
+    textAlign: "center",
+    marginBottom: 12,
+    fontFamily: Platform.OS === "ios" ? "Avenir Next" : "Roboto",
+  },
+  // データページカード（ノート見開き用・紙テクスチャ風）
+  dataPageCard: {
+    borderRadius: 20,
+    padding: 16,
+    paddingBottom: 20,
+    // 紙っぽいシャドウ（複数重ねてソフトに）
+    shadowColor: '#8B8178',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    // 紙の縁取り風ボーダー
+    borderWidth: 1,
+    borderColor: '#E8E4DF',
+    // 左側の綴じ穴風マーキング用スペース
+    borderLeftWidth: 3,
+    borderLeftColor: '#E0DCD6',
+  },
   circleContainer: {
     alignItems: "center",
-    marginTop: 10,
+    marginTop: 4,
+    marginBottom: 0,
     position: "relative",
   },
   circleBackground: {
-    width: 260,
-    height: 260,
-    borderRadius: 130,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FFFFFF",
-    // Paper depth shadow
-    shadowColor: "#1B1F23",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 10,
-    borderWidth: 1,
-    borderColor: "#F0F0F0",
+    // モダンな軽いシャドウ
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 6,
   },
-  
+
   circleCenter: {
     position: "absolute",
     alignItems: "center",
     justifyContent: "center",
     width: 200,
     height: 200,
-    top: 30,
-    left: 30,
+    top: 10,
+    left: 10,
   },
   glowWrapper: {
     position: "absolute",
@@ -218,22 +252,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   sectionTitle: {
-    fontSize: 22,
-    fontWeight: "800",
+    fontSize: 16,
+    fontWeight: "700",
     color: "#212121",
-    marginLeft: 20,
-    marginBottom: 5,
-    letterSpacing: 0.3,
+    marginLeft: 0,
+    marginBottom: 4,
+    letterSpacing: 0.5,
+    fontFamily: serifFont,
   },
   chartSubtitle: {
-    fontSize: 14,
-    color: "#757575",
-    marginLeft: 20,
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#9CA3AF",
+    marginLeft: 0,
     marginBottom: 10,
   },
-  percentText: { fontSize: 40, fontWeight: "800" },
-  goalLabel: { fontSize: 12, marginTop: -6 },
-  progressSubtext: { fontSize: 12, marginTop: 2 },
+  percentText: { fontSize: 44, fontWeight: "800", letterSpacing: -1, fontFamily: serifFont },
+  goalLabel: { fontSize: 13, fontWeight: "600", marginTop: 0 },
+  progressSubtext: { fontSize: 12, fontWeight: "500", marginTop: 4 },
   statsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -301,20 +337,13 @@ const styles = StyleSheet.create({
   feedbackLabel: { fontSize: 12, fontWeight: "600", marginBottom: 6 },
   feedbackMessage: { fontSize: 16, fontWeight: "700", lineHeight: 22 },
   foodSection: { marginTop: 20, marginBottom: 30 },
-  chartSection: { marginTop: 10, marginBottom: 20 },
+  chartSection: { marginTop: 8, marginBottom: 0 },
   chartCard: {
-    backgroundColor: "#FFF",
-    borderRadius: 20,  // Paper card feel
-    padding: 20,
-    marginHorizontal: 20,
-    // Paper depth shadow
-    shadowColor: "#1B1F23",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 10,
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: "#F0F0F0",
+    borderColor: 'rgba(0, 0, 0, 0.1)',
+    borderStyle: 'dashed',
   },
   chartWithAxis: { flexDirection: "row", alignItems: "stretch" },
   yAxis: {
@@ -330,7 +359,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
-    height: 140,
+    height: 200,
     paddingTop: 10,
     paddingBottom: 10,
   },
@@ -355,7 +384,7 @@ const styles = StyleSheet.create({
   bar: {
     width: "100%",
     backgroundColor: "#FF8050",
-    borderRadius: 6,
+    borderRadius: 4,
     minHeight: 2,
   },
   hourLabel: {
@@ -406,10 +435,10 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   navButtonLeft: {
-    marginLeft: 32, // Increased to bring arrows further inward
+    // 矢印は日付の近くに
   },
   navButtonRight: {
-    marginRight: 32, // Increased to bring arrows further inward
+    // 矢印は日付の近くに
   },
   dateNavArrow: {
     fontSize: 24,
@@ -419,7 +448,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 20, // 左右の矢印との重なりを減らす
+    minWidth: 140, // 日付幅を固定してセンタリング
+    paddingHorizontal: 8,
   },
   disabledButton: {
     opacity: 0.3,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTheme } from '../utils/theme';
 import { useI18n } from '../i18n/I18nProvider';
-import { useSubscription } from '../contexts/SubscriptionContext';
+import { useSubscription, isDateWithinLimit } from '../contexts/SubscriptionContext';
 import { getDailyData, getMultipleDaysData } from '../utils/storage';
 import { toDateKeyLocal } from '../utils/calculations';
 import { AppIcon } from './AppIcon';
@@ -26,25 +26,12 @@ const serifFont = Platform.select({ ios: 'Georgia', android: 'serif' });
 export default function CalendarModal({ visible, onClose, onSelectDate, initialDate, onUpgrade }) {
   const theme = getTheme();
   const { t } = useI18n();
-  const { isPremium } = useSubscription();
+  const { isPremium, limits, presentPaywall } = useSubscription();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [monthlyData, setMonthlyData] = useState({});
 
-  // 7日前の制限日を計算
-  const limitDate = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 6); // 今日を含めて7日
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, []);
-
-  // 日付がロックされているかチェック
-  const isDateLocked = (date) => {
-    if (isPremium) return false;
-    const checkDate = new Date(date);
-    checkDate.setHours(0, 0, 0, 0);
-    return checkDate < limitDate;
-  };
+  // 歩数データの閲覧は無期限（カレンダーでのロックなし）
+  const isDateLocked = () => false;
 
   useEffect(() => {
     if (visible && initialDate) {
@@ -160,7 +147,8 @@ export default function CalendarModal({ visible, onClose, onSelectDate, initialD
                   ]}
                   onPress={() => {
                     if (locked) {
-                      onUpgrade?.();
+                      onClose();
+                      presentPaywall();
                     } else {
                       onSelectDate(date);
                     }

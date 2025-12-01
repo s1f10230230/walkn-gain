@@ -10,8 +10,8 @@ import SettingsScreen from '../screens/SettingsScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 import FoodListScreen from '../screens/FoodListScreen';
 import SharePreviewScreen from '../screens/SharePreviewScreen';
-import StoryScreen from '../screens/StoryScreen';
-import { HomeIcon, HistoryIcon, SettingsIcon, StoryIcon } from '../components/TabIcons';
+import ReportScreen from '../screens/ReportScreen';
+import { HomeIcon, HistoryIcon, SettingsIcon, ReportIcon } from '../components/TabIcons';
 import { useI18n } from '../i18n/I18nProvider';
 import { getTheme } from '../utils/theme';
 
@@ -171,12 +171,12 @@ export default function AppNavigator() {
         }}
       />
       <Tab.Screen
-        name="Story"
-        component={StoryScreen}
+        name="Report"
+        component={ReportScreen}
         options={{
-          tabBarLabel: t('tabs.story'),
+          tabBarLabel: t('tabs.report'),
           tabBarIcon: ({ color, size }) => (
-            <StoryIcon color={color} size={size} />
+            <ReportIcon color={color} size={size} />
           ),
         }}
       />

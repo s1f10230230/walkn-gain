@@ -412,20 +412,6 @@ export default function HistoryScreen({ navigation }) {
               <Text style={[styles.summaryUnit, { color: theme.accent, fontWeight: '600' }]}>{t('units.kcal')}</Text>
             </View>
           </View>
-          <View style={styles.foodSummary}>
-            <Text style={[styles.foodSummaryText, { color: theme.primary }]}>
-              {(() => {
-                const food = getFoodById(defaultFood);
-                if (!food) return '';
-                const unitKey = `food.items.${food.id}.unit`;
-                const tUnit = t(unitKey);
-                const displayUnit = tUnit === unitKey ? food.unit : tUnit;
-                const amount = getFoodAmountForPeriod();
-                const suffix = t('food.amountSuffix') || '分';
-                return `${food.emoji} ${amount} ${displayUnit}${suffix}`;
-              })()}
-            </Text>
-          </View>
         </View>
 
         {renderChart()}

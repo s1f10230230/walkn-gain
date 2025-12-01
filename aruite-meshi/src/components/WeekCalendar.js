@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Animated, Alert, StyleSheet, Dimensions } from 'react-native';
 import { toDateKeyLocal } from '../utils/calculations';
 import { useSubscription } from '../contexts/SubscriptionContext';
@@ -35,27 +35,44 @@ export default function WeekCalendar({
 }) {
   const { isPremium } = useSubscription();
 
-  // 7日前の制限日を計算
-  const limitDate = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 6);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, []);
-
-  // 日付がロックされているかチェック
-  const isDateLocked = (date) => {
-    if (isPremium) return false;
-    const checkDate = new Date(date);
-    checkDate.setHours(0, 0, 0, 0);
-    return checkDate < limitDate;
-  };
+  // 歩数データは無制限で閲覧可能なのでロック機能は無効化
+  const isDateLocked = () => false;
 
   // 曜日を3文字で取得
   const getDayName = (date) => {
     const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
     return days[date.getDay()];
   };
+
+  // 今日の位置にスクロール（初回マウント時）
+  useEffect(() => {
+    if (calendarScrollRef?.current && calendarDates.length > 0) {
+      const todayIndex = calendarDates.findIndex(d => isToday(d));
+      if (todayIndex >= 0) {
+        const itemWidth = 52 + 4; // dayContainer width + gap
+        const scrollX = todayIndex * itemWidth - (SCREEN_WIDTH / 2) + (itemWidth / 2) + 16;
+        setTimeout(() => {
+          calendarScrollRef.current?.scrollTo({ x: Math.max(0, scrollX), animated: false });
+        }, 100);
+      }
+    }
+  }, [calendarDates.length]);
+
+  // 選択した日付を中央にスクロール（日付選択時）
+  useEffect(() => {
+    if (calendarScrollRef?.current && calendarDates.length > 0 && selectedDate) {
+      const selectedIndex = calendarDates.findIndex(d =>
+        d.toDateString() === selectedDate.toDateString()
+      );
+      if (selectedIndex >= 0) {
+        const itemWidth = 52 + 4; // dayContainer width + gap
+        const scrollX = selectedIndex * itemWidth - (SCREEN_WIDTH / 2) + (itemWidth / 2) + 16;
+        setTimeout(() => {
+          calendarScrollRef.current?.scrollTo({ x: Math.max(0, scrollX), animated: true });
+        }, 50);
+      }
+    }
+  }, [selectedDate, calendarDates]);
 
   return (
     <View style={styles.container}>
@@ -67,9 +84,7 @@ export default function WeekCalendar({
         onScroll={handleCalendarScroll}
         onScrollEndDrag={handleCalendarScrollEnd}
         scrollEventThrottle={16}
-        decelerationRate={0.985}
-        snapToInterval={60}
-        snapToAlignment="center"
+        decelerationRate="fast"
       >
         {calendarDates.map((date, index) => {
           const selected = date.toDateString() === selectedDate.toDateString();
@@ -187,9 +202,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   scrollContent: {
-    paddingHorizontal: SCREEN_WIDTH / 2 - 30,
+    paddingHorizontal: 16,
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
   },
   dayContainer: {
     width: 52,

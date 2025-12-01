@@ -742,6 +742,15 @@ export default function SettingsScreen({ navigation }) {
               >
                 <Text style={styles.reimportButtonText}>アップグレード</Text>
               </TouchableOpacity>
+              {/* デバッグ用：PROに切り替え */}
+              {__DEV__ && (
+                <TouchableOpacity
+                  style={[styles.reimportButton, { backgroundColor: '#DAA520', marginTop: 8 }]}
+                  onPress={() => setDebugPremium(true)}
+                >
+                  <Text style={styles.reimportButtonText}>PROに切り替え（デバッグ）</Text>
+                </TouchableOpacity>
+              )}
             </>
           )}
         </View>

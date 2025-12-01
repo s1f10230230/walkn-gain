@@ -1,6 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
-import { calculateCalories, calculateDistance } from '../utils/calculations';
+import React, { useRef, useCallback } from 'react';
+import { View, Text, TouchableOpacity, PanResponder } from 'react-native';
 import { getWeatherIconName } from '../utils/weather';
 import { AppIcon } from './AppIcon';
 
@@ -18,9 +17,11 @@ export default function HourlyChart({
   hourlyWeather,
   profile,
   setChartWidth,
+  hideTitle = false,
 }) {
   const labelHours = [0, 3, 6, 9, 12, 15, 18, 21];
   const weatherHours = [0, 6, 12, 18]; // Display weather at 6-hour intervals
+  const chartWidthRef = useRef(0);
 
   const title = isToday(selectedDate)
     ? t('home.activity.today')
@@ -29,47 +30,59 @@ export default function HourlyChart({
   const safeHourlySteps = hourlySteps || Array(24).fill(0);
   const maxSteps = Math.max(...safeHourlySteps, 1);
 
+  // タッチ位置から時間を計算
+  const getHourFromX = useCallback((x) => {
+    if (chartWidthRef.current <= 0) return -1;
+    const hour = Math.floor((x / chartWidthRef.current) * 24);
+    return Math.max(0, Math.min(23, hour));
+  }, []);
+
+  // スライドジェスチャー用のPanResponder
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // 横方向の動きが大きい場合のみキャプチャ
+        return Math.abs(gestureState.dx) > 5;
+      },
+      onPanResponderGrant: (evt) => {
+        const x = evt.nativeEvent.locationX;
+        const hour = getHourFromX(x);
+        if (hour >= 0) {
+          if (hourlyDetailTimerRef.current) clearTimeout(hourlyDetailTimerRef.current);
+          setHourlyDetailTooltip({ visible: true, hour });
+        }
+      },
+      onPanResponderMove: (evt) => {
+        const x = evt.nativeEvent.locationX;
+        const hour = getHourFromX(x);
+        if (hour >= 0 && hour !== hourlyDetailTooltip.hour) {
+          if (hourlyDetailTimerRef.current) clearTimeout(hourlyDetailTimerRef.current);
+          setHourlyDetailTooltip({ visible: true, hour });
+        }
+      },
+      onPanResponderRelease: () => {
+        // 指を離したら3秒後に非表示
+        hourlyDetailTimerRef.current = setTimeout(
+          () => setHourlyDetailTooltip({ visible: false, hour: -1 }),
+          3000
+        );
+      },
+    })
+  ).current;
+
   return (
     <View style={styles.chartSection}>
-      <Text style={[styles.sectionTitle, { color: theme.text }]}>{title}</Text>
-      <Text style={[styles.chartSubtitle, { color: theme.textSecondary }]}>
-        {t('home.chart.hourlyDistribution')}
-      </Text>
-
-      {hourlyDetailTooltip.visible && hourlyDetailTooltip.hour >= 0 && (
-        <View pointerEvents="none" style={styles.hourlyDetailTooltipWrapper}>
-          <View
-            style={[
-              styles.hourlyDetailTooltip,
-              { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border },
-            ]}
-          >
-            <Text style={[styles.hourlyDetailTooltipTitle, { color: theme.text }]}>
-              {hourlyDetailTooltip.hour}:00 - {hourlyDetailTooltip.hour}:59
-            </Text>
-            <View style={styles.hourlyDetailTooltipRow}>
-              <Text style={[styles.hourlyDetailTooltipLabel, { color: theme.textSecondary }]}>歩数:</Text>
-              <Text style={[styles.hourlyDetailTooltipValue, { color: theme.primary }]}>
-                {(safeHourlySteps[hourlyDetailTooltip.hour] || 0).toLocaleString()} 歩
-              </Text>
-            </View>
-            <View style={styles.hourlyDetailTooltipRow}>
-              <Text style={[styles.hourlyDetailTooltipLabel, { color: theme.textSecondary }]}>カロリー:</Text>
-              <Text style={[styles.hourlyDetailTooltipValue, { color: theme.accent }]}>
-                {calculateCalories(safeHourlySteps[hourlyDetailTooltip.hour] || 0, profile.weight).toFixed(1)} kcal
-              </Text>
-            </View>
-            <View style={styles.hourlyDetailTooltipRow}>
-              <Text style={[styles.hourlyDetailTooltipLabel, { color: theme.textSecondary }]}>距離:</Text>
-              <Text style={[styles.hourlyDetailTooltipValue, { color: theme.success }]}>
-                {calculateDistance(safeHourlySteps[hourlyDetailTooltip.hour] || 0, profile.stride).toFixed(2)} km
-              </Text>
-            </View>
-          </View>
-        </View>
+      {!hideTitle && (
+        <>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{title}</Text>
+          <Text style={[styles.chartSubtitle, { color: theme.textSecondary }]}>
+            {t('home.chart.hourlyDistribution')}
+          </Text>
+        </>
       )}
 
-      <View style={[styles.chartCard, { backgroundColor: theme.card }]}>
+      <View style={[styles.chartCard, { backgroundColor: 'transparent' }]}>
         <View style={styles.chartWithAxis}>
           <View style={styles.yAxis}>
             {(() => {
@@ -102,7 +115,7 @@ export default function HourlyChart({
                       return (
                         <View key={hour} style={{ flex: 1, alignItems: 'center' }}>
                           {iconName ? (
-                            <AppIcon name={iconName} size={20} color={theme.textSecondary} />
+                            <AppIcon name={iconName} size={26} color={theme.isDark ? '#F0F0F0' : theme.text} />
                           ) : (
                             <Text style={{ fontSize: 18 }}> </Text>
                           )}
@@ -111,14 +124,23 @@ export default function HourlyChart({
                     })}
                   </View>
                 )}
-                <View style={styles.chart} onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}>
+                <View
+                  style={styles.chart}
+                  onLayout={(e) => {
+                    const width = e.nativeEvent.layout.width;
+                    setChartWidth(width);
+                    chartWidthRef.current = width;
+                  }}
+                  {...panResponder.panHandlers}
+                >
                 {safeHourlySteps.map((count, hour) => {
                   const heightPct = (count / maxSteps) * 100;
                   const isSelectedToday = selectedDate.toDateString() === new Date().toDateString();
                   const currentHour = new Date().getHours();
                   const isCurrentHour = isSelectedToday && hour === currentHour;
                   const isMaxBar = count === maxSteps && count > 0;
-                    const shouldShowLabel = labelHours.includes(hour);
+                  const shouldShowLabel = labelHours.includes(hour);
+                  const isSelected = hourlyDetailTooltip.visible && hourlyDetailTooltip.hour === hour;
 
                     return (
                       <View key={hour} style={styles.barContainer}>
@@ -128,29 +150,59 @@ export default function HourlyChart({
                       hitSlop={{ top: 6, bottom: 10, left: 4, right: 4 }}
                       onPress={() => {
                         try { if (hourlyDetailTimerRef.current) clearTimeout(hourlyDetailTimerRef.current); } catch (_) {}
-                        setHourlyDetailTooltip({ visible: true, hour });
-                        hourlyDetailTimerRef.current = setTimeout(
-                          () => setHourlyDetailTooltip({ visible: false, hour: -1 }),
-                          1800
-                        );
+                        // 同じバーをタップしたら非表示に
+                        if (isSelected) {
+                          setHourlyDetailTooltip({ visible: false, hour: -1 });
+                        } else {
+                          setHourlyDetailTooltip({ visible: true, hour });
+                          hourlyDetailTimerRef.current = setTimeout(
+                            () => setHourlyDetailTooltip({ visible: false, hour: -1 }),
+                            3000
+                          );
+                        }
                       }}
                     >
+                      {/* 選択時の歩数ラベル */}
+                      {isSelected && (
+                        <View style={{
+                          position: 'absolute',
+                          top: -24,
+                          left: -20,
+                          right: -20,
+                          alignItems: 'center',
+                          zIndex: 10,
+                        }}>
+                          <View style={{
+                            backgroundColor: theme.primary,
+                            paddingHorizontal: 6,
+                            paddingVertical: 2,
+                            borderRadius: 8,
+                          }}>
+                            <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '700' }}>
+                              {count.toLocaleString()}
+                            </Text>
+                          </View>
+                        </View>
+                      )}
                       <View style={styles.barWrapper}>
                       <View
                         style={[
                           styles.bar,
                           {
                             height: `${Math.max(2, heightPct)}%`,
-                            backgroundColor: isMaxBar
+                            backgroundColor: isSelected
+                              ? theme.primary // Orange for selected
+                              : isMaxBar
                               ? theme.primary // Orange for max
                               : isCurrentHour
                               ? theme.success // Bright Teal for current
                               : theme.accent, // Teal for others
-                            opacity: 0.8, // Colored pencil texture feel
-                            width: '60%', // Thinner bars
+                            opacity: isSelected ? 1 : 0.9,
+                            width: '75%',
                             borderTopLeftRadius: 4,
                             borderTopRightRadius: 4,
-                            borderRadius: 0, // Reset default borderRadius
+                            borderRadius: 0,
+                            transform: isSelected ? [{ scaleX: 1.2 }] : [],
                           },
                         ]}
                       />
@@ -158,10 +210,14 @@ export default function HourlyChart({
                       <Text
                         style={[
                           styles.hourLabel,
-                          { color: isCurrentHour ? theme.primary : theme.textSecondary, opacity: shouldShowLabel ? 1 : 0 },
+                          {
+                            color: isSelected ? theme.primary : isCurrentHour ? theme.primary : theme.textSecondary,
+                            opacity: shouldShowLabel || isSelected ? 1 : 0,
+                            fontWeight: isSelected ? '700' : '400',
+                          },
                         ]}
                       >
-                        {shouldShowLabel ? hour : ''}
+                        {isSelected ? hour : shouldShowLabel ? hour : ''}
                       </Text>
                     </TouchableOpacity>
                   </View>
