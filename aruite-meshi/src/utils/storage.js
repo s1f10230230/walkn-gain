@@ -217,6 +217,22 @@ export const getAllDailyData = async () => {
   }
 };
 
+// 年間トップ3の歩数日を取得
+export const getTop3Days = async () => {
+  try {
+    const allData = await getAllDailyData();
+    const entries = Object.entries(allData)
+      .filter(([_, data]) => data && typeof data.steps === 'number' && data.steps > 0)
+      .map(([date, data]) => ({ date, steps: data.steps }))
+      .sort((a, b) => b.steps - a.steps)
+      .slice(0, 3);
+    return entries;
+  } catch (error) {
+    console.error('Error getting top 3 days:', error);
+    return [];
+  }
+};
+
 // ユーザープロフィールの取得
 export const getUserProfile = async () => {
   try {

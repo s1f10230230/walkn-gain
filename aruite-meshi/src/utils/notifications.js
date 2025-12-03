@@ -446,3 +446,84 @@ export const dismissPersistentWidget = async () => {
  * アプリ起動時の今日の歩数ダイジェストを1日1回だけ送信
  */
 // 起動時ダイジェストは廃止（ユーザー体験の簡素化のため）
+
+// =============================
+// 年間ランキング更新通知 (Pro限定)
+// =============================
+
+const STORAGE_KEYS_RANKING = {
+  TOP3_NOTIFIED_TODAY: 'ranking_top3_notified_today', // { date: 'YYYY-MM-DD', rank: number }
+};
+
+/**
+ * 年間トップ3を更新した場合に通知を送信 (Pro限定)
+ * @param {number} currentSteps 今日の歩数
+ * @param {Array} topDays 年間トップ3の配列 [{date, steps}, ...]
+ * @param {boolean} isPremium Proプランかどうか
+ * @returns {Promise<{sent: boolean, rank: number|null}>} 通知を送ったかどうか、ランク
+ */
+export const sendTop3RankingNotification = async (currentSteps, topDays, isPremium) => {
+  try {
+    // Pro限定
+    if (!isPremium) {
+      return { sent: false, rank: null };
+    }
+
+    // 既に今日通知済みかチェック
+    const today = getTodayDateString();
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS_RANKING.TOP3_NOTIFIED_TODAY);
+    const notifiedData = raw ? JSON.parse(raw) : null;
+
+    // トップ3のうちどの位置にランクインしているか確認
+    const existingTop = topDays.filter(d => d.date !== today);
+    let newRank = null;
+
+    // 現在の歩数が何位か判定
+    if (currentSteps > 0) {
+      if (existingTop.length === 0 || currentSteps > existingTop[0]?.steps) {
+        newRank = 1;
+      } else if (existingTop.length < 2 || currentSteps > existingTop[1]?.steps) {
+        newRank = 2;
+      } else if (existingTop.length < 3 || currentSteps > existingTop[2]?.steps) {
+        newRank = 3;
+      }
+    }
+
+    // ランクインしていない場合
+    if (!newRank) {
+      return { sent: false, rank: null };
+    }
+
+    // 同じ日に同じランク以上の通知を既に送った場合はスキップ
+    if (notifiedData && notifiedData.date === today && notifiedData.rank <= newRank) {
+      return { sent: false, rank: newRank };
+    }
+
+    // 通知を送信
+    const rankEmojis = ['🥇', '🥈', '🥉'];
+    const rankNames = ['1位', '2位', '3位'];
+    const title = `${rankEmojis[newRank - 1]} 年間ランキング更新！`;
+    const body = await tAsync('notifications.rankingUpdate.body', {
+      rank: rankNames[newRank - 1],
+      steps: currentSteps.toLocaleString()
+    });
+
+    await sendImmediateNotification(title, body, {
+      type: 'ranking_update',
+      rank: newRank,
+      steps: currentSteps
+    });
+
+    // 通知済みを記録
+    await AsyncStorage.setItem(
+      STORAGE_KEYS_RANKING.TOP3_NOTIFIED_TODAY,
+      JSON.stringify({ date: today, rank: newRank })
+    );
+
+    console.log(`🏆 年間ランキング${newRank}位更新通知を送信: ${currentSteps}歩`);
+    return { sent: true, rank: newRank };
+  } catch (error) {
+    console.error('ランキング通知エラー:', error);
+    return { sent: false, rank: null };
+  }
+};

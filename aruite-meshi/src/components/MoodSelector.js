@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { useI18n } from '../i18n/I18nProvider';
 
 const COLORS = {
   teal: '#00A896',
@@ -8,20 +9,20 @@ const COLORS = {
   textGray: '#9CA5B5',
 };
 
-// ムードの定義（5段階）
+// ムードの定義（5段階）- labelKeyは翻訳キー
 export const MOODS = [
-  { value: 5, emoji: '😄', label: '最高', color: '#FFD93D' },
-  { value: 4, emoji: '🙂', label: '良い', color: '#6BCB77' },
-  { value: 3, emoji: '😐', label: '普通', color: '#4D96FF' },
-  { value: 2, emoji: '😓', label: '微妙', color: '#9B59B6' },
-  { value: 1, emoji: '😫', label: '悪い', color: '#FF6B6B' },
+  { value: 5, emoji: '😄', labelKey: 'best', color: '#FFD93D' },
+  { value: 4, emoji: '🙂', labelKey: 'good', color: '#6BCB77' },
+  { value: 3, emoji: '😐', labelKey: 'normal', color: '#4D96FF' },
+  { value: 2, emoji: '😓', labelKey: 'notGreat', color: '#9B59B6' },
+  { value: 1, emoji: '😫', labelKey: 'bad', color: '#FF6B6B' },
 ];
 
 export function getMoodByValue(value) {
   return MOODS.find(m => m.value === value) || null;
 }
 
-function MoodButton({ mood, isSelected, onSelect, index }) {
+function MoodButton({ mood, isSelected, onSelect, index, t }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const bounceAnim = useRef(new Animated.Value(0)).current;
 
@@ -93,7 +94,7 @@ function MoodButton({ mood, isSelected, onSelect, index }) {
       </Animated.View>
       {isSelected && (
         <Text style={[styles.moodLabel, { color: mood.color }]}>
-          {mood.label}
+          {t(`home.diary.moods.${mood.labelKey}`)}
         </Text>
       )}
     </TouchableOpacity>
@@ -101,10 +102,11 @@ function MoodButton({ mood, isSelected, onSelect, index }) {
 }
 
 export default function MoodSelector({ selectedMood, onSelectMood, theme }) {
+  const { t } = useI18n();
   return (
     <View style={styles.container}>
       <Text style={[styles.title, { color: theme?.isDark ? theme.textSecondary : COLORS.textGray }]}>
-        今日の気分は？
+        {t('home.diary.moodQuestion')}
       </Text>
       <View style={styles.moodRow}>
         {MOODS.map((mood, index) => (
@@ -114,6 +116,7 @@ export default function MoodSelector({ selectedMood, onSelectMood, theme }) {
             isSelected={selectedMood === mood.value}
             onSelect={onSelectMood}
             index={index}
+            t={t}
           />
         ))}
       </View>

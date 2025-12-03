@@ -5,13 +5,12 @@ import {
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
-  Alert,
   useColorScheme,
 } from 'react-native';
-import { getSettings, saveSettings, saveUserProfile, saveOnboardingComplete } from '../../utils/storage';
-import { CommonActions } from '@react-navigation/native';
+import { getSettings } from '../../utils/storage';
 import { getTheme } from '../../utils/theme';
 import { useI18n } from '../../i18n/I18nProvider';
+import StepIndicator from '../../components/StepIndicator';
 
 export default function CalorieGoalScreen({ navigation, route }) {
   const { gender, age, height, weight, goalSteps } = route.params;
@@ -32,53 +31,24 @@ export default function CalorieGoalScreen({ navigation, route }) {
 
   const calorieOptions = [300, 400, 500, 600, 700, 800];
 
-  const handleComplete = async (skipCalorieGoal = false) => {
-    try {
-      console.log('🚀 オンボーディング完了処理開始');
-
-      // プロフィールを保存
-      await saveUserProfile({
-        gender,
-        age,
-        height,
-        weight,
-        stride: gender === 'male' ? 78 : 70, // 標準的な歩幅
-      });
-      console.log('✅ プロフィール保存完了');
-
-      // 既存設定を取り込み、上書き（言語などを保持）
-      const current = await getSettings();
-      await saveSettings({
-        ...current,
-        dailyGoal: goalSteps,
-        goalCalories: skipCalorieGoal ? 500 : selectedCalories,
-        defaultFood: 'ramen',
-      });
-      console.log('✅ 設定保存完了');
-
-      // オンボーディング完了フラグを保存
-      const onboardingSaved = await saveOnboardingComplete(true);
-      console.log('✅ オンボーディング完了フラグ保存:', onboardingSaved);
-
-      // 直ちにメインアプリへ遷移（親スタックをリセット）
-      const parent = navigation.getParent?.() || navigation;
-      parent.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [{ name: 'MainApp' }],
-        })
-      );
-    } catch (error) {
-      console.error('❌ Error saving settings:', error);
-      Alert.alert(t('common.error'), t('onboarding.calorie.saveError'));
-    }
+  const handleComplete = (skipCalorieGoal = false) => {
+    // ProIntro画面へ遷移（保存処理はProIntroで実行）
+    navigation.navigate('ProIntro', {
+      gender,
+      age,
+      height,
+      weight,
+      goalSteps,
+      goalCalories: skipCalorieGoal ? 500 : selectedCalories,
+    });
   };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.content}>
+        <StepIndicator currentStep={6} theme={theme} />
+
         <View style={styles.header}>
-          <Text style={[styles.step, { color: theme.primary }]}>{t('onboarding.calorie.stepLabel')}</Text>
           <Text style={[styles.title, { color: theme.text }]}>{t('onboarding.calorie.title')}</Text>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
             {t('onboarding.calorie.subtitle')}
@@ -159,13 +129,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   header: {
-    marginTop: 40,
-    marginBottom: 32,
-  },
-  step: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
+    marginTop: 8,
+    marginBottom: 24,
   },
   title: {
     fontSize: 32,

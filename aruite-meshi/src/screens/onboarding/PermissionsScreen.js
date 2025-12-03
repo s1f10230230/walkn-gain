@@ -8,6 +8,7 @@ import {
   ScrollView,
   useWindowDimensions,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../../i18n/I18nProvider';
 import { getTheme } from '../../utils/theme';
@@ -17,6 +18,7 @@ import { requestNotificationPermissions, scheduleReminderNotification } from '..
 import { saveReminderEnabled } from '../../utils/storage';
 import { requestPedometerPermissions } from '../../utils/pedometer';
 import * as Notifications from 'expo-notifications';
+import StepIndicator from '../../components/StepIndicator';
 
 export default function PermissionsScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
@@ -99,6 +101,7 @@ export default function PermissionsScreen({ navigation, route }) {
     await requestNotificationPermission();
     await requestMotionPermission();
     setIsRequesting(false);
+    // fromSkipとgoalCaloriesも引き継ぐ
     navigation.navigate('HealthKitPermission', route.params);
   };
 
@@ -112,6 +115,8 @@ export default function PermissionsScreen({ navigation, route }) {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        <StepIndicator currentStep={4} theme={theme} />
+
         <View style={[styles.contentWrapper, { borderColor: theme.border, backgroundColor: theme.card }]}>
           {/* Header */}
           <View style={styles.header}>
@@ -125,27 +130,27 @@ export default function PermissionsScreen({ navigation, route }) {
 
           {[
             {
-              icon: '📅',
+              icon: 'calendar',
               title: t('onboarding.permissions.calendar.title') || 'カレンダー',
               description: t('onboarding.permissions.calendar.description') || 'ホーム画面に今日の予定を表示できます',
               granted: calendarGranted,
             },
             {
-              icon: '🔔',
+              icon: 'notifications',
               title: t('onboarding.permissions.notifications.title') || '通知',
               description: t('onboarding.permissions.notifications.description') || '目標達成やリマインダーをお知らせします',
               granted: notificationsGranted,
             },
             {
-              icon: '🏃‍♂️',
+              icon: 'fitness',
               title: t('onboarding.permissions.motion.title') || 'モーションとフィットネス',
               description: t('onboarding.permissions.motion.description') || '歩数の計測に必要です（端末の設定でいつでも変更できます）',
               granted: motionGranted,
             },
           ].map((item) => (
             <View key={item.title} style={[styles.permissionCard, { borderColor: theme.border }]}>
-              <View style={styles.iconContainer}>
-                <Text style={styles.icon}>{item.icon}</Text>
+              <View style={[styles.iconContainer, { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }]}>
+                <Ionicons name={item.icon} size={26} color="#FFC8A2" />
               </View>
               <View style={styles.permissionContent}>
                 <Text style={[styles.permissionTitle, { color: theme.text }]}>{item.title}</Text>
@@ -241,10 +246,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 16,
-  },
-  icon: {
-    fontSize: 32,
   },
   permissionContent: {
     flex: 1,

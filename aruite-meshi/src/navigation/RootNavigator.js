@@ -13,6 +13,7 @@ import GoalStepsScreen from '../screens/onboarding/GoalStepsScreen';
 import PermissionsScreen from '../screens/onboarding/PermissionsScreen';
 import HealthKitPermissionScreen from '../screens/onboarding/HealthKitPermissionScreen';
 import CalorieGoalScreen from '../screens/onboarding/CalorieGoalScreen';
+import ProIntroScreen from '../screens/onboarding/ProIntroScreen';
 import LanguageSelectScreen from '../screens/onboarding/LanguageSelectScreen';
 
 // メインアプリ
@@ -69,6 +70,11 @@ function OnboardingStack() {
       <Stack.Screen
         name="CalorieGoal"
         component={CalorieGoalScreen}
+        options={{ detachPreviousScreen: false }}
+      />
+      <Stack.Screen
+        name="ProIntro"
+        component={ProIntroScreen}
         options={{ detachPreviousScreen: false }}
       />
     </Stack.Navigator>

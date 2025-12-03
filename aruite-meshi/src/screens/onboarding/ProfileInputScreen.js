@@ -12,9 +12,11 @@ import {
   useColorScheme,
   Animated,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../../i18n/I18nProvider';
 import { getTheme } from '../../utils/theme';
+import StepIndicator from '../../components/StepIndicator';
 
 export default function ProfileInputScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -116,6 +118,8 @@ export default function ProfileInputScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        <StepIndicator currentStep={2} theme={theme} />
+
         <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
           <Text style={[styles.title, { color: theme.text }]}>{t('onboarding.profile.title')}</Text>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{t('onboarding.profile.subtitle')}</Text>
@@ -136,14 +140,12 @@ export default function ProfileInputScreen({ navigation }) {
                     gender === 'male' && (theme.isDark ? { backgroundColor: '#2A1B14', borderColor: theme.primary } : { backgroundColor: '#FFF3E0', borderColor: theme.primary }),
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.genderEmoji,
-                      gender === 'male' && styles.genderEmojiActive,
-                    ]}
-                  >
-                    👨
-                  </Text>
+                  <Ionicons
+                    name="man"
+                    size={50}
+                    color={gender === 'male' ? theme.primary : theme.textSecondary}
+                    style={{ marginBottom: 10, opacity: gender === 'male' ? 1 : 0.5 }}
+                  />
                   <Text
                     style={[
                       styles.genderText,
@@ -170,14 +172,12 @@ export default function ProfileInputScreen({ navigation }) {
                     gender === 'female' && (theme.isDark ? { backgroundColor: '#2A1B14', borderColor: theme.primary } : { backgroundColor: '#FFF3E0', borderColor: theme.primary }),
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.genderEmoji,
-                      gender === 'female' && styles.genderEmojiActive,
-                    ]}
-                  >
-                    👩
-                  </Text>
+                  <Ionicons
+                    name="woman"
+                    size={50}
+                    color={gender === 'female' ? theme.primary : theme.textSecondary}
+                    style={{ marginBottom: 10, opacity: gender === 'female' ? 1 : 0.5 }}
+                  />
                   <Text
                     style={[
                       styles.genderText,
@@ -301,14 +301,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     width: '100%',
-  },
-  genderEmoji: {
-    fontSize: 50,
-    marginBottom: 10,
-    opacity: 0.5,
-  },
-  genderEmojiActive: {
-    opacity: 1,
   },
   genderText: {
     fontSize: 16,

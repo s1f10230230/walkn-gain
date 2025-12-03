@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
   useColorScheme,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useI18n } from "../i18n/I18nProvider";
@@ -267,16 +268,12 @@ export default function SharePreviewScreen({ navigation, route }) {
         },
       ]}
     >
-      <Text style={[styles.header, { color: theme.text }]}>
-        {t("settings.share.previewTitle") || "記録カード"}
-      </Text>
-
       <ScrollView
         style={styles.scrollContainer}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Share Card Preview */}
+        {/* Share Card Preview - 完全な四角形（角丸なし） */}
       <View
         ref={viewRef}
         collapsable={false}
@@ -285,8 +282,9 @@ export default function SharePreviewScreen({ navigation, route }) {
           {
             backgroundColor:
               steps / goal > 0.5
-                ? (theme.isDark ? "#2A1B14" : "#FFF9F0") // ダークモード対応
-                : theme.card, // 通常の背景
+                ? (theme.isDark ? "#2A1B14" : "#FFF9F0")
+                : theme.card,
+            borderRadius: 0, // 角丸なしで白い余白を防止
           },
         ]}
       >
@@ -560,25 +558,25 @@ export default function SharePreviewScreen({ navigation, route }) {
             { backgroundColor: theme.accent, opacity: busy || !canCapture ? 0.5 : 1 },
           ]}
           disabled={busy || !canCapture}
-          onPress={canCapture ? saveImage : () => {
+          onPress={canCapture ? () => captureAndShare('share') : () => {
             Alert.alert(
-              "キャプチャは未対応",
+              "シェア機能は未対応",
               Platform.select({
                 web: "Webではスクリーンキャプチャに対応していません。",
                 default:
-                  "Expo Goでは画像保存ができません。開発クライアント（expo run / EAS dev）でお試しください。",
+                  "Expo Goではシェアができません。開発クライアント（expo run / EAS dev）でお試しください。",
               })
             );
           }}
         >
           <Text style={styles.buttonPrimaryText}>
-            💾 {t("settings.share.saveImage") || "画像を保存"}
+            ↗ シェア
           </Text>
         </TouchableOpacity>
       </View>
       {!canCapture && (
         <Text style={[styles.disabledHint, { color: theme.textSecondary }]}>
-          画像の保存/共有はExpo GoやWebでは利用できません。
+          シェア機能はExpo GoやWebでは利用できません。
         </Text>
       )}
     </View>

@@ -149,3 +149,96 @@ export const calculateAverage = (stepsList) => {
 export const calculateTotal = (stepsList) => {
   return stepsList.reduce((acc, steps) => acc + steps, 0);
 };
+
+// カレンダー週（月曜〜日曜）の日付リストを取得
+// offset: 0 = 今週, -1 = 先週, 1 = 来週
+export const getCalendarWeekDates = (offset = 0) => {
+  const dates = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // 今週の月曜日を求める
+  const dayOfWeek = today.getDay(); // 0=日, 1=月, ..., 6=土
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + diffToMonday + (offset * 7));
+
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + i);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    dates.push(`${year}-${month}-${day}`);
+  }
+  return dates;
+};
+
+// カレンダー月（1日〜末日）の日付リストを取得
+// offset: 0 = 今月, -1 = 先月, 1 = 来月
+export const getCalendarMonthDates = (offset = 0) => {
+  const dates = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // 対象月の1日を求める
+  const targetMonth = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+  const year = targetMonth.getFullYear();
+  const month = targetMonth.getMonth();
+
+  // その月の末日を求める
+  const lastDay = new Date(year, month + 1, 0).getDate();
+
+  for (let i = 1; i <= lastDay; i++) {
+    const monthStr = String(month + 1).padStart(2, '0');
+    const dayStr = String(i).padStart(2, '0');
+    dates.push(`${year}-${monthStr}-${dayStr}`);
+  }
+  return dates;
+};
+
+// 週のラベルを取得（例: "12/2 - 12/8"）
+export const getWeekLabel = (offset = 0) => {
+  const dates = getCalendarWeekDates(offset);
+  const startDate = dates[0];
+  const endDate = dates[dates.length - 1];
+  const [, sm, sd] = startDate.split('-');
+  const [, em, ed] = endDate.split('-');
+  return `${parseInt(sm)}/${parseInt(sd)} - ${parseInt(em)}/${parseInt(ed)}`;
+};
+
+// 月のラベルを取得（例: "2025年12月" or "Dec 2025"）
+export const getMonthLabel = (offset = 0, locale = 'ja') => {
+  const today = new Date();
+  const targetMonth = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+  const year = targetMonth.getFullYear();
+  const month = targetMonth.getMonth();
+
+  if (locale === 'en') {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${monthNames[month]} ${year}`;
+  } else if (locale === 'zh-Hans') {
+    return `${year}年${month + 1}月`;
+  }
+  return `${year}年${month + 1}月`;
+};
+
+// 日付が今日以降かどうかを判定
+export const isFutureDate = (dateString) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const [year, month, day] = dateString.split('-').map(Number);
+  const targetDate = new Date(year, month - 1, day);
+  targetDate.setHours(0, 0, 0, 0);
+  return targetDate > today;
+};
+
+// 日付が今日かどうかを判定
+export const isToday = (dateString) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const [year, month, day] = dateString.split('-').map(Number);
+  const targetDate = new Date(year, month - 1, day);
+  targetDate.setHours(0, 0, 0, 0);
+  return targetDate.getTime() === today.getTime();
+};

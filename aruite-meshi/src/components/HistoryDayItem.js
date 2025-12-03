@@ -21,6 +21,7 @@ export default function HistoryDayItem({
   getWeekdayShort,
   formatNumber,
   onDatePress,
+  t, // 翻訳関数（未来日表示用）
 }) {
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
@@ -28,7 +29,16 @@ export default function HistoryDayItem({
   const [loading, setLoading] = useState(true);
   const [noteText, setNoteText] = useState("");
 
+  // 未来日かどうか
+  const isFuture = dayData.isFuture || false;
+
   useEffect(() => {
+    // 未来日の場合はロードをスキップ
+    if (isFuture) {
+      setLoading(false);
+      return;
+    }
+
     const loadDayInfo = async () => {
       try {
         // カレンダーイベントを取得（development buildが必要）
@@ -52,44 +62,78 @@ export default function HistoryDayItem({
     };
 
     loadDayInfo();
-  }, [dayData.date]);
+  }, [dayData.date, isFuture]);
 
-  const progressPercentage = Math.min(
+  const progressPercentage = isFuture ? 0 : Math.min(
     (dayData.steps / dayData.goal) * 100,
     100
   );
   const barWidth = (width - 100) * (progressPercentage / 100);
+  const isGoalAchieved = !isFuture && dayData.steps >= dayData.goal;
+
+  // Progress bar color based on achievement
+  const getProgressBarColor = () => {
+    if (isGoalAchieved) return '#00A896'; // teal for achieved
+    if (progressPercentage >= 70) return '#FFD93D'; // yellow for close
+    return '#FFDDC1'; // light beige for in progress
+  };
+
+  // 未来日のスタイル
+  const futureOpacity = isFuture ? 0.4 : 1;
 
   return (
     <TouchableOpacity
-      style={styles.dayItem}
-      activeOpacity={0.7}
-      onPress={() => onDatePress && onDatePress(dayData.date)}
+      style={[
+        styles.dayItem,
+        isGoalAchieved && { backgroundColor: '#00A89608', borderRadius: 8, marginHorizontal: -8, paddingHorizontal: 8, paddingVertical: 8 },
+        isFuture && styles.futureItem,
+      ]}
+      activeOpacity={isFuture ? 1 : 0.7}
+      onPress={() => !isFuture && onDatePress && onDatePress(dayData.date)}
+      disabled={isFuture}
     >
       <View style={styles.dayHeader}>
         <View style={styles.dateContainer}>
-          <Text style={[styles.dayDate, { color: theme.textSecondary }]}>
+          {isGoalAchieved && (
+            <Text style={{ fontSize: 14, marginRight: 4 }}>🏆</Text>
+          )}
+          <Text style={[styles.dayDate, { color: theme.textSecondary, opacity: futureOpacity }]}>
             {dayData.date.slice(5)} ({getWeekdayShort(new Date(dayData.date))})
           </Text>
-          {noteText && (
+          {noteText && !isFuture && (
             <View
               style={[styles.commentDot, { backgroundColor: theme.primary }]}
             />
           )}
         </View>
-        <Text style={[styles.daySteps, { color: theme.text, fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }) }]}>
-          {formatNumber(dayData.steps)}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {isFuture ? (
+            <Text style={[styles.futureText, { color: theme.textSecondary }]}>
+              {t ? t('history.future.noData') : '—'}
+            </Text>
+          ) : (
+            <>
+              <Text style={[styles.daySteps, { color: isGoalAchieved ? '#00A896' : theme.text, fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }) }]}>
+                {formatNumber(dayData.steps)}
+              </Text>
+              {isGoalAchieved && (
+                <Text style={{ fontSize: 10, color: '#00A896', fontWeight: '600', marginLeft: 4 }}>✓</Text>
+              )}
+            </>
+          )}
+        </View>
       </View>
       <View
-        style={[styles.progressBarContainer, { backgroundColor: theme.border }]}
+        style={[styles.progressBarContainer, { backgroundColor: theme.border, opacity: futureOpacity }]}
       >
-        <View
-          style={[
-            styles.progressBar,
-            { width: barWidth, backgroundColor: '#FFDDC1' },  // Very light beige/peach
-          ]}
-        />
+        {!isFuture && (
+          <View
+            style={[
+              styles.progressBar,
+              { width: barWidth, backgroundColor: getProgressBarColor(), opacity: isGoalAchieved ? 1 : 0.7 },
+            ]}
+          />
+        )}
       </View>
 
       {/* コメント情報 */}
@@ -189,5 +233,13 @@ const styles = StyleSheet.create({
   dayInfoText: {
     fontSize: 11,  // Smaller text (was 13)
     flex: 1,
+  },
+  // 未来日スタイル
+  futureItem: {
+    opacity: 0.6,
+  },
+  futureText: {
+    fontSize: 12,
+    fontStyle: 'italic',
   },
 });

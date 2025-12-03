@@ -41,6 +41,7 @@ export default function DataFlipCard({
   todayEvents = [],
   isFlipped = false,
   onFlipChange,
+  showGestureHint = false,
 }) {
   const [hourlyDetailTooltip, setHourlyDetailTooltip] = useState({ visible: false, hour: -1 });
   const hourlyDetailTimerRef = React.useRef(null);
@@ -118,11 +119,12 @@ export default function DataFlipCard({
         hideTitle={true}
       />
 
-      {/* フリップヒント */}
-      <View style={styles.flipHint}>
-        <MaterialCommunityIcons name="rotate-3d-variant" size={14} color={COLORS.textGray} />
-        <Text style={styles.flipHintText}>長押しで裏面へ</Text>
-      </View>
+      {/* ジェスチャーヒント（初回〜3回のみ表示） */}
+      {showGestureHint && (
+        <View style={styles.flipHint}>
+          <Text style={styles.flipHintText}>{t('home.gestureHint')}</Text>
+        </View>
+      )}
     </View>
   );
 
@@ -138,8 +140,9 @@ export default function DataFlipCard({
       distance={distance}
       todayEvents={todayEvents}
       formatNumber={formatNumber}
-      showFlipHint={true}
-      flipHintText="長押しで表面へ"
+      showFlipHint={showGestureHint}
+      flipHintText={t('home.gestureHint')}
+      showGestureHint={showGestureHint}
     />
   );
 

@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, Image, useColorScheme, Animat
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../../i18n/I18nProvider';
 import { getTheme } from '../../utils/theme';
-import { saveUserProfile, saveSettings, saveOnboardingComplete } from '../../utils/storage';
-import { AppIcon } from '../../components/AppIcon';
+import { Ionicons } from '@expo/vector-icons';
+import StepIndicator from '../../components/StepIndicator';
 
 export default function WelcomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -34,40 +34,22 @@ export default function WelcomeScreen({ navigation }) {
   const handleSkip = async () => {
     Alert.alert(
       t('common.skip'),
-      t('onboarding.skipConfirm'), // You might need to add this key to your translation files or use a hardcoded string for now if not present
+      t('onboarding.skipConfirm'),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {
           text: t('common.ok'),
           onPress: async () => {
-            try {
-              // Save default profile
-              await saveUserProfile({
-                height: 170,
-                weight: 65,
-                stride: 72,
-              });
-              // Save default settings
-              await saveSettings({
-                dailyGoal: 10000,
-                defaultFood: 'ramen',
-                notifications: true,
-                unit: 'kcal',
-                goalCalories: 500,
-                language: 'auto',
-              });
-              // Mark onboarding as complete
-              await saveOnboardingComplete(true);
-              
-              // Navigate to MainApp
-              // We need to reset the navigation stack to ensure the user can't go back to onboarding
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'MainApp' }],
-              });
-            } catch (error) {
-              console.error('Error skipping onboarding:', error);
-            }
+            // スキップ時はデフォルト値でPermissionsへ（必須画面のみ通過）
+            navigation.navigate('Permissions', {
+              gender: 'male',
+              age: 30,
+              height: 170,
+              weight: 65,
+              goalSteps: 10000,
+              goalCalories: 500,
+              fromSkip: true,
+            });
           },
         },
       ]
@@ -84,6 +66,8 @@ export default function WelcomeScreen({ navigation }) {
       </TouchableOpacity>
 
       <View style={styles.content}>
+        <StepIndicator currentStep={1} theme={theme} />
+
         <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
           <Image
             source={require('../../../assets/logo-small.png')}
@@ -96,17 +80,21 @@ export default function WelcomeScreen({ navigation }) {
 
         <View style={styles.featuresContainer}>
           <Animated.View style={[styles.feature, { opacity: fadeAnim, transform: [{ translateX: slideAnim }] }]}>
-            <View style={{ marginRight: 20 }}>
-              <AppIcon name="footsteps" size={40} color={theme.primary} />
+            <View style={[styles.iconContainer, { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }]}>
+              <Ionicons name="footsteps" size={26} color="#FFC8A2" />
             </View>
             <Text style={[styles.featureText, { color: theme.text }]}>{t('onboarding.welcome.featureSteps')}</Text>
           </Animated.View>
           <Animated.View style={[styles.feature, { opacity: fadeAnim, transform: [{ translateX: slideAnim }] }]}>
-            <Text style={styles.featureEmoji}>📝</Text>
+            <View style={[styles.iconContainer, { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }]}>
+              <Ionicons name="document-text" size={26} color="#FFC8A2" />
+            </View>
             <Text style={[styles.featureText, { color: theme.text }]}>{t('onboarding.welcome.featureDiary')}</Text>
           </Animated.View>
           <Animated.View style={[styles.feature, { opacity: fadeAnim, transform: [{ translateX: slideAnim }] }]}>
-            <Text style={styles.featureEmoji}>📊</Text>
+            <View style={[styles.iconContainer, { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }]}>
+              <Ionicons name="bar-chart" size={26} color="#FFC8A2" />
+            </View>
             <Text style={[styles.featureText, { color: theme.text }]}>{t('onboarding.welcome.featureStats')}</Text>
           </Animated.View>
         </View>
@@ -171,9 +159,13 @@ const styles = StyleSheet.create({
     marginBottom: 25,
     paddingHorizontal: 20,
   },
-  featureEmoji: {
-    fontSize: 40,
-    marginRight: 20,
+  iconContainer: {
+    width: 48,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+    borderRadius: 16,
   },
   featureText: {
     fontSize: 18,

@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Platform } from 'react-native';
+import { Platform, NativeModules } from 'react-native';
 import Purchases, { LOG_LEVEL } from 'react-native-purchases';
-import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
+
+const { PaywallModule } = NativeModules;
 
 // RevenueCat API Keys
 const REVENUECAT_API_KEY = 'test_tWBFNJDfeUNKREdSXjlYozMcggc';
@@ -79,24 +80,24 @@ export function SubscriptionProvider({ children }) {
     await checkSubscriptionStatus();
   }, [isInitialized]);
 
-  // Paywallを表示
+  // Paywallを表示（ネイティブSwiftUI版）
   const presentPaywall = useCallback(async () => {
     if (!isInitialized) return false;
 
     try {
-      const paywallResult = await RevenueCatUI.presentPaywall();
-
-      switch (paywallResult) {
-        case PAYWALL_RESULT.PURCHASED:
-        case PAYWALL_RESULT.RESTORED:
+      // iOSの場合はネイティブPaywallを使用
+      if (Platform.OS === 'ios' && PaywallModule) {
+        const result = await PaywallModule.showPaywall();
+        if (result?.action === 'purchased') {
           await checkSubscriptionStatus();
           return true;
-        case PAYWALL_RESULT.NOT_PRESENTED:
-        case PAYWALL_RESULT.ERROR:
-        case PAYWALL_RESULT.CANCELLED:
-        default:
-          return false;
+        }
+        return false;
       }
+
+      // Android等のフォールバック（今後対応予定）
+      console.warn('Native paywall not available on this platform');
+      return false;
     } catch (error) {
       console.error('Error presenting paywall:', error);
       return false;

@@ -9,9 +9,11 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useI18n } from '../../i18n/I18nProvider';
 import { useColorScheme } from 'react-native';
 import { getTheme } from '../../utils/theme';
+import StepIndicator from '../../components/StepIndicator';
 
 export default function GoalStepsScreen({ navigation, route }) {
   const { gender, age, height, weight } = route.params;
@@ -65,8 +67,9 @@ export default function GoalStepsScreen({ navigation, route }) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.content}
       >
+        <StepIndicator currentStep={3} theme={theme} />
+
         <View style={styles.header}>
-          <Text style={[styles.step, { color: theme.primary }]}>{t('onboarding.goal.stepLabel')}</Text>
           <Text style={[styles.title, { color: theme.text }]}>{t('onboarding.goal.title')}</Text>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{t('onboarding.goal.subtitle')}</Text>
         </View>
@@ -83,27 +86,33 @@ export default function GoalStepsScreen({ navigation, route }) {
             />
             <Text style={[styles.unit, { color: theme.textSecondary }]}>{t('onboarding.goal.unitSteps')}</Text>
             <View style={styles.editIconContainer}>
-              <Text style={{ fontSize: 20 }}>✏️</Text>
+              <Ionicons name="pencil" size={18} color={theme.textSecondary} />
             </View>
           </View>
 
-          <TouchableOpacity 
-            style={[styles.recommendButton, { backgroundColor: theme.accent, shadowColor: theme.accent }]} 
+          <TouchableOpacity
+            style={[styles.recommendButton, { backgroundColor: theme.accent, shadowColor: theme.accent }]}
             onPress={applyRecommended}
             activeOpacity={0.8}
           >
-            <Text style={styles.recommendButtonText}>
-              {`✨ ${t('onboarding.goal.recommended', { steps: formatNumber(recommendedSteps) })}`}
-            </Text>
+            <View style={styles.recommendButtonContent}>
+              <Ionicons name="sparkles" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.recommendButtonText}>
+                {t('onboarding.goal.recommended', { steps: formatNumber(recommendedSteps) })}
+              </Text>
+            </View>
             <Text style={styles.recommendSubText}>
               {t('onboarding.goal.tapToApply') || 'Tap to apply'}
             </Text>
           </TouchableOpacity>
 
           <View style={[styles.infoBox, { backgroundColor: theme.isDark ? '#2A1B14' : '#FFF3E0', borderLeftColor: theme.primary }]}>
-            <Text style={[styles.infoText, { color: theme.textSecondary }]}>
-              {`💡 ${t('onboarding.goal.info', { age, gender: gender === 'male' ? t('onboarding.profile.male') : t('onboarding.profile.female'), steps: formatNumber(recommendedSteps) })}`}
-            </Text>
+            <View style={styles.infoContent}>
+              <Ionicons name="bulb" size={18} color={theme.primary} style={{ marginRight: 8 }} />
+              <Text style={[styles.infoText, { color: theme.textSecondary, flex: 1 }]}>
+                {t('onboarding.goal.info', { age, gender: gender === 'male' ? t('onboarding.profile.male') : t('onboarding.profile.female'), steps: formatNumber(recommendedSteps) })}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -127,10 +136,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   header: {
-    marginTop: 40,
-    marginBottom: 40,
+    marginTop: 8,
+    marginBottom: 32,
   },
-  step: { fontSize: 14, fontWeight: '600', marginBottom: 8 },
   title: { fontSize: 28, fontWeight: '800', marginBottom: 12, letterSpacing: 0.3 },
   subtitle: { fontSize: 16, lineHeight: 24 },
   inputSection: {
@@ -148,23 +156,27 @@ const styles = StyleSheet.create({
     top: 16,
     opacity: 0.5,
   },
-  recommendButton: { 
-    paddingVertical: 16, 
-    paddingHorizontal: 24, 
-    borderRadius: 16, 
-    alignItems: 'center', 
+  recommendButton: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    alignItems: 'center',
     marginBottom: 24,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
   },
+  recommendButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   recommendButtonText: {
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.3,
-    marginBottom: 4,
   },
   recommendSubText: {
     color: 'rgba(255, 255, 255, 0.9)',
@@ -172,6 +184,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   infoBox: { padding: 16, borderRadius: 12, borderLeftWidth: 4 },
+  infoContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
   infoText: { fontSize: 14, lineHeight: 20 },
   infoBold: {
     fontWeight: '700',

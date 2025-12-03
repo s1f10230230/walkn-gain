@@ -63,6 +63,22 @@ const IconLightbulb = ({ color }) => (
   </G>
 );
 
+// ← 左矢印 (Arrow Left)
+const IconArrowLeft = ({ color }) => (
+  <G fill="none" stroke={color} strokeWidth={STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M19 12H5" />
+    <Path d="M12 19l-7-7 7-7" />
+  </G>
+);
+
+// → 右矢印 (Arrow Right)
+const IconArrowRight = ({ color }) => (
+  <G fill="none" stroke={color} strokeWidth={STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M5 12h14" />
+    <Path d="M12 5l7 7-7 7" />
+  </G>
+);
+
 // ============================================
 // メインコンポーネント
 // ============================================
@@ -100,6 +116,12 @@ export const AppIcon = ({ name, color = DEFAULT_COLOR, size = DEFAULT_SIZE, styl
       break;
     case 'lightbulb':
       iconContent = <IconLightbulb color={color} />;
+      break;
+    case 'arrow-left':
+      iconContent = <IconArrowLeft color={color} />;
+      break;
+    case 'arrow-right':
+      iconContent = <IconArrowRight color={color} />;
       break;
     default:
       // デフォルトは四角形（開発用）

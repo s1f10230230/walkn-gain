@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { useColorScheme } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CommonActions } from '@react-navigation/native';
 import { useI18n } from '../i18n/I18nProvider';
 import {
   getUserProfile,
@@ -23,12 +22,11 @@ import {
   clearAllData,
   getHealthSyncEnabled,
   saveHealthSyncEnabled,
-  saveOnboardingComplete,
   saveReminderEnabled,
   getReminderEnabled,
 } from '../utils/storage';
 import { estimateStrideLength } from '../utils/calculations';
-import { initializeHealthKit, startStepsBackgroundUpdates, stopStepsBackgroundUpdates, isHistoricalImportCompleted, importHistoricalData, getHealthKitAuthorizationState, syncPastDaysToStorage, resetHistoricalImport } from '../utils/healthKit';
+import { initializeHealthKit, startStepsBackgroundUpdates, stopStepsBackgroundUpdates, importHistoricalData, syncPastDaysToStorage, resetHistoricalImport } from '../utils/healthKit';
 import { registerBackgroundStepsTask, unregisterBackgroundStepsTask } from '../tasks/backgroundStepsTask';
 import { scheduleReminderNotification, cancelReminderNotifications } from '../utils/notifications';
 import { UserIcon, TargetIcon, HeartIcon, PenIcon, InfoIcon } from '../components/SettingsIcons';
@@ -47,7 +45,7 @@ export default function SettingsScreen({ navigation }) {
   const { t, setLocale } = useI18n();
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
-  const { isPremium, setDebugPremium } = useSubscription();
+  const { isPremium, presentPaywall } = useSubscription();
 
   // "true" / "false" などの文字列も正しい boolean に正規化
   const toBoolean = (v) => {
@@ -121,11 +119,6 @@ export default function SettingsScreen({ navigation }) {
     const userSettings = await getSettings();
     const healthSyncEnabled = await getHealthSyncEnabled();
     const reminderOn = await getReminderEnabled();
-    let healthAuthorized = false;
-    try {
-      const status = await getHealthKitAuthorizationState();
-      healthAuthorized = !!status?.authorized;
-    } catch (_) {}
 
     setProfile({
       height: String(userProfile.height),
@@ -142,7 +135,8 @@ export default function SettingsScreen({ navigation }) {
       language: userSettings.language ?? 'auto',
     });
 
-    setHealthSync(toBoolean(healthSyncEnabled) && healthAuthorized);
+    // HealthSyncEnabledフラグをそのまま使用（オンボーディングで設定済み）
+    setHealthSync(toBoolean(healthSyncEnabled));
     setReminderEnabled(!!reminderOn);
     // 位置情報関連は読み込まない（非表示）
 
@@ -190,7 +184,7 @@ export default function SettingsScreen({ navigation }) {
     if (dailyGoalNum < MIN_DAILY_GOAL || dailyGoalNum > MAX_DAILY_GOAL) {
       Alert.alert(
         t('common.error'),
-        `目標歩数は${MIN_DAILY_GOAL}〜${MAX_DAILY_GOAL}の範囲で設定してください。`
+        t('settings.alerts.goalRangeError', { min: MIN_DAILY_GOAL, max: MAX_DAILY_GOAL })
       );
       return;
     }
@@ -208,7 +202,7 @@ export default function SettingsScreen({ navigation }) {
     if (success) {
       Alert.alert(
         t('common.success'),
-        '設定を保存しました。\n\n目標歩数の変更は明日から反映されます。過去に獲得したトロフィーとストリークは変更されません。'
+        t('settings.alerts.goalSavedDetail')
       );
       try { logEvent('settings_changed', { field: 'daily_goal' }); } catch (_) {}
     } else {
@@ -402,36 +396,6 @@ export default function SettingsScreen({ navigation }) {
 
   // 30日再取り込み機能は提出版では非表示
 
-  const handleResetOnboarding = () => {
-    Alert.alert(
-      t('settings.alerts.obResetTitle'),
-      t('settings.alerts.obResetMessage'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('settings.alerts.obResetConfirm'),
-          style: 'destructive',
-          onPress: async () => {
-            await saveOnboardingComplete(false);
-            const parent = navigation.getParent?.() || navigation;
-            parent.dispatch(
-              CommonActions.reset({ index: 0, routes: [{ name: 'Onboarding' }] })
-            );
-          },
-        },
-      ]
-    );
-  };
-
-  // HealthKit デバッグ：権限状態をチェック
-  const handleCheckHealthKitStatus = () => {
-    checkHealthKitPermissions();
-    Alert.alert(
-      'HealthKit 権限状態確認',
-      'コンソールログを確認してください。\n\n0 = Not Determined（未決定）\n1 = Sharing Denied（拒否）\n2 = Sharing Authorized（許可済み）'
-    );
-  };
-
   // 履歴データ再インポート
   const [isReimporting, setIsReimporting] = React.useState(false);
   const handleReimportData = async () => {
@@ -439,7 +403,7 @@ export default function SettingsScreen({ navigation }) {
 
     Alert.alert(
       '履歴データの再インポート',
-      '過去30日分の歩数データと時間帯別データをHealthKitから再取得します。\n\n既存のデータは上書きされます。',
+      '過去365日分の歩数データと時間帯別データをHealthKitから再取得します。\n\n既存のデータは上書きされます。',
       [
         { text: 'キャンセル', style: 'cancel' },
         {
@@ -450,8 +414,8 @@ export default function SettingsScreen({ navigation }) {
               // インポート済みフラグをリセット
               await resetHistoricalImport();
 
-              // 再インポート実行
-              const result = await importHistoricalData(30);
+              // 再インポート実行（365日分）
+              const result = await importHistoricalData(365);
               console.log('[Settings] Re-import result:', result);
 
               if (result.success) {
@@ -678,7 +642,7 @@ export default function SettingsScreen({ navigation }) {
               {isReimporting ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={styles.reimportButtonText}>履歴データを再インポート</Text>
+                <Text style={styles.reimportButtonText}>{t('settings.helpers.reimportData')}</Text>
               )}
             </TouchableOpacity>
           )}
@@ -689,7 +653,7 @@ export default function SettingsScreen({ navigation }) {
       <View style={styles.section}>
         <View style={styles.sectionTitleContainer}>
           <Text style={{ fontSize: 20 }}>⭐</Text>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>プレミアム</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settings.sections.premium')}</Text>
           <View style={{
             marginLeft: 8,
             paddingHorizontal: 8,
@@ -710,47 +674,26 @@ export default function SettingsScreen({ navigation }) {
           {isPremium ? (
             <>
               <Text style={[styles.inputLabel, { color: theme.text, marginBottom: 8 }]}>
-                プレミアムプラン利用中
+                {t('settings.premium.active')}
               </Text>
               <Text style={[styles.helperText, { color: theme.textSecondary, marginBottom: 12 }]}>
-                すべての機能がアンロックされています
+                {t('settings.premium.activeDesc')}
               </Text>
-              {/* デバッグ用：FREEに戻す */}
-              {__DEV__ && (
-                <TouchableOpacity
-                  style={[styles.reimportButton, { backgroundColor: theme.border }]}
-                  onPress={() => setDebugPremium(false)}
-                >
-                  <Text style={[styles.reimportButtonText, { color: theme.text }]}>FREEに戻す（デバッグ）</Text>
-                </TouchableOpacity>
-              )}
             </>
           ) : (
             <>
               <Text style={[styles.inputLabel, { color: theme.text, marginBottom: 8 }]}>
-                より多くの機能をアンロック
+                {t('settings.premium.upgradeTitle')}
               </Text>
               <Text style={[styles.helperText, { color: theme.textSecondary, marginBottom: 12 }]}>
-                履歴無制限、写真4枚/日、詳細統計など
+                {t('settings.premium.upgradeDesc')}
               </Text>
               <TouchableOpacity
                 style={[styles.reimportButton, { backgroundColor: theme.primary }]}
-                onPress={() => {
-                  const parent = navigation.getParent?.() || navigation;
-                  parent.navigate('Upgrade');
-                }}
+                onPress={presentPaywall}
               >
-                <Text style={styles.reimportButtonText}>アップグレード</Text>
+                <Text style={styles.reimportButtonText}>{t('settings.premium.upgrade')}</Text>
               </TouchableOpacity>
-              {/* デバッグ用：PROに切り替え */}
-              {__DEV__ && (
-                <TouchableOpacity
-                  style={[styles.reimportButton, { backgroundColor: '#DAA520', marginTop: 8 }]}
-                  onPress={() => setDebugPremium(true)}
-                >
-                  <Text style={styles.reimportButtonText}>PROに切り替え（デバッグ）</Text>
-                </TouchableOpacity>
-              )}
             </>
           )}
         </View>
@@ -760,7 +703,7 @@ export default function SettingsScreen({ navigation }) {
       <View style={styles.section}>
         <View style={styles.sectionTitleContainer}>
           <InfoIcon size={20} color={theme.accent} />
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>権限</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settings.permissions.title')}</Text>
   </View>
   {/* Diagnostics Modal（提出版では非表示） */}
         <View style={[styles.card, { backgroundColor: theme.card }] }>
@@ -779,13 +722,13 @@ export default function SettingsScreen({ navigation }) {
       <View style={styles.section}>
         <View style={styles.sectionTitleContainer}>
           <InfoIcon size={20} color={theme.accent} />
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>通知</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settings.sections.notifications')}</Text>
         </View>
         <View style={[styles.card, { backgroundColor: theme.card }]}>
           <View style={styles.switchRow}>
             <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.fields.notifications') || '通知'}</Text>
-              <Text style={[styles.helperText, { color: theme.textSecondary }]}>{t('settings.helpers.reminderDaily') || 'アプリからの通知を有効にします'}</Text>
+              <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.fields.notifications')}</Text>
+              <Text style={[styles.helperText, { color: theme.textSecondary }]}>{t('settings.helpers.reminderDaily')}</Text>
             </View>
             <Switch
               value={toBoolean(settings.notifications)}
@@ -795,8 +738,8 @@ export default function SettingsScreen({ navigation }) {
           </View>
           <View style={styles.switchRow}>
             <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.fields.reminder') || 'リマインダー通知'}</Text>
-              <Text style={[styles.helperText, { color: theme.textSecondary }]}>毎日20:30にお知らせ</Text>
+              <Text style={[styles.inputLabel, { color: theme.text }]}>{t('settings.fields.reminder')}</Text>
+              <Text style={[styles.helperText, { color: theme.textSecondary }]}>{t('settings.helpers.reminderTime')}</Text>
             </View>
             <Switch
               value={toBoolean(reminderEnabled)}

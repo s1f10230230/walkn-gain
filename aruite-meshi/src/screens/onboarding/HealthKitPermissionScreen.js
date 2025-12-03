@@ -9,12 +9,14 @@ import {
   useWindowDimensions,
   Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../../i18n/I18nProvider';
 import { importHistoricalData } from '../../utils/healthKit';
 import { saveHealthSyncEnabled } from '../../utils/storage';
 import { useColorScheme } from 'react-native';
 import { getTheme } from '../../utils/theme';
+import StepIndicator from '../../components/StepIndicator';
 
 // Swiftネイティブモジュールを直接使用
 let HealthKitSwift = null;
@@ -28,21 +30,34 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
   const ENABLE_HEALTHKIT_IMPORT = true; // 初回にサイレントで過去データを取り込み（ユーザー通知なし）
   const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(false);
-  const { gender, age, height, weight, goalSteps } = route.params;
+  const { gender, age, height, weight, goalSteps, goalCalories, fromSkip } = route.params;
   const { t } = useI18n();
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
 
-  const navigateToCalorieGoal = () => {
-    navigation.navigate('CalorieGoal', {
-      gender,
-      age,
-      height,
-      weight,
-      goalSteps,
-    });
+  const navigateToNext = () => {
+    if (fromSkip) {
+      // スキップモード: CalorieGoalをスキップしてProIntroへ直接遷移
+      navigation.navigate('ProIntro', {
+        gender,
+        age,
+        height,
+        weight,
+        goalSteps,
+        goalCalories,
+      });
+    } else {
+      // 通常モード: CalorieGoalへ
+      navigation.navigate('CalorieGoal', {
+        gender,
+        age,
+        height,
+        weight,
+        goalSteps,
+      });
+    }
   };
 
   const handleContinue = async () => {
@@ -72,7 +87,7 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
               text: t('common.ok') || 'OK',
               onPress: () => {
                 setIsLoading(false);
-                navigateToCalorieGoal();
+                navigateToNext();
               },
             },
           ]
@@ -104,7 +119,7 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
             text: t('common.ok') || 'OK',
             onPress: () => {
               setIsLoading(false);
-              navigateToCalorieGoal();
+              navigateToNext();
             },
           },
         ]
@@ -114,7 +129,7 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
 
     // ❹ 次へ
     setIsLoading(false);
-    navigateToCalorieGoal();
+    navigateToNext();
   };
 
   return (
@@ -127,6 +142,8 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
           isLargeScreen && styles.scrollContentTablet,
         ]}
       >
+        <StepIndicator currentStep={5} theme={theme} />
+
         <View style={[styles.contentWrapper, { borderColor: theme.border, backgroundColor: theme.card }]}>
           <View style={styles.header}>
             <Text style={[styles.title, { color: theme.text }]}>
@@ -138,8 +155,8 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
           </View>
 
           <View style={[styles.permissionCard, { borderColor: theme.border }]}>
-            <View style={styles.iconContainer}>
-              <Text style={styles.icon}>❤️</Text>
+            <View style={[styles.iconContainer, { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }]}>
+              <Ionicons name="heart" size={26} color="#FFC8A2" />
             </View>
             <View style={styles.permissionContent}>
               <Text style={[styles.permissionTitle, { color: theme.text }]}>
@@ -157,6 +174,29 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
             </View>
           </View>
 
+          {/* 過去1年分取得のハイライト */}
+          <View
+            style={[
+              styles.highlightBox,
+              {
+                backgroundColor: theme.isDark ? '#1A2F1A' : '#E8F5E9',
+                borderColor: '#4CAF50',
+              },
+            ]}
+          >
+            <View style={[styles.highlightIconContainer, { backgroundColor: 'rgba(76,175,80,0.15)' }]}>
+              <Ionicons name="calendar" size={24} color="#4CAF50" />
+            </View>
+            <View style={styles.highlightContent}>
+              <Text style={[styles.highlightTitle, { color: theme.text }]}>
+                {t('onboarding.health.importYear')}
+              </Text>
+              <Text style={[styles.highlightDesc, { color: theme.textSecondary }]}>
+                {t('onboarding.health.importYearDesc')}
+              </Text>
+            </View>
+          </View>
+
           <View
             style={[
               styles.infoBox,
@@ -168,9 +208,6 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
           >
             <Text style={[styles.infoText, { color: theme.textSecondary }]}>
               {t('onboarding.health.privacy')}
-            </Text>
-            <Text style={[styles.infoText, { color: theme.textSecondary, marginTop: 6 }]}>
-              {t('onboarding.health.importNote')}
             </Text>
           </View>
 
@@ -190,7 +227,7 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
 
           <TouchableOpacity
             style={styles.secondaryButton}
-            onPress={navigateToCalorieGoal}
+            onPress={navigateToNext}
             disabled={isLoading}
           >
             <Text style={[styles.secondaryButtonText, { color: theme.textSecondary }]}>
@@ -256,10 +293,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 16,
-  },
-  icon: {
-    fontSize: 32,
   },
   permissionContent: {
     flex: 1,
@@ -272,6 +311,33 @@ const styles = StyleSheet.create({
   permissionDescription: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  highlightBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 2,
+  },
+  highlightIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  highlightContent: {
+    flex: 1,
+  },
+  highlightTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  highlightDesc: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   infoBox: {
     padding: 12,

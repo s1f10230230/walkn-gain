@@ -20,6 +20,7 @@ import { MOODS, getMoodByValue } from './MoodSelector';
 import { getDailyData, saveDailyData } from '../utils/storage';
 import { toDateKeyLocal } from '../utils/calculations';
 import { useSubscription, isDateWithinLimit } from '../contexts/SubscriptionContext';
+import { useI18n } from '../i18n/I18nProvider';
 
 const COLORS = {
   teal: '#00A896',
@@ -38,8 +39,10 @@ export default function DiaryCard({
   formatNumber,
   showFlipHint = false,
   flipHintText = '',
+  showGestureHint = false,
 }) {
   const { isPremium, limits, presentPaywall } = useSubscription();
+  const { t } = useI18n();
   const [memo, setMemo] = useState('');
   const [photos, setPhotos] = useState([]);
   const [mood, setMood] = useState(null); // 気分データ（1-5）
@@ -186,6 +189,8 @@ export default function DiaryCard({
   const maxPhotos = limits.photosPerDay;
   const canAddMore = photos.length < maxPhotos;
   const displaySteps = formatNumber ? formatNumber(steps) : steps.toLocaleString();
+  // 距離が0または未設定の場合、歩数から計算（歩幅70cmで計算）
+  const calculatedDistance = distance > 0 ? distance : (steps * 70) / 100000;
 
   return (
     <>
@@ -214,7 +219,7 @@ export default function DiaryCard({
                 <View style={styles.subStatItem}>
                   <MaterialCommunityIcons name="map-marker-distance" size={16} color={COLORS.teal} />
                   <Text style={[styles.subStatText, { color: theme.isDark ? theme.text : COLORS.textDark }]}>
-                    {distance.toFixed(1)} km
+                    {calculatedDistance.toFixed(1)} km
                   </Text>
                 </View>
                 <View style={styles.subStatItem}>
@@ -285,7 +290,7 @@ export default function DiaryCard({
                     <View style={styles.subStatItem}>
                       <MaterialCommunityIcons name="map-marker-distance" size={16} color={COLORS.teal} />
                       <Text style={[styles.subStatText, { color: theme.isDark ? theme.text : COLORS.textDark }]}>
-                        {distance.toFixed(1)} km
+                        {calculatedDistance.toFixed(1)} km
                       </Text>
                     </View>
                     <View style={styles.subStatItem}>
@@ -329,7 +334,7 @@ export default function DiaryCard({
                 ))}
               </View>
               <TextInput
-                placeholder="今日のハイライトは？"
+                placeholder={t('home.diary.highlightPlaceholder')}
                 placeholderTextColor={theme.isDark ? theme.textTertiary : COLORS.textGray}
                 style={[styles.memoInput, { color: theme.isDark ? theme.text : COLORS.textDark }]}
                 value={memo}
@@ -343,15 +348,17 @@ export default function DiaryCard({
               <View style={styles.eventsHeader}>
                 <MaterialCommunityIcons name="calendar-outline" size={16} color={COLORS.teal} />
                 <Text style={[styles.eventsTitle, { color: theme.isDark ? theme.text : COLORS.textDark }]}>
-                  今日の予定
+                  {t('home.events.today')}
                 </Text>
               </View>
               {todayEvents && todayEvents.length > 0 ? (
-                todayEvents.map((event, index) => (
+                todayEvents.slice(0, 3).map((event, index) => (
                   <View key={index} style={styles.eventItem}>
-                    <Text style={[styles.eventTime, { color: theme.isDark ? theme.textSecondary : COLORS.textGray }]}>
-                      {event.time || ''}
-                    </Text>
+                    {event.startDate && !event.allDay && (
+                      <Text style={[styles.eventTime, { color: theme.isDark ? theme.textSecondary : COLORS.textGray }]}>
+                        {new Date(event.startDate).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    )}
                     <Text style={[styles.eventTitle, { color: theme.isDark ? theme.text : COLORS.textDark }]} numberOfLines={1}>
                       {event.title}
                     </Text>
@@ -360,7 +367,7 @@ export default function DiaryCard({
               ) : (
                 <View style={styles.noEventsContainer}>
                   <Text style={[styles.noEventsText, { color: theme.isDark ? theme.textTertiary : COLORS.textGray }]}>
-                    予定なし
+                    {t('home.events.none')}
                   </Text>
                 </View>
               )}
@@ -371,7 +378,9 @@ export default function DiaryCard({
         {/* フリップヒント */}
         {showFlipHint && (
           <View style={styles.flipHint}>
-            <MaterialCommunityIcons name="rotate-3d-variant" size={14} color={COLORS.textGray} />
+            {!showGestureHint && (
+              <MaterialCommunityIcons name="rotate-3d-variant" size={14} color={COLORS.textGray} />
+            )}
             <Text style={styles.flipHintText}>{flipHintText}</Text>
           </View>
         )}
@@ -410,7 +419,7 @@ export default function DiaryCard({
             ]}
           >
             <Text style={[styles.moodPickerTitle, { color: theme.isDark ? theme.text : COLORS.textDark }]}>
-              今日の気分は？
+              {t('home.diary.moodQuestion')}
             </Text>
             <View style={styles.moodPickerRow}>
               {MOODS.map((moodItem) => (

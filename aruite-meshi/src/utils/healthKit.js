@@ -136,6 +136,24 @@ export const getHealthKitAvailability = () => ({
 });
 
 export const getHealthKitAuthorizationState = async () => {
+  // 1. Swiftモジュールを優先チェック（オンボーディングで使用しているため）
+  if (HealthKitSwift && typeof HealthKitSwift.isAvailable === 'function') {
+    try {
+      const available = await HealthKitSwift.isAvailable();
+      if (available) {
+        // Swiftモジュールで権限状態を確認
+        // isAvailable()がtrueを返す = HealthKitが利用可能
+        // 実際の権限状態はストレージのフラグで確認
+        const healthSyncEnabled = await getHealthSyncEnabled();
+        console.log('[healthKit] getHealthKitAuthorizationState (Swift): available=true, syncEnabled=', healthSyncEnabled);
+        return { available: true, authorized: !!healthSyncEnabled };
+      }
+    } catch (error) {
+      console.warn('[healthKit] Swift availability check failed:', error);
+    }
+  }
+
+  // 2. Kingstinct HealthKitにフォールバック
   if (!hasModernHealthKit()) return { available: false, authorized: false };
 
   // シミュレーターチェック
@@ -232,6 +250,30 @@ const ensureAuthorized = async () => {
 };
 
 export const initializeHealthKit = async (showAlert = false) => {
+  // 1. Swiftモジュールを優先使用（オンボーディングと同じ）
+  if (HealthKitSwift && typeof HealthKitSwift.isAvailable === 'function') {
+    try {
+      const available = await HealthKitSwift.isAvailable();
+      console.log('[healthKit] initializeHealthKit: Swift isAvailable=', available);
+      if (available) {
+        const authorized = await HealthKitSwift.requestAuthorization();
+        console.log('[healthKit] initializeHealthKit: Swift authorization=', authorized);
+        if (authorized) {
+          return true;
+        }
+        // Swiftで権限取得失敗
+        if (showAlert) {
+          Alert.alert('HealthKit', '権限を付与できませんでした。設定アプリから許可を確認してください。');
+        }
+        return false;
+      }
+    } catch (error) {
+      console.warn('[healthKit] initializeHealthKit: Swift module failed:', error);
+      // Swiftモジュールが失敗した場合、Kingstinctにフォールバック
+    }
+  }
+
+  // 2. Kingstinct HealthKitにフォールバック
   if (!hasModernHealthKit()) {
     if (showAlert) {
       Alert.alert('HealthKit', 'このデバイスではHealthKitを利用できません。');

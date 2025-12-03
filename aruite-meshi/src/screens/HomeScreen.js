@@ -18,7 +18,6 @@ import {
   Animated,
   Easing,
   PanResponder,
-  RefreshControl,
   Image,
   Platform,
   ImageBackground,
@@ -51,6 +50,7 @@ import {
   saveStatsCache,
   getDailyData,
   saveDailyData,
+  getTop3Days,
 } from "../utils/storage";
 import {
   getCachedTodayData,
@@ -76,6 +76,7 @@ import {
   markProgressNotificationSent,
   updatePersistentWidget,
   scheduleReminderNotification,
+  sendTop3RankingNotification,
 } from "../utils/notifications";
 import { saveReminderEnabled } from "../utils/storage";
 import { logEvent } from "../utils/analytics";
@@ -149,6 +150,8 @@ const USE_PEDOMETER_ONLY = false;
 const LAST_SELECTED_DATE_KEY = "ui_last_selected_date";
 // 初回起動時にPedometerで過去データを取り込んだかのフラグ
 const PEDOMETER_INITIAL_IMPORT_KEY = "pedometer_initial_import_v1";
+// ジェスチャーヒントの表示回数（3回表示後に非表示）
+const GESTURE_HINT_COUNT_KEY = "gesture_hint_view_count";
 
 import {
   fetchWeatherForLocation,
@@ -173,7 +176,7 @@ export default function HomeScreen({ navigation, route }) {
   // Weather History Sync (One-time on mount)
   useEffect(() => {
     const syncWeather = async () => {
-      const history = await fetchWeatherHistory(30);
+      const history = await fetchWeatherHistory(92);
       if (history.length > 0) {
         // Save each day to storage
         for (const item of history) {
@@ -253,6 +256,9 @@ export default function HomeScreen({ navigation, route }) {
   // インライン通知は使用しない
   const [inlineNotice, setInlineNotice] = useState("");
   const [weeklyDisplayMode, setWeeklyDisplayMode] = useState("calories"); // 'calories' | 'steps'
+
+  // ジェスチャーヒント表示（初回〜3回のみ表示）
+  const [showGestureHint, setShowGestureHint] = useState(false);
   const [notesMap, setNotesMap] = useState({}); // { 'YYYY-MM-DD': boolean } コメント有無のマップ
   const [hourlyTooltip, setHourlyTooltip] = useState({ index: -1, value: 0 });
   // タイマーは使わず、押下中のみ表示
@@ -263,8 +269,6 @@ export default function HomeScreen({ navigation, route }) {
     hour: -1,
   });
   const hourlyDetailTimerRef = useRef(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [pullToRefreshIndicator, setPullToRefreshIndicator] = useState(false); // リフレッシュ引っ張りインジケーター
   const [calendarPullIndicator, setCalendarPullIndicator] = useState({
     left: false,
     right: false,
@@ -309,6 +313,47 @@ export default function HomeScreen({ navigation, route }) {
       Animated.timing(arrowBounceAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]);
     bounce.start();
+  }, []);
+
+  // ジェスチャーヒント表示ロジック（フリップ3回で非表示）
+  const gestureHintCountRef = useRef(0);
+  const showGestureHintRef = useRef(false);
+
+  useEffect(() => {
+    const loadGestureHintCount = async () => {
+      try {
+        const countStr = await AsyncStorage.getItem(GESTURE_HINT_COUNT_KEY);
+        const count = countStr ? parseInt(countStr, 10) : 0;
+        gestureHintCountRef.current = count;
+        const shouldShow = count < 3;
+        showGestureHintRef.current = shouldShow;
+        setShowGestureHint(shouldShow);
+      } catch (e) {
+        showGestureHintRef.current = true;
+        setShowGestureHint(true);
+      }
+    };
+    loadGestureHintCount();
+  }, []);
+
+  // フリップ時にカウントを増やす（refを使ってクロージャ問題を回避）
+  const handleFlipChange = useCallback(async (flipped) => {
+    setCurrentPage(flipped ? 1 : 0);
+
+    // ヒント表示中ならカウントを増やす
+    if (showGestureHintRef.current) {
+      const newCount = gestureHintCountRef.current + 1;
+      gestureHintCountRef.current = newCount;
+      try {
+        await AsyncStorage.setItem(GESTURE_HINT_COUNT_KEY, String(newCount));
+      } catch (e) {
+        // ignore
+      }
+      if (newCount >= 3) {
+        showGestureHintRef.current = false;
+        setShowGestureHint(false);
+      }
+    }
   }, []);
 
   // 円アニメ用（近接パルス/値更新バンプ）のみ維持
@@ -503,63 +548,75 @@ export default function HomeScreen({ navigation, route }) {
 
           // 横方向のスワイプを検出
           const horizontalBias =
-            Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.1 ||
-            Math.abs(gestureState.vx) > Math.abs(gestureState.vy);
-          return (
-            (Math.abs(gestureState.dx) > 1 || Math.abs(gestureState.vx) > 0.01) &&
-            horizontalBias
-          );
+            Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
+          return Math.abs(gestureState.dx) > 10 && horizontalBias;
+        },
+        onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
+          const touchX = evt.nativeEvent.pageX;
+          const edgeThreshold = 30;
+          if (touchX < edgeThreshold || touchX > width - edgeThreshold) {
+            return false;
+          }
+          return Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2 && Math.abs(gestureState.dx) > 15;
         },
         onPanResponderGrant: () => {
+          slideAnim.stopAnimation();
           slideAnim.setValue(0);
           setMainSwipeIndicator({ left: false, right: false });
         },
         onPanResponderMove: (evt, gestureState) => {
-          const damping = 0.8;
-          slideAnim.setValue(gestureState.dx * damping);
+          // 1:1で指に追従（未来日への制限は抵抗感で表現）
+          const base = selectedDateRef.current;
+          const today = new Date();
+          today.setHours(23, 59, 59, 999);
+          const isAtToday = base.toDateString() === today.toDateString();
+
+          let dx = gestureState.dx;
+          // 今日の場合、左スワイプ（未来へ）に抵抗感
+          if (isAtToday && dx < 0) {
+            dx = dx * 0.15;
+          }
+          slideAnim.setValue(dx);
         },
         onPanResponderRelease: (evt, gestureState) => {
           setMainSwipeIndicator({ left: false, right: false });
-          const distThreshold = 50; // 距離しきい値を上げてスワイプしやすく
-          const velocityThreshold = 0.5; // フリック感度を下げる
+          const distThreshold = 50;
+          const velocityThreshold = 0.4;
           const dx = gestureState.dx;
           const vx = gestureState.vx;
-          const absVx = Math.abs(vx);
-          const absDx = Math.abs(dx);
 
           // スワイプ方向: -1=右へ（前へ）, 1=左へ（次へ）
-          // 距離ベースを優先し、フリックは補助的に
           let direction = 0;
-          if (absDx > distThreshold) {
+          if (Math.abs(dx) > distThreshold) {
             direction = dx > 0 ? -1 : 1;
-          } else if (absVx > velocityThreshold && absDx > 20) {
+          } else if (Math.abs(vx) > velocityThreshold && Math.abs(dx) > 20) {
             direction = vx > 0 ? -1 : 1;
           }
 
           if (direction === 0) {
-            // スワイプが不十分→元に戻す
+            // スワイプが不十分→元に戻す（バウンス効果）
             Animated.spring(slideAnim, {
               toValue: 0,
-              tension: 100,
-              friction: 10,
+              tension: 120,
+              friction: 8,
               useNativeDriver: true,
             }).start();
             return;
           }
 
-          // スワイプで日付変更（ページ切り替えはフリップで行う）
+          // スワイプで日付変更
           if (direction === -1) {
-            // 右スワイプ → 前日へ
             tryChangeDate(-1);
           } else if (direction === 1) {
-            // 左スワイプ → 翌日へ
             tryChangeDate(1);
           }
         },
-        onPanResponderTerminationRequest: () => true,
+        onPanResponderTerminationRequest: () => false,
         onPanResponderTerminate: () => {
           Animated.spring(slideAnim, {
             toValue: 0,
+            tension: 100,
+            friction: 10,
             useNativeDriver: true,
           }).start();
         },
@@ -567,7 +624,7 @@ export default function HomeScreen({ navigation, route }) {
     [slideAnim, width, selectedDateRef, weekStartDateRef, Haptics, isPremium, navigation]
   );
 
-  // 日付変更関数（スワイプ用）
+  // 日付変更関数（スワイプ用）- スムーズアニメーション
   const tryChangeDate = async (direction) => {
     const base = selectedDateRef.current;
     const candidate = new Date(base);
@@ -577,18 +634,26 @@ export default function HomeScreen({ navigation, route }) {
 
     // 未来日チェック
     if (candidate > todayEnd) {
-      Animated.timing(slideAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start();
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 100,
+        friction: 10,
+        useNativeDriver: true,
+      }).start();
       return;
     }
 
     // 歩数データの閲覧は無期限（履歴制限なし）
 
+    // 現在位置からスライドアウト（スムーズ）
     const outTo = direction < 0 ? width : -width;
     Animated.timing(slideAnim, {
       toValue: outTo,
-      duration: 120,
+      duration: 180,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start(() => {
+      // 週範囲チェック
       const oldWeekStart = weekStartDateRef.current;
       const weekEnd = new Date(oldWeekStart);
       weekEnd.setDate(oldWeekStart.getDate() + 6);
@@ -602,10 +667,16 @@ export default function HomeScreen({ navigation, route }) {
       }
       setSelectedDate(candidate);
       if (Haptics?.impactAsync) {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       }
+      // 反対側からスライドイン
       slideAnim.setValue(direction < 0 ? -width : width);
-      Animated.timing(slideAnim, { toValue: 0, duration: 140, useNativeDriver: true }).start();
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 80,
+        friction: 10,
+        useNativeDriver: true,
+      }).start();
     });
   };
 
@@ -627,13 +698,14 @@ export default function HomeScreen({ navigation, route }) {
 
     // 歩数データの閲覧は無期限（履歴制限なし）
 
-    // スライドアニメーション付きで日付変更
+    // スライドアニメーション付きで日付変更（スムーズ）
     const outTo = direction < 0 ? width : -width;
 
     // スライドアウト
     Animated.timing(slideAnim, {
       toValue: outTo,
-      duration: 120,
+      duration: 180,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start(() => {
       // 週の範囲チェック
@@ -652,14 +724,15 @@ export default function HomeScreen({ navigation, route }) {
 
       // 振動フィードバック
       if (Haptics?.impactAsync) {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       }
 
-      // スライドイン
+      // スライドイン（バウンス効果）
       slideAnim.setValue(direction < 0 ? -width : width);
-      Animated.timing(slideAnim, {
+      Animated.spring(slideAnim, {
         toValue: 0,
-        duration: 140,
+        tension: 80,
+        friction: 10,
         useNativeDriver: true,
       }).start();
     });
@@ -797,24 +870,7 @@ export default function HomeScreen({ navigation, route }) {
 
   // 週を前後に移動
   const changeWeek = (direction) => {
-    // 無料ユーザーは過去の週に移動できない
-    if (!isPremium && direction < 0) {
-      const limitDate = new Date();
-      limitDate.setDate(limitDate.getDate() - 6); // 今日を含めて7日
-      limitDate.setHours(0, 0, 0, 0);
-
-      const newWeekStart = new Date(weekStartDate);
-      newWeekStart.setDate(weekStartDate.getDate() + direction * 7);
-
-      // 新しい週の最終日が制限日より前なら移動しない
-      const newWeekEnd = new Date(newWeekStart);
-      newWeekEnd.setDate(newWeekStart.getDate() + 6);
-
-      if (newWeekEnd < limitDate) {
-        navigation.navigate('Upgrade');
-        return;
-      }
-    }
+    // カレンダーは無料で全期間アクセス可能
 
     isChangingWeekRef.current = true;
     const newWeekStart = new Date(weekStartDate);
@@ -916,10 +972,13 @@ export default function HomeScreen({ navigation, route }) {
 
       // 1. まずキャッシュ/ストレージから即時表示
       const cached = await getDailyData(dateKey);
+      const userProfile = await getUserProfile();
       if (cached) {
-        setSteps(cached.steps || 0);
-        setCalories(cached.calories || 0);
-        setDistance(cached.distance || 0);
+        const cachedSteps = cached.steps || 0;
+        setSteps(cachedSteps);
+        setCalories(cached.calories || calculateCalories(cachedSteps, userProfile.weight));
+        // 距離がない場合は歩数から計算
+        setDistance(cached.distance > 0 ? cached.distance : calculateDistance(cachedSteps, userProfile.stride));
         setGoal(cached.goal || 10000);
       } else {
         // データがない場合は0で初期化
@@ -1027,6 +1086,15 @@ export default function HomeScreen({ navigation, route }) {
         }
       } catch (e) {
         console.error("Error loading hourly data:", e);
+      }
+
+      // カレンダーイベントを取得
+      try {
+        const events = await getEventsForDate(selectedDate);
+        setTodayEvents(events);
+      } catch (calendarError) {
+        console.log("Calendar not available:", calendarError);
+        setTodayEvents([]);
       }
 
       setIsLoadingSteps(false);
@@ -1423,9 +1491,6 @@ export default function HomeScreen({ navigation, route }) {
       } catch (_) {}
       console.log("⚡ アプリがフォアグラウンドに復帰 - データを自動更新");
       await ensureTodayGoalLevelStart();
-      try {
-        setTodayGoals(await getOrCreateTodayGoals());
-      } catch (_) {}
       await refreshData();
       await loadFeedbackMessage(selectedDateRef.current || selectedDate);
     }
@@ -1544,7 +1609,6 @@ export default function HomeScreen({ navigation, route }) {
     const settings = await getSettings();
     const userFavorites = await getFavorites();
     const goalLevel = await getCurrentGoalLevel();
-    const goals = await getOrCreateTodayGoals();
 
     setProfile(userProfile);
     setGoal(settings.dailyGoal);
@@ -1552,13 +1616,14 @@ export default function HomeScreen({ navigation, route }) {
     setGoalCalories(settings.goalCalories || 500);
     setFavorites(userFavorites.slice(0, 3));
     setCurrentGoalLevel(goalLevel);
-    setTodayGoals(goals);
 
     if (todayData) {
       setSteps(todayData.steps);
       setTodayStepsSnapshot(todayData.steps || 0);
       setCalories(todayData.calories);
-      setDistance(todayData.distance);
+      // 距離がない場合は歩数から再計算
+      const dist = todayData.distance || calculateDistance(todayData.steps || 0, userProfile.stride || 72);
+      setDistance(dist);
       // プログレスは0-1で保持
       const stepGoal = Number(settings.dailyGoal || goal || 10000);
       const calGoal = Number(settings.goalCalories || 500);
@@ -1658,33 +1723,6 @@ export default function HomeScreen({ navigation, route }) {
     */
   };
 
-  // プルトゥリフレッシュ: データを再読み込み
-  const onRefresh = async () => {
-    setRefreshing(true);
-    setPullToRefreshIndicator(false);
-    try {
-      // 歩数データをリロード
-      await loadData();
-      // 選択日のデータをリロード（カレンダーイベント含む）
-      await loadSelectedDateData();
-      // ハプティックフィードバック
-      if (Haptics?.impactAsync) {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      }
-    } catch (error) {
-      console.error("Error refreshing data:", error);
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  // スクロールハンドラ: プルトゥリフレッシュのインジケーター表示
-  const handleScroll = (event) => {
-    if (refreshing) return;
-    const scrollY = event.nativeEvent.contentOffset.y;
-    // 上に引っ張っている（scrollYが負の値）
-    setPullToRefreshIndicator(scrollY < -30);
-  };
 
   // 毎日レベル1から: 最終リセット日と今日の日付を比較し、必要ならリセット
   const ensureTodayGoalLevelStart = async () => {
@@ -1841,6 +1879,14 @@ export default function HomeScreen({ navigation, route }) {
           await sendGoalAchievedNotification(newSteps, goal);
           await markProgressNotificationSent();
         }
+      }
+
+      // Pro限定: 年間トップ3更新時の通知
+      try {
+        const topDays = await getTop3Days();
+        await sendTop3RankingNotification(newSteps, topDays, isPremium);
+      } catch (rankingErr) {
+        console.log('Ranking notification check error:', rankingErr);
       }
 
       // 常駐型ウィジェットは無効化（ユーザー体験を簡素化）
@@ -2113,49 +2159,10 @@ export default function HomeScreen({ navigation, route }) {
 
   return (
     <View style={{ flex: 1, position: "relative" }}>
-      {/* プルトゥリフレッシュインジケーター */}
-      {pullToRefreshIndicator && !refreshing && (
-        <View
-          style={{
-            position: "absolute",
-            top: 50,
-            left: 0,
-            right: 0,
-            alignItems: "center",
-            zIndex: 1000,
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: theme.primary,
-              borderRadius: 25,
-              padding: 12,
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: 3 },
-              shadowOpacity: 1,
-              shadowRadius: 12,
-              elevation: 8,
-            }}
-          >
-            <Text style={{ color: "#FFF", fontSize: 18, fontWeight: "bold" }}>
-              ↓
-            </Text>
-          </View>
-        </View>
-      )}
       <ScrollView
         style={[styles.container, { backgroundColor: theme.background }]}
         contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
-        onScroll={handleScroll}
         scrollEventThrottle={16}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={theme.primary}
-            colors={[theme.primary]}
-          />
-        }
       >
         {/* センサー未対応バナーは表示しない（UI簡素化） */}
         {/* 週のナビゲーション */}
@@ -2178,7 +2185,7 @@ export default function HomeScreen({ navigation, route }) {
               }}
               onPress={() => {
                 if (!isPremium) {
-                  navigation.navigate('Upgrade');
+                  presentPaywall();
                 }
               }}
               activeOpacity={isPremium ? 1 : 0.7}
@@ -2233,7 +2240,7 @@ export default function HomeScreen({ navigation, route }) {
           hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
           style={[
             styles.calendarIconButton,
-            { top: insets.top + 12, backgroundColor: theme.card },
+            { top: insets.top + 30, backgroundColor: theme.card },
           ]}
           onPress={() => {
             setShowCalendarModal(true);
@@ -2255,7 +2262,7 @@ export default function HomeScreen({ navigation, route }) {
           calendarDates={calendarDates}
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
-          onUpgrade={() => navigation.navigate('Upgrade')}
+          onUpgrade={presentPaywall}
           weeklyData={weeklyData}
           weeklyDisplayMode={weeklyDisplayMode}
           goal={goal}
@@ -2299,7 +2306,7 @@ export default function HomeScreen({ navigation, route }) {
               />
               {currentPage === 0 && (
                 <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '600', marginLeft: 4 }}>
-                  歩数
+                  {t('home.tabs.steps')}
                 </Text>
               )}
             </TouchableOpacity>
@@ -2321,7 +2328,7 @@ export default function HomeScreen({ navigation, route }) {
               />
               {currentPage === 1 && (
                 <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '600', marginLeft: 4 }}>
-                  日記
+                  {t('home.tabs.diary')}
                 </Text>
               )}
             </TouchableOpacity>
@@ -2405,7 +2412,8 @@ export default function HomeScreen({ navigation, route }) {
               setChartWidth={setChartWidth}
               todayEvents={todayEvents}
               isFlipped={currentPage === 1}
-              onFlipChange={(flipped) => setCurrentPage(flipped ? 1 : 0)}
+              onFlipChange={handleFlipChange}
+              showGestureHint={showGestureHint}
             />
           </ScrollView>
         </Animated.View>
@@ -2517,7 +2525,7 @@ export default function HomeScreen({ navigation, route }) {
           }}
           onUpgrade={() => {
             setShowCalendarModal(false);
-            navigation.navigate('Upgrade');
+            presentPaywall();
           }}
         />
       </ScrollView>
