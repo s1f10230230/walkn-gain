@@ -51,6 +51,7 @@ import {
   getDailyData,
   saveDailyData,
   getTop3Days,
+  saveSettings,
 } from "../utils/storage";
 import {
   getCachedTodayData,
@@ -140,6 +141,39 @@ const clamp01 = (value) => {
   return n;
 };
 
+const formatSteps = (value) => {
+  const num = Math.round(Number(value) || 0);
+  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+};
+
+const buildFeedbackLines = (plan) => {
+  if (!plan) return ["データが足りませんでした。しばらく歩いてからもう一度お試しください。"];
+
+  const lines = [];
+  const goalStr = formatSteps(plan.recommendedGoal);
+  if (plan.restDay) {
+    lines.push(`今日はリズム調整日。目標は${goalStr}歩に抑えて回復を優先しましょう。`);
+  } else {
+    lines.push(`今日のおすすめ目標は${goalStr}歩です。`);
+  }
+
+  if (plan.goalDeltaPercent > 0) {
+    lines.push(`最近好調なので目標を+${plan.goalDeltaPercent}%アップしています。`);
+  } else if (plan.goalDeltaPercent < 0) {
+    lines.push(`無理なく続けるために目標を${Math.abs(plan.goalDeltaPercent)}%ほど軽くしています。`);
+  } else {
+    lines.push("ペースはそのままでOKです。");
+  }
+
+  if (plan.restDay) {
+    lines.push("短い散歩かストレッチだけでリズムを維持しましょう。");
+  } else if (plan.debug?.lowMood) {
+    lines.push("気分が落ち気味なので短時間の散歩から始めてみてください。");
+  }
+
+  return lines;
+};
+
 // Dev flag: Pedometer の取り込みを一時停止（HealthKit取り込みの切り分け用）
 const DISABLE_PEDOMETER_DEV = false;
 
@@ -152,6 +186,7 @@ const LAST_SELECTED_DATE_KEY = "ui_last_selected_date";
 const PEDOMETER_INITIAL_IMPORT_KEY = "pedometer_initial_import_v1";
 // ジェスチャーヒントの表示回数（3回表示後に非表示）
 const GESTURE_HINT_COUNT_KEY = "gesture_hint_view_count";
+const FEEDBACK_CACHE_KEY = "ai_feedback_daily_cache_v1";
 
 import {
   fetchWeatherForLocation,
@@ -160,6 +195,8 @@ import {
   fetchHourlyWeather,
   getWeatherSummary,
 } from "../utils/weather";
+import { generateAdaptivePlanFromStorage } from "../utils/aiAdaptiveGoal";
+import { generateDailyAIFeedback } from "../utils/aiFeedback";
 
 export default function HomeScreen({ navigation, route }) {
   // RecentNotesコンポーネントへの参照
@@ -172,6 +209,13 @@ export default function HomeScreen({ navigation, route }) {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [weather, setWeather] = useState(null); // New Weather State
   const [hourlyWeather, setHourlyWeather] = useState(Array(24).fill(null)); // Hourly weather codes
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackPlan, setFeedbackPlan] = useState(null);
+  const [feedbackUnread, setFeedbackUnread] = useState(true);
+  const [lastFeedbackDate, setLastFeedbackDate] = useState(null);
+  const [settingsCache, setSettingsCache] = useState(null);
+  const [feedbackLineAnims, setFeedbackLineAnims] = useState([]);
 
   // Weather History Sync (One-time on mount)
   useEffect(() => {
@@ -196,6 +240,114 @@ export default function HomeScreen({ navigation, route }) {
     };
     syncWeather();
   }, []);
+  const isSelectedToday = isTodayHelper(selectedDate);
+
+  useEffect(() => {
+    if (!isSelectedToday) return;
+    const dateKey = toDateKeyLocal(selectedDate);
+    if (lastFeedbackDate !== dateKey) {
+      refreshDailyFeedback();
+    }
+  }, [isSelectedToday, selectedDate, lastFeedbackDate, refreshDailyFeedback]);
+
+  useEffect(() => {
+    const lines = feedbackPlan?.lines || [];
+    const anims = lines.map(() => new Animated.Value(0));
+    setFeedbackLineAnims(anims);
+    if (anims.length) {
+      Animated.stagger(
+        120,
+        anims.map((v) =>
+          Animated.timing(v, {
+            toValue: 1,
+            duration: 260,
+            useNativeDriver: true,
+          })
+        )
+      ).start();
+    }
+  }, [feedbackPlan?.lines]);
+
+  const loadCachedFeedback = async (dateKey) => {
+    try {
+      const raw = await AsyncStorage.getItem(FEEDBACK_CACHE_KEY);
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (obj?.date === dateKey && Array.isArray(obj.lines)) {
+        return obj.lines;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const saveCachedFeedback = async (dateKey, lines) => {
+    try {
+      await AsyncStorage.setItem(
+        FEEDBACK_CACHE_KEY,
+        JSON.stringify({ date: dateKey, lines })
+      );
+    } catch (_) {}
+  };
+
+  const refreshDailyFeedback = useCallback(async (force = false) => {
+    setFeedbackLoading(true);
+    try {
+      const dateKey = toDateKeyLocal(selectedDate);
+      const plan = await generateAdaptivePlanFromStorage({ today: selectedDate });
+      // その日の確定値をストレージから取得して、ステートの取り違えを防ぐ
+      const stored = await getDailyData(dateKey);
+      const stepsForFeedback = typeof stored?.steps === "number" ? stored.steps : steps;
+      const goalForFeedback = typeof stored?.goal === "number" ? stored.goal : goal;
+      let aiLines = null;
+      if (!force) {
+        aiLines = await loadCachedFeedback(dateKey);
+      }
+
+      try {
+        if (!aiLines) {
+          aiLines = await generateDailyAIFeedback({
+            date: dateKey,
+            locale,
+            plan,
+            currentGoal: goalForFeedback,
+            steps: stepsForFeedback,
+          });
+        }
+      } catch (e) {
+        console.warn('[Home] AI feedback skipped', e?.message || e);
+      }
+
+      const linesToUse = aiLines && aiLines.length ? aiLines : buildFeedbackLines(plan);
+      setFeedbackPlan({
+        ...plan,
+        lines: linesToUse,
+      });
+
+      // Pro限定: 歩数トレンドに合わせてカロリー目標を自動調整
+      if (isPremium && plan?.recommendedCalories) {
+        const nextCalGoal = plan.recommendedCalories;
+        setGoalCalories(nextCalGoal);
+        try {
+          const currentSettings = settingsCache || await getSettings();
+          await saveSettings({ ...currentSettings, goalCalories: nextCalGoal });
+        } catch (err) {
+          console.warn("[Home] failed to save adaptive calorie goal:", err);
+        }
+      }
+
+      if (aiLines && aiLines.length) {
+        await saveCachedFeedback(dateKey, aiLines);
+      }
+      setLastFeedbackDate(dateKey);
+      setFeedbackUnread(force);
+    } catch (e) {
+      console.error("[Home] refreshDailyFeedback error", e);
+    } finally {
+      setFeedbackLoading(false);
+    }
+  }, [selectedDate, locale, goal, steps, isPremium, settingsCache]);
   const [weekStartDate, setWeekStartDate] = useState(() => {
     // 今週の月曜日を取得
     const today = new Date();
@@ -1088,6 +1240,28 @@ export default function HomeScreen({ navigation, route }) {
         console.error("Error loading hourly data:", e);
       }
 
+      // 歩数合計と時間帯データの整合を合わせる（差分は現在時刻に寄せる）
+      try {
+        const currentHour = new Date().getHours();
+        if (!Array.isArray(hourlyData) || hourlyData.length !== 24) {
+          const fresh = Array(24).fill(0);
+          fresh[currentHour] = Math.max(0, steps);
+          hourlyData = fresh;
+          await saveHourlyStepsForDate(dateKey, fresh);
+        } else {
+          const hourlySum = hourlyData.reduce((a, b) => a + (b || 0), 0);
+          const diff = steps - hourlySum;
+          if (Math.abs(diff) > 1) {
+            const adjusted = [...hourlyData];
+            adjusted[currentHour] = Math.max(0, (adjusted[currentHour] || 0) + diff);
+            hourlyData = adjusted;
+            try {
+              await saveHourlyStepsForDate(dateKey, adjusted);
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+
       // カレンダーイベントを取得
       try {
         const events = await getEventsForDate(selectedDate);
@@ -1460,6 +1634,7 @@ export default function HomeScreen({ navigation, route }) {
         const s = await getSettings();
         setGoal(s.dailyGoal);
         setGoalCalories(s.goalCalories || 500);
+        setSettingsCache(s);
         // 注意: progressの再計算は useEffect([steps, goal]) に任せる
         // ここで計算すると steps のクロージャが古い値を参照してしまう
       };
@@ -1468,6 +1643,49 @@ export default function HomeScreen({ navigation, route }) {
       loadFeedbackMessage(selectedDateRef.current || selectedDate);
     }, [loadFeedbackMessage, selectedDate])
   );
+
+  const handleToggleFeedback = async () => {
+    const next = !feedbackOpen;
+    setFeedbackOpen(next);
+    if (next) {
+      setFeedbackUnread(false);
+      if (!feedbackPlan || lastFeedbackDate !== toDateKeyLocal(selectedDate)) {
+        await refreshDailyFeedback();
+      }
+    }
+  };
+
+  const applyRecommendedGoal = useCallback(async () => {
+    if (!feedbackPlan?.recommendedGoal) return;
+    const newGoal = feedbackPlan.recommendedGoal;
+    const currentGoal = goal;
+    if (newGoal === currentGoal) return;
+
+    Alert.alert(
+      "目標を更新しますか？",
+      `今日の目標を ${formatSteps(currentGoal)} → ${formatSteps(newGoal)} に変更します。`,
+      [
+        { text: "キャンセル", style: "cancel" },
+        {
+          text: "更新する",
+          style: "default",
+          onPress: async () => {
+            setGoal(newGoal);
+            try {
+              const s = settingsCache || (await getSettings());
+              const payload = {
+                ...s,
+                dailyGoal: newGoal,
+              };
+              await saveSettings(payload);
+            } catch (e) {
+              console.error("[Home] failed to save goal", e);
+            }
+          },
+        },
+      ]
+    );
+  }, [feedbackPlan?.recommendedGoal, goal, settingsCache]);
 
   // アプリの状態が変わった時の処理
   const handleAppStateChange = async (nextAppState) => {
@@ -1847,6 +2065,40 @@ export default function HomeScreen({ navigation, route }) {
     await saveTodayData(data);
 
     setTodayStepsSnapshot(newSteps);
+
+    // 🕒 時間別グラフもPedometer更新に合わせて当日分を補正
+    try {
+      const todayKey = getTodayDateString();
+      const currentHour = new Date().getHours();
+      let hourlyData = await getHourlyStepsForDate(todayKey);
+      if (!Array.isArray(hourlyData) || hourlyData.length !== 24) {
+        hourlyData = Array(24).fill(0);
+      }
+      const prevTotal = hourlyData.reduce((a, b) => a + (Number(b) || 0), 0);
+      const diff = newSteps - prevTotal;
+      if (diff !== 0) {
+        const next = [...hourlyData];
+        if (diff > 0) {
+          next[currentHour] = Math.max(0, (Number(next[currentHour]) || 0) + diff);
+          hourlyData = next;
+        } else {
+          // 減少（リセット等）が起きた場合は当時間帯に上書き
+          const fresh = Array(24).fill(0);
+          fresh[currentHour] = Math.max(0, newSteps);
+          hourlyData = fresh;
+        }
+        await saveHourlyStepsForDate(todayKey, hourlyData);
+        // 今日を表示中ならグラフも即時反映
+        const currentSelected = selectedDateRef.current || selectedDate;
+        const isViewingToday =
+          currentSelected.toDateString() === new Date().toDateString();
+        if (isViewingToday) {
+          setHourlySteps(hourlyData);
+        }
+      }
+    } catch (err) {
+      console.warn("[HomeScreen] Failed to update hourly steps from pedometer:", err);
+    }
 
     // 🚀 キャッシュにも保存（起動高速化）
     await cacheTodayData(data);
@@ -2231,26 +2483,124 @@ export default function HomeScreen({ navigation, route }) {
           </Text>
         </TouchableOpacity>
 
-        {/* 今日へ戻るチップ（右利き向けに右寄せ） */}
-        {/* 配置: 横スクロールの週カレンダーの直下に表示 */}
-        {/* カレンダーアイコン（画面右上固定） */}
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel={t("home.a11y.openCalendar")}
-          hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-          style={[
-            styles.calendarIconButton,
-            { top: insets.top + 30, backgroundColor: theme.card },
-          ]}
-          onPress={() => {
-            setShowCalendarModal(true);
-            loadMonthlyData(calendarMonth); // モーダルを開く時に当月データを取得
-          }}
-        >
-          <CalendarIcon color={theme.text} size={24} />
-        </TouchableOpacity>
+        <View style={[styles.topIconRow, { top: insets.top + 30 }]}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="今日のフィードバックを開く"
+            hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+            style={[styles.mailIconButton, { backgroundColor: theme.card }]}
+            onPress={handleToggleFeedback}
+          >
+            <MaterialCommunityIcons name="email-outline" size={22} color={theme.text} />
+            {feedbackUnread && (
+              <View style={[styles.badgeDot, { backgroundColor: theme.primary }]} />
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={t("home.a11y.openCalendar")}
+            hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+            style={[
+              styles.calendarIconButton,
+              { backgroundColor: theme.card, position: "relative", right: 0, top: 0 },
+            ]}
+            onPress={() => {
+              setShowCalendarModal(true);
+              loadMonthlyData(calendarMonth); // モーダルを開く時に当月データを取得
+            }}
+          >
+            <CalendarIcon color={theme.text} size={24} />
+          </TouchableOpacity>
+        </View>
 
         {/* インライン通知は非表示 */}
+
+        {feedbackOpen && (
+          <View
+            style={[
+              styles.feedbackDrawer,
+              {
+                top: insets.top + 72,
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                shadowColor: theme.shadow,
+              },
+            ]}
+          >
+              <View style={styles.feedbackDrawerHeader}>
+                <Text style={[styles.feedbackTitle, { color: theme.text }]}>
+                  今日のフィードバック
+                </Text>
+              <View style={[styles.aiBadge, { borderColor: theme.border }]}>
+                <MaterialCommunityIcons name="star-four-points" size={14} color={theme.accent} />
+                <Text style={[styles.aiBadgeText, { color: theme.textSecondary }]}>AI</Text>
+              </View>
+                <TouchableOpacity
+                  style={styles.feedbackRefreshButton}
+                  onPress={() => refreshDailyFeedback(true)}
+                disabled={feedbackLoading}
+              >
+                {feedbackLoading ? (
+                  <ActivityIndicator size="small" color={theme.text} />
+                ) : (
+                  <Text style={[styles.feedbackRefreshText, { color: theme.textSecondary }]}>
+                    更新
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {feedbackPlan?.restDay && (
+              <View style={[styles.restBadge, { backgroundColor: `${theme.accent}20` }]}>
+                <Text style={[styles.restBadgeText, { color: theme.accent }]}>
+                  今日は調整日
+                </Text>
+              </View>
+            )}
+
+                {feedbackPlan?.lines?.length ? (
+                  feedbackPlan.lines.map((line, idx) => {
+                    const anim = feedbackLineAnims[idx] || new Animated.Value(1);
+                    return (
+                      <Animated.Text
+                        key={`fline-${idx}`}
+                        style={[
+                          styles.feedbackLine,
+                          {
+                            color: theme.text,
+                            opacity: anim,
+                            transform: [
+                              {
+                                translateY: anim.interpolate({
+                                  inputRange: [0, 1],
+                                  outputRange: [6, 0],
+                                }),
+                              },
+                            ],
+                          },
+                        ]}
+                      >
+                        {line}
+                      </Animated.Text>
+                    );
+                  })
+                ) : (
+              <Text style={[styles.feedbackLine, { color: theme.textSecondary }]}>
+                生成中です…
+              </Text>
+            )}
+
+            {feedbackPlan?.recommendedGoal && isSelectedToday && (
+              <TouchableOpacity
+                style={[styles.feedbackApplyButton, { backgroundColor: theme.primary }]}
+                onPress={applyRecommendedGoal}
+              >
+                <Text style={styles.feedbackApplyText}>この目標に更新する</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* 週の操作ボタン群は削除（上部に重複する今日へをなくす） */}
 
@@ -2399,7 +2749,9 @@ export default function HomeScreen({ navigation, route }) {
               steps={steps}
               calories={calories}
               distance={distance}
+              goalCalories={goalCalories}
               progress={progress}
+              caloriesProgress={caloriesProgress}
               hourlySteps={hourlySteps}
               hourlyWeather={hourlyWeather}
               profile={profile}

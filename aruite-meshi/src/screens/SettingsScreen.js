@@ -101,6 +101,13 @@ export default function SettingsScreen({ navigation }) {
     unit: 'kcal',
     goalCalories: '500',
     language: 'auto',
+    aiMode: 'balance',
+    aiAdaptiveGoal: true,
+    aiRestDays: true,
+    aiUseMood: true,
+    aiUseDiary: false,
+    aiUseCalendar: false,
+    aiUseWeather: false,
   });
   const [healthSync, setHealthSync] = useState(false);
   // 位置情報・都市選択はオプトイン外に（非表示）
@@ -113,6 +120,13 @@ export default function SettingsScreen({ navigation }) {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  const buildSettingsPayload = (base) => ({
+    ...base,
+    dailyGoal: parseInt(base.dailyGoal) || 10000,
+    goalCalories: parseInt(base.goalCalories) || 500,
+    language: base.language || 'auto',
+  });
 
   const loadSettings = async () => {
     const userProfile = await getUserProfile();
@@ -133,6 +147,13 @@ export default function SettingsScreen({ navigation }) {
       unit: userSettings.unit,
       goalCalories: String(userSettings.goalCalories ?? '500'),
       language: userSettings.language ?? 'auto',
+      aiMode: userSettings.aiMode ?? 'balance',
+      aiAdaptiveGoal: toBoolean(userSettings.aiAdaptiveGoal),
+      aiRestDays: toBoolean(userSettings.aiRestDays),
+      aiUseMood: toBoolean(userSettings.aiUseMood),
+      aiUseDiary: toBoolean(userSettings.aiUseDiary),
+      aiUseCalendar: toBoolean(userSettings.aiUseCalendar),
+      aiUseWeather: toBoolean(userSettings.aiUseWeather),
     });
 
     // HealthSyncEnabledフラグをそのまま使用（オンボーディングで設定済み）
@@ -189,14 +210,10 @@ export default function SettingsScreen({ navigation }) {
       return;
     }
 
-    const settingsData = {
+    const settingsData = buildSettingsPayload({
+      ...settings,
       dailyGoal: dailyGoalNum,
-      defaultFood: settings.defaultFood,
-      notifications: settings.notifications,
-      unit: settings.unit,
-      goalCalories: parseInt(settings.goalCalories) || 500,
-      language: settings.language || 'auto',
-    };
+    });
 
     const success = await saveSettings(settingsData);
     if (success) {
@@ -213,14 +230,7 @@ export default function SettingsScreen({ navigation }) {
   const handleChangeLanguage = async (lang) => {
     const next = { ...settings, language: lang };
     setSettings(next);
-    const payload = {
-      dailyGoal: parseInt(next.dailyGoal) || 10000,
-      defaultFood: next.defaultFood,
-      notifications: !!next.notifications,
-      unit: next.unit,
-      goalCalories: parseInt(next.goalCalories) || 500,
-      language: lang,
-    };
+    const payload = buildSettingsPayload(next);
     const ok = await saveSettings(payload);
     if (ok) {
       setLocale(lang);
@@ -237,14 +247,10 @@ export default function SettingsScreen({ navigation }) {
       const granted = await requestNotificationPermissions();
       if (!granted) {
         setSettings((s) => ({ ...s, notifications: false }));
-        const ok2 = await saveSettings({
-          dailyGoal: parseInt(settings.dailyGoal) || 10000,
-          defaultFood: settings.defaultFood,
+        const ok2 = await saveSettings(buildSettingsPayload({
+          ...settings,
           notifications: false,
-          unit: settings.unit,
-          goalCalories: parseInt(settings.goalCalories) || 500,
-          language: settings.language || 'auto',
-        });
+        }));
         if (!ok2) {
           Alert.alert(t('common.error'), t('settings.alerts.notificationsSaveError'));
         }
@@ -254,14 +260,7 @@ export default function SettingsScreen({ navigation }) {
 
     const next = { ...settings, notifications: value };
     setSettings(next);
-    const ok = await saveSettings({
-      dailyGoal: parseInt(next.dailyGoal) || 10000,
-      defaultFood: next.defaultFood,
-      notifications: value,
-      unit: next.unit,
-      goalCalories: parseInt(next.goalCalories) || 500,
-      language: next.language || 'auto',
-    });
+    const ok = await saveSettings(buildSettingsPayload(next));
     if (!ok) {
       Alert.alert(t('common.error'), t('settings.alerts.notificationsSaveError'));
       return;
@@ -280,6 +279,19 @@ export default function SettingsScreen({ navigation }) {
     }
 
     try { logEvent('settings_changed', { field: 'notifications' }); } catch (_) {}
+  };
+
+  const handleToggleAiSetting = async (key, value) => {
+    const next = { ...settings, [key]: value };
+    setSettings(next);
+    const ok = await saveSettings(buildSettingsPayload(next));
+    if (!ok) {
+      Alert.alert(t('common.error'), '設定を保存できませんでした。');
+    }
+  };
+
+  const handleChangeAiMode = async (mode) => {
+    await handleToggleAiSetting('aiMode', mode);
   };
 
   const handleAutoCalculateStride = () => {
@@ -605,6 +617,111 @@ export default function SettingsScreen({ navigation }) {
           <Text style={[styles.helperText, { color: theme.textSecondary }] }>
             {t('settings.helpers.languageHelper')}
           </Text>
+        </View>
+      </View>
+
+      {/* AIパーソナライズ */}
+      <View style={styles.section}>
+        <View style={styles.sectionTitleContainer}>
+          <Text style={{ fontSize: 20 }}>🤖</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>AIパーソナライズ</Text>
+        </View>
+        <View style={[styles.card, { backgroundColor: theme.card }]}>
+          <View style={styles.languageRow}>
+            <TouchableOpacity
+              style={[styles.langButton, settings.aiMode === 'balance' && styles.langActive]}
+              onPress={() => handleChangeAiMode('balance')}
+            >
+              <Text style={[styles.langText, settings.aiMode === 'balance' && styles.langActiveText]}>
+                バランス
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.langButton, settings.aiMode === 'aggressive' && styles.langActive]}
+              onPress={() => handleChangeAiMode('aggressive')}
+            >
+              <Text style={[styles.langText, settings.aiMode === 'aggressive' && styles.langActiveText]}>
+                アグレッシブ
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.helperText, { color: theme.textSecondary, marginBottom: 12 }]}>
+            目標と休み提案の強さを選べます。初期設定はバランスで、プライバシーが気になる情報はデフォルトでOFFです。
+          </Text>
+
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={[styles.inputLabel, { color: theme.text }]}>可変目標</Text>
+              <Text style={[styles.helperText, { color: theme.textSecondary }]}>週ごとに目標を±5〜10%調整します</Text>
+            </View>
+            <Switch
+              value={toBoolean(settings.aiAdaptiveGoal)}
+              onValueChange={(v) => handleToggleAiSetting('aiAdaptiveGoal', v)}
+              trackColor={{ false: '#ccc', true: theme.accent }}
+            />
+          </View>
+
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={[styles.inputLabel, { color: theme.text }]}>休み日を提案</Text>
+              <Text style={[styles.helperText, { color: theme.textSecondary }]}>連続達成や疲れが見えたらオフ日を出します</Text>
+            </View>
+            <Switch
+              value={toBoolean(settings.aiRestDays)}
+              onValueChange={(v) => handleToggleAiSetting('aiRestDays', v)}
+              trackColor={{ false: '#ccc', true: theme.accent }}
+            />
+          </View>
+
+          <View style={[styles.menuDivider, { backgroundColor: theme.border }]} />
+
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={[styles.inputLabel, { color: theme.text }]}>気分を使う（端末内）</Text>
+              <Text style={[styles.helperText, { color: theme.textSecondary }]}>日記の気分ラベルだけを使って提案を調整します</Text>
+            </View>
+            <Switch
+              value={toBoolean(settings.aiUseMood)}
+              onValueChange={(v) => handleToggleAiSetting('aiUseMood', v)}
+              trackColor={{ false: '#ccc', true: theme.accent }}
+            />
+          </View>
+
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={[styles.inputLabel, { color: theme.text }]}>日記本文を使う</Text>
+              <Text style={[styles.helperText, { color: theme.textSecondary }]}>送信前に端末で感情スコア化。本文は送信しません</Text>
+            </View>
+            <Switch
+              value={toBoolean(settings.aiUseDiary)}
+              onValueChange={(v) => handleToggleAiSetting('aiUseDiary', v)}
+              trackColor={{ false: '#ccc', true: theme.accent }}
+            />
+          </View>
+
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={[styles.inputLabel, { color: theme.text }]}>予定の有無を使う</Text>
+              <Text style={[styles.helperText, { color: theme.textSecondary }]}>タイトル/本文は取得せず「埋まっている時間帯」だけ使います</Text>
+            </View>
+            <Switch
+              value={toBoolean(settings.aiUseCalendar)}
+              onValueChange={(v) => handleToggleAiSetting('aiUseCalendar', v)}
+              trackColor={{ false: '#ccc', true: theme.accent }}
+            />
+          </View>
+
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={[styles.inputLabel, { color: theme.text }]}>天気を使う</Text>
+              <Text style={[styles.helperText, { color: theme.textSecondary }]}>雨の日は目標を少し下げて室内タスクに切り替えます</Text>
+            </View>
+            <Switch
+              value={toBoolean(settings.aiUseWeather)}
+              onValueChange={(v) => handleToggleAiSetting('aiUseWeather', v)}
+              trackColor={{ false: '#ccc', true: theme.accent }}
+            />
+          </View>
         </View>
       </View>
 

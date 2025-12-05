@@ -28,6 +28,7 @@ export default function DataFlipCard({
   calories,
   distance,
   progress,
+  caloriesProgress = 0,
   hourlySteps,
   hourlyWeather,
   profile,
@@ -42,12 +43,15 @@ export default function DataFlipCard({
   isFlipped = false,
   onFlipChange,
   showGestureHint = false,
+  goalCalories = 500,
 }) {
   const [hourlyDetailTooltip, setHourlyDetailTooltip] = useState({ visible: false, hour: -1 });
   const hourlyDetailTimerRef = React.useRef(null);
 
   const ringP = clamp01(progress);
   const ringColor = ringP >= 1.0 ? theme.success : theme.accent;
+  const calorieRatio = clamp01(goalCalories ? calories / goalCalories : 0);
+  const OUTER_SIZE = 190;
 
   // ============================================
   // 表面（歩数データ）
@@ -62,16 +66,21 @@ export default function DataFlipCard({
       {/* 円形プログレス */}
       <View style={styles.ringContainer}>
         <AchievementStamp visible={ringP >= 1.0} theme={theme} />
-        <View style={[styles.ringBackground, { backgroundColor: theme.card }]}>
-          <ProgressRing
-            size={180}
-            progress={ringP}
-            color={ringColor}
-            unfilledColor={ringP >= 0.999 ? 'transparent' : theme.circleUnfilled}
-            thickness={10}
-            bumpAnim={bumpAnim}
-            pulseAnim={pulseAnim}
-          />
+        <View style={[styles.ringStack, { width: OUTER_SIZE + 20, height: OUTER_SIZE + 20 }]}>
+          <View style={styles.ringLayer}>
+            <ProgressRing
+              size={OUTER_SIZE}
+              progress={ringP}
+              color={ringColor}
+              unfilledColor={ringP >= 0.999 ? 'transparent' : theme.circleUnfilled}
+              thickness={10}
+              bumpAnim={bumpAnim}
+              pulseAnim={pulseAnim}
+            />
+          </View>
+          <View style={styles.ringLayer}>
+            {/* カロリーリングは非表示（バーのみ使用） */}
+          </View>
           <View style={styles.ringCenter}>
             <Text style={[styles.stepsText, { color: theme.text }]}>
               {formatNumber(steps)}
@@ -99,6 +108,21 @@ export default function DataFlipCard({
           <Text style={[styles.statValue, { color: theme.text }]}>{distance.toFixed(1)}</Text>
           <Text style={[styles.statUnit, { color: theme.textSecondary }]}>km</Text>
         </View>
+      </View>
+
+      {/* カロリープログレス（薄めのバー） */}
+      <View style={styles.calorieBarWrapper}>
+        <View style={[styles.calorieBarTrack, { backgroundColor: theme.progressUnfilled }]}>
+          <View
+            style={[
+              styles.calorieBarFill,
+              { width: `${Math.min(calorieRatio * 100, 100)}%`, backgroundColor: COLORS.orange },
+            ]}
+          />
+        </View>
+        <Text style={[styles.calorieBarLabel, { color: theme.textSecondary }]}>
+          {t('home.labels.goal')}: {calories.toFixed(0)} / {goalCalories} {t('units.kcal')}
+        </Text>
       </View>
 
       {/* 時間帯別グラフ */}
@@ -183,10 +207,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  ringBackground: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
+  ringStack: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringLayer: {
+    position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -231,6 +258,26 @@ const styles = StyleSheet.create({
     width: 1,
     height: 18,
     opacity: 0.4,
+  },
+  calorieBarWrapper: {
+    marginTop: -4,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  calorieBarTrack: {
+    width: '90%',
+    height: 6,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  calorieBarFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  calorieBarLabel: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '600',
   },
   flipHint: {
     flexDirection: 'row',

@@ -4,26 +4,39 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Path, Circle, Line, G, Polygon, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Circle, Line } from 'react-native-svg';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialIcons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { DNA_PARAMS } from '../utils/walkingDna';
 
-const SIZE = 200; // チャートのサイズ
+const SIZE = 240; // チャートのサイズ
 const CENTER = SIZE / 2;
-const RADIUS = SIZE * 0.35; // 外周の半径
+const RADIUS = SIZE * 0.38; // 外周の半径
 const LEVELS = 4; // 同心円の数
 
 // 6軸の角度（12時から時計回り）
 const ANGLES = [
-  -90,    // 12時 (top)
-  -30,    // 2時
-  30,     // 4時
-  90,     // 6時 (right)
-  150,    // 8時
-  210,    // 10時
-].map(deg => (deg * Math.PI) / 180);
+  -90,    // top
+  -30,
+  30,
+  90,
+  150,
+  210,
+].map((deg) => (deg * Math.PI) / 180);
 
 // パラメータの順序
 const PARAM_ORDER = ['morning', 'burst', 'power', 'night', 'keep', 'weekend'];
+
+// アイコンとカラーの割り当て（UIに合わせて柔らかい色味）
+const ICON_CONFIG = {
+  morning: { component: MaterialIcons, name: 'sunny', color: '#FFC857' },
+  night: { component: MaterialCommunityIcons, name: 'weather-night', color: '#9BA5FF' },
+  burst: { component: Feather, name: 'zap', color: '#F9A03F' },
+  keep: { component: MaterialCommunityIcons, name: 'fire', color: '#FF7A59' },
+  weekend: { component: MaterialCommunityIcons, name: 'party-popper', color: '#4DD2A5' },
+  power: { component: MaterialCommunityIcons, name: 'arm-flex', color: '#5CC8FF' },
+};
 
 const RadarChart = ({
   params,
@@ -75,7 +88,7 @@ const RadarChart = ({
   // ラベルの位置（外側に配置）
   const getLabelPosition = (angleIndex) => {
     const angle = ANGLES[angleIndex];
-    const labelRadius = radius + 25 * scale;
+    const labelRadius = radius + 38 * scale;
     return {
       x: center + labelRadius * Math.cos(angle),
       y: center + labelRadius * Math.sin(angle),
@@ -141,36 +154,36 @@ const RadarChart = ({
           </>
         )}
 
-        {/* ラベル */}
-        {showLabels && PARAM_ORDER.map((key, i) => {
-          const pos = getLabelPosition(i);
-          const param = DNA_PARAMS[key];
-          return (
-            <SvgText
-              key={`label-${i}`}
-              x={pos.x}
-              y={pos.y}
-              fontSize={10 * scale}
-              fontWeight="600"
-              fill={effectiveLabelColor}
-              textAnchor="middle"
-              alignmentBaseline="middle"
-            >
-              {param.emoji} {param.label}
-            </SvgText>
-          );
-        })}
       </Svg>
 
-      {/* 値のオーバーレイ（オプション） */}
-      {params && showLabels && (
-        <View style={styles.valuesContainer}>
+      {/* ラベル（アイコン＋テキスト） */}
+      {showLabels && (
+        <View style={styles.labelsOverlay} pointerEvents="none">
           {PARAM_ORDER.map((key, i) => {
-            const point = getPoint(params[key] || 0, i);
-            const value = params[key] || 0;
-            // 値が十分高い場合のみ表示
-            if (value < 20) return null;
-            return null; // SVGのポイントで十分なので省略
+            const pos = getLabelPosition(i);
+            const param = DNA_PARAMS[key];
+            const IconCfg = ICON_CONFIG[key] || {};
+            const IconComponent = IconCfg.component || MaterialCommunityIcons;
+            const iconName = IconCfg.name || 'checkbox-blank-circle-outline';
+            const iconColor = IconCfg.color || effectiveLabelColor;
+            return (
+              <View
+                key={`label-${key}`}
+                style={[
+                  styles.labelItem,
+                  {
+                    left: pos.x - 18 * scale,
+                    top: pos.y - 18 * scale,
+                    transform: [{ scale }],
+                  },
+                ]}
+              >
+                <IconComponent name={iconName} size={16} color={iconColor} />
+                <Text style={[styles.labelText, { color: effectiveLabelColor }]}>
+                  {param.label}
+                </Text>
+              </View>
+            );
           })}
         </View>
       )}
@@ -189,6 +202,22 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+  },
+  labelsOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  labelItem: {
+    position: 'absolute',
+    alignItems: 'center',
+  },
+  labelText: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '700',
   },
 });
 

@@ -11,6 +11,7 @@ import {
   FlatList,
   Alert,
   Modal,
+  Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -23,6 +24,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import PaperTexture from '../components/PaperTexture';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { useI18n } from '../i18n/I18nProvider';
+import { generateWeeklyAIInsight, generateMonthlyAIStyle } from '../utils/aiFeedback';
+import { fetchHourlyWeather } from '../utils/weather';
+import RadarChart from '../components/RadarChart';
 // AI機能追加時に有効化
 // import RadarChart from '../components/RadarChart';
 // import { calculateWalkingDna, DNA_PARAMS } from '../utils/walkingDna';
@@ -84,7 +88,7 @@ export default function ReportScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { isPremium, presentPaywall } = useSubscription();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const personalBestListRef = useRef(null);
 
   const [isLoading, setIsLoading] = useState(true);
@@ -126,10 +130,73 @@ export default function ReportScreen() {
     hasEnoughData: false,
     dataCount: 0,
   });
+  const [weeklySummary, setWeeklySummary] = useState({
+    ready: false,
+    total: 0,
+    average: 0,
+    achievedRate: 0,
+    achievedDays: 0,
+    bestDay: null,
+    trendPct: null,
+    insights: [],
+    aiInsights: [],
+  });
+  const [weeklyInsightAnims, setWeeklyInsightAnims] = useState([]);
+  const weeklyInsightLines =
+    (weeklySummary.aiInsights && weeklySummary.aiInsights.length > 0)
+      ? weeklySummary.aiInsights
+      : weeklySummary.insights;
+  const [monthlySummary, setMonthlySummary] = useState({
+    ready: false,
+    type: 'Loading...',
+    insights: [],
+    aiInsights: [],
+    radarParams: null,
+  });
+  const [monthlyInsightAnims, setMonthlyInsightAnims] = useState([]);
+
+  useEffect(() => {
+    const anims = weeklyInsightLines.map(() => new Animated.Value(0));
+    setWeeklyInsightAnims(anims);
+    if (anims.length) {
+      Animated.stagger(
+        120,
+        anims.map((v) =>
+          Animated.timing(v, {
+            toValue: 1,
+            duration: 260,
+            useNativeDriver: true,
+          })
+        )
+      ).start();
+    }
+  }, [weeklyInsightLines]);
+
+  useEffect(() => {
+    const anims = (monthlySummary.aiInsights && monthlySummary.aiInsights.length > 0
+      ? monthlySummary.aiInsights
+      : monthlySummary.insights || []
+    ).map(() => new Animated.Value(0));
+    setMonthlyInsightAnims(anims);
+    if (anims.length) {
+      Animated.stagger(
+        120,
+        anims.map((v) =>
+          Animated.timing(v, {
+            toValue: 1,
+            duration: 260,
+            useNativeDriver: true,
+          })
+        )
+      ).start();
+    }
+  }, [monthlySummary]);
 
   useEffect(() => {
     loadAllTimeStats();
     loadEnvironmentAnalysis();
+    loadWeeklySummary();
+    loadMonthlyStyle();
     // loadWalkingDna(); // AI機能追加時に有効化
   }, []);
 
@@ -181,10 +248,11 @@ export default function ReportScreen() {
       let rainyTotalSteps = 0, rainyCount = 0;
       let rainyHeroData = null;
 
-      daysWithWeather.forEach(day => {
+      for (const day of daysWithWeather) {
         const avgTemp = (day.weather.maxTemp + day.weather.minTemp) / 2;
         const steps = day.steps || 0;
         const weatherCode = day.weather.code;
+        const dateKey = day.date;
 
         // 気温ゾーン分類
         let zoneIndex = 2; // デフォルト: 快適
@@ -202,8 +270,26 @@ export default function ReportScreen() {
         if (!tempStepsMap[tempKey]) tempStepsMap[tempKey] = [];
         tempStepsMap[tempKey].push(steps);
 
-        // 天気別集計 (WMO codes: 0-3=晴れ/曇り, 51-99=雨/雪)
-        const isRainy = weatherCode >= 51;
+        // 天気別集計 (Homeの時間別天気と整合: 時間別に雨コードがあれば雨扱い)
+        let hourlyHasRain = false;
+        let isRainy = weatherCode >= 61; // drizzle(51-57)は除外し、雨・雷雨中心に
+        if (dateKey) {
+          try {
+            const hourlyCodes = await fetchHourlyWeather(dateKey);
+            if (Array.isArray(hourlyCodes)) {
+              if (dateKey === '2025-10-31') {
+                console.log('[RainyHero][debug] hourly weather codes for', dateKey, hourlyCodes);
+              }
+              const rainyHours = hourlyCodes.filter((code) => Number(code) >= 61).length;
+              // しっかり雨だったとみなす基準（3時間以上）
+              hourlyHasRain = rainyHours >= 3;
+              // RainyHeroは「日次コードが雨 or 時間別に雨がある」かつ「雨時間が閾値以上」のときのみ
+              isRainy = (weatherCode >= 61 || hourlyHasRain) && hourlyHasRain;
+            }
+          } catch (err) {
+            console.warn('[RainyHero] hourly weather fetch failed:', err?.message || err);
+          }
+        }
         if (isRainy) {
           rainyTotalSteps += steps;
           rainyCount += 1;
@@ -216,7 +302,7 @@ export default function ReportScreen() {
           sunnyTotalSteps += steps;
           sunnyCount += 1;
         }
-      });
+      }
 
       // 最適気温を計算 (平均歩数が最も高い気温帯)
       let bestTempKey = null;
@@ -257,6 +343,255 @@ export default function ReportScreen() {
 
     } catch (error) {
       console.error('Error loading environment analysis:', error);
+    }
+  };
+
+  // 先月のスタイル診断
+  const loadMonthlyStyle = async () => {
+    try {
+      const today = new Date();
+      const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const end = new Date(today.getFullYear(), today.getMonth(), 0);
+
+      const dateKeys = [];
+      const cursor = new Date(start);
+      while (cursor <= end) {
+        dateKeys.push(toDateKeyLocal(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+
+      const dataArr = await getMultipleDaysData(dateKeys);
+      const settings = await getSettings();
+      const dailyGoal = settings?.dailyGoal || 10000;
+      const goalThreshold = dailyGoal * 0.95;
+
+      let total = 0;
+      let achieved = 0;
+      let morning = 0, evening = 0, midday = 0;
+      let weekdayTotal = 0, weekdayCount = 0, weekendTotal = 0, weekendCount = 0;
+      let sunnyTotal = 0, sunnyCount = 0, rainyTotal = 0, rainyCount = 0;
+
+      dataArr.forEach((d, idx) => {
+        const steps = d?.steps || 0;
+        total += steps;
+        if (steps >= goalThreshold) achieved += 1;
+        const dateStr = dateKeys[idx];
+        const day = new Date(dateStr).getDay();
+        if (day === 0 || day === 6) {
+          weekendTotal += steps; weekendCount += 1;
+        } else {
+          weekdayTotal += steps; weekdayCount += 1;
+        }
+        const hourly = d?.hourlySteps || [];
+        for (let h = 0; h < hourly.length; h++) {
+          const val = hourly[h] || 0;
+          if (h >= 5 && h < 10) morning += val;
+          if (h >= 10 && h < 17) midday += val;
+          if (h >= 17 && h < 23) evening += val;
+        }
+        if (d?.weather?.code !== undefined) {
+          const code = d.weather.code;
+          const isRainy = code >= 51;
+          if (isRainy) {
+            rainyTotal += steps; rainyCount += 1;
+          } else {
+            sunnyTotal += steps; sunnyCount += 1;
+          }
+        }
+      });
+
+      const daysCount = dataArr.length || 1;
+      const average = Math.round(total / daysCount);
+      const achievedRate = daysCount ? Math.round((achieved / daysCount) * 100) : 0;
+      const bestMonthly = dataArr.reduce(
+        (acc, cur, idx) => {
+          const steps = cur?.steps || 0;
+          if (steps > acc.steps) return { steps, date: dateKeys[idx] };
+          return acc;
+        },
+        { steps: 0, date: null }
+      );
+
+      // 型判定
+      let type = 'バランス型';
+      if (morning > evening * 1.2 && morning > midday * 1.1) type = '朝型ウォーカー';
+      else if (evening > morning * 1.2 && evening > midday * 1.1) type = '夜型ウォーカー';
+      else if (weekendTotal > weekdayTotal * 1.2) type = '週末集中型';
+      else if (weekdayTotal > weekendTotal * 1.2) type = '平日積み上げ型';
+      else if (sunnyTotal > rainyTotal * 1.5 && sunnyCount > 3) type = '晴れ優先型';
+
+      const insights = [];
+      insights.push(`先月は合計${formatNumber(total)}歩、平均${formatNumber(average)}歩/日。`);
+      insights.push(`達成率は${achievedRate}%でした。`);
+      if (type === '朝型ウォーカー') {
+        insights.push('朝に強いタイプ。夜は軽めの散歩で底上げを。');
+      } else if (type === '夜型ウォーカー') {
+        insights.push('夕方〜夜に歩きやすい傾向。朝に短い散歩を足すと安定します。');
+      } else if (type === '週末集中型') {
+        insights.push('週末に歩数が伸びています。平日に10分だけ足すと平均が上がります。');
+      } else if (type === '平日積み上げ型') {
+        insights.push('平日に積み上げできています。週末の維持が次のステップ。');
+      } else if (type === '晴れ優先型') {
+        insights.push('晴れの日に大きく伸びるタイプ。雨の日は室内1,000歩を目安に。');
+      } else {
+        insights.push('大きな偏りは少なめ。好調な時間帯を1つ決めて増やしましょう。');
+      }
+
+      const totalStepsAll = total || 1;
+      const morningScore = Math.min(100, Math.round((morning / totalStepsAll) * 200));
+      const nightScore = Math.min(100, Math.round((evening / totalStepsAll) * 200));
+      const burstScore = Math.min(
+        100,
+        Math.round((bestMonthly?.steps ? bestMonthly.steps / Math.max(average, 1) : 1) * 50)
+      );
+      const keepScore = Math.min(100, achievedRate);
+      const weekendShare = Math.min(1, weekendTotal / Math.max(totalStepsAll, 1));
+      const weekendScore = Math.round(weekendShare * 200);
+      const powerScore = Math.min(100, Math.round((average / Math.max(dailyGoal, 1)) * 100));
+
+      const radarParams = {
+        morning: morningScore || 0,
+        night: nightScore || 0,
+        burst: burstScore || 0,
+        keep: keepScore || 0,
+        weekend: weekendScore || 0,
+        power: powerScore || 0,
+      };
+
+      let aiInsights = null;
+      try {
+        aiInsights = await generateMonthlyAIStyle({
+          locale: locale || 'ja',
+          summary: {
+            type,
+            total,
+            average,
+            achievedRate,
+            bestWindow: morning > evening ? 'morning' : 'evening',
+            weekdayVsWeekend: { weekdayTotal, weekendTotal },
+            weatherBias: { sunnyTotal, rainyTotal },
+          },
+        });
+      } catch (e) {
+        console.warn('[Report] monthly AI insight skipped', e?.message || e);
+      }
+
+      setMonthlySummary({
+        ready: true,
+        type,
+        insights,
+        aiInsights: aiInsights || [],
+        radarParams,
+      });
+    } catch (e) {
+      console.error('Error loading monthly style', e);
+      setMonthlySummary({ ready: false, type: 'Error', insights: [], aiInsights: [] });
+    }
+  };
+  // 直近7日のサマリーと簡易インサイト
+  const loadWeeklySummary = async () => {
+    try {
+      const settings = await getSettings();
+      const dailyGoal = settings?.dailyGoal || 10000;
+      const goalThreshold = dailyGoal * 0.95;
+
+      const today = new Date();
+      const dateKeys = [];
+      for (let i = 0; i < 14; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        dateKeys.push(toDateKeyLocal(d));
+      }
+
+      const dataArr = await getMultipleDaysData(dateKeys);
+      const last7 = dataArr.slice(0, 7);
+      const prev7 = dataArr.slice(7, 14);
+
+      const summarize = (arr) => {
+        const stepsList = arr.map((d) => d?.steps || 0);
+      const total = stepsList.reduce((a, b) => a + b, 0);
+      const achieved = stepsList.filter((s) => s >= goalThreshold).length;
+      const bestIdx = stepsList.length > 0 ? stepsList.indexOf(Math.max(...stepsList)) : -1;
+      const best = bestIdx >= 0 ? { date: dateKeys[bestIdx], steps: stepsList[bestIdx] } : null;
+        const weekdayVsWeekend = stepsList.reduce(
+          (acc, steps, idx) => {
+            const date = new Date(dateKeys[idx]);
+            const day = date.getDay(); // 0 Sunday
+            if (day === 0 || day === 6) {
+              acc.weekend.total += steps;
+              acc.weekend.count += 1;
+            } else {
+              acc.weekday.total += steps;
+              acc.weekday.count += 1;
+            }
+            return acc;
+          },
+          { weekend: { total: 0, count: 0 }, weekday: { total: 0, count: 0 } }
+        );
+        return { total, achieved, best, weekdayVsWeekend };
+      };
+
+      const last = summarize(last7);
+      const prev = summarize(prev7);
+
+      const avg = Math.round(last.total / Math.max(last7.length, 1));
+      const achievedRate = last7.length ? Math.round((last.achieved / last7.length) * 100) : 0;
+      const trendPct = prev.total > 0 ? Math.round(((last.total - prev.total) / prev.total) * 100) : null;
+
+      const insights = [];
+      if (achievedRate >= 60) {
+        insights.push('達成率は良好です。このペースを維持しましょう。');
+      } else {
+        insights.push('達成率がやや低め。今日は短い散歩からリズムを戻しましょう。');
+      }
+      if (last.best?.steps) {
+        insights.push(`ベストデイは ${formatDate(last.best.date).replace('年', '/').replace('月', '/').replace('日', '')} に ${formatNumber(last.best.steps)} 歩でした。`);
+      }
+      const wk = last.weekdayVsWeekend;
+      const weekdayAvg = wk.weekday.count ? Math.round(wk.weekday.total / wk.weekday.count) : 0;
+      const weekendAvg = wk.weekend.count ? Math.round(wk.weekend.total / wk.weekend.count) : 0;
+      if (weekdayAvg && weekendAvg) {
+        if (weekendAvg > weekdayAvg * 1.1) {
+          insights.push('週末の方が歩きやすい傾向です。週末に多めに歩いてカバーしましょう。');
+        } else if (weekdayAvg > weekendAvg * 1.1) {
+          insights.push('平日の方が歩けています。週末は短時間でも歩くスロットを決めておきましょう。');
+        }
+      }
+      if (trendPct !== null) {
+        insights.push(`先週比で${trendPct >= 0 ? '+' : ''}${trendPct}%の変化です。`);
+      }
+
+      let aiInsights = null;
+      try {
+        aiInsights = await generateWeeklyAIInsight({
+          locale: locale || 'ja',
+          summary: {
+            total: last.total,
+            average: avg,
+            achievedRate,
+            achievedDays: last.achieved,
+            trendPct,
+            bestDay: last.best,
+          },
+        });
+      } catch (e) {
+        console.warn('[Report] weekly AI insight skipped', e?.message || e);
+      }
+
+      setWeeklySummary({
+        ready: true,
+        total: last.total,
+        average: avg,
+        achievedRate,
+        achievedDays: last.achieved,
+        bestDay: last.best,
+        trendPct,
+        insights,
+        aiInsights: aiInsights || [],
+      });
+    } catch (e) {
+      console.error('Error loading weekly summary', e);
+      setWeeklySummary((prev) => ({ ...prev, ready: false }));
     }
   };
 
@@ -384,22 +719,6 @@ export default function ReportScreen() {
     });
   };
 
-  const handleAITap = () => {
-    Alert.alert(
-      'Coming Soon',
-      'AI専属パートナー機能は現在開発中です。次期アップデートをお楽しみに！',
-      [{ text: 'OK' }]
-    );
-  };
-
-  const handleDataInfoTap = () => {
-    Alert.alert(
-      t('report.dataInfoAlert.title'),
-      t('report.dataInfoAlert.message'),
-      [{ text: t('report.dataInfoAlert.ok') }]
-    );
-  };
-
   const onViewableItemsChanged = useCallback(({ viewableItems }) => {
     if (viewableItems.length > 0) {
       setCurrentBestIndex(viewableItems[0].index);
@@ -482,6 +801,174 @@ export default function ReportScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <Text style={[styles.headerTitle, { color: theme.text }]}>Report</Text>
+      </View>
+
+      {/* WEEKLY RECAP */}
+      <View style={styles.sectionContainer}>
+        <View style={styles.sectionHeader}>
+          <MaterialCommunityIcons name="calendar-week" size={20} color={COLORS.teal} />
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>WEEKLY RECAP</Text>
+        </View>
+        <View style={[styles.card, { backgroundColor: theme.isDark ? theme.card : '#FFFFFF', marginHorizontal: 0 }]}>
+          <PaperTexture isDark={theme.isDark} />
+          {weeklySummary.ready ? (
+            <>
+              <View style={styles.weeklyStatsRow}>
+                <View style={styles.weeklyStat}>
+                  <Text style={[styles.weeklyStatLabel, { color: theme.textSecondary }]}>合計</Text>
+                  <Text style={[styles.weeklyStatValue, { color: theme.text }]}>{formatNumber(weeklySummary.total)}</Text>
+                  <Text style={[styles.weeklyStatSub, { color: theme.textSecondary }]}>steps / 7日</Text>
+                </View>
+                <View style={styles.weeklyStat}>
+                  <Text style={[styles.weeklyStatLabel, { color: theme.textSecondary }]}>平均</Text>
+                  <Text style={[styles.weeklyStatValue, { color: theme.text }]}>{formatNumber(weeklySummary.average)}</Text>
+                  <Text style={[styles.weeklyStatSub, { color: theme.textSecondary }]}>steps / 日</Text>
+                </View>
+                <View style={styles.weeklyStat}>
+                  <Text style={[styles.weeklyStatLabel, { color: theme.textSecondary }]}>達成率</Text>
+                  <Text style={[styles.weeklyStatValue, { color: theme.text }]}>{weeklySummary.achievedRate}%</Text>
+                  <Text style={[styles.weeklyStatSub, { color: theme.textSecondary }]}>
+                    {weeklySummary.achievedDays} / 7日
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.weeklyTrendRow}>
+                <View style={styles.trendBadge}>
+                  <MaterialCommunityIcons
+                    name={weeklySummary.trendPct >= 0 ? 'trending-up' : 'trending-down'}
+                    size={16}
+                    color={weeklySummary.trendPct >= 0 ? COLORS.teal : COLORS.orange}
+                  />
+                  <Text
+                    style={[
+                      styles.trendText,
+                      { color: weeklySummary.trendPct >= 0 ? COLORS.teal : COLORS.orange },
+                    ]}
+                  >
+                    {weeklySummary.trendPct === null
+                      ? '先週比: データ不足'
+                      : `先週比 ${weeklySummary.trendPct >= 0 ? '+' : ''}${weeklySummary.trendPct}%`}
+                  </Text>
+                </View>
+                {weeklySummary.bestDay?.date && (
+                  <Text style={[styles.bestDayText, { color: theme.text }]}>
+                    ベスト: {formatDate(weeklySummary.bestDay.date).replace('年', '/').replace('月', '/').replace('日', '')}
+                    {' '}({formatNumber(weeklySummary.bestDay.steps)}歩)
+                  </Text>
+                )}
+              </View>
+
+              <View style={styles.insightsContainer}>
+                <View style={styles.weeklyInsightHeader}>
+                  <View style={[styles.aiBadge, { borderColor: theme.border, backgroundColor: 'rgba(0,0,0,0.02)' }]}>
+                    <MaterialCommunityIcons name="star-four-points" size={14} color={COLORS.teal} />
+                    <Text style={[styles.aiBadgeText, { color: theme.textSecondary }]}>AI</Text>
+                  </View>
+                </View>
+                {weeklyInsightLines.map((line, idx) => {
+                  const anim = weeklyInsightAnims[idx] || new Animated.Value(1);
+                  return (
+                    <Animated.Text
+                      key={`ins-${idx}`}
+                      style={[
+                        styles.insightLine,
+                        {
+                          color: theme.text,
+                          opacity: anim,
+                          transform: [
+                            {
+                              translateY: anim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [6, 0],
+                              }),
+                            },
+                          ],
+                        },
+                      ]}
+                    >
+                      {line}
+                    </Animated.Text>
+                  );
+                })}
+              </View>
+            </>
+          ) : (
+            <View style={styles.emptyCard}>
+              <ActivityIndicator size="small" color={theme.textSecondary} />
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>データを集計中です</Text>
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* MONTHLY STYLE */}
+      <View style={styles.sectionContainer}>
+        <View style={styles.sectionHeader}>
+          <MaterialCommunityIcons name="palette-swatch" size={20} color={COLORS.teal} />
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>MONTHLY STYLE</Text>
+        </View>
+        <View style={[styles.card, { backgroundColor: theme.isDark ? theme.card : '#FFFFFF', marginHorizontal: 0 }]}>
+          <PaperTexture isDark={theme.isDark} />
+          {monthlySummary.ready ? (
+            <>
+                <View style={styles.monthlyHeaderRow}>
+                  <View style={styles.typeBadge}>
+                    <Text style={[styles.typeBadgeText, { color: theme.text }]}>{monthlySummary.type}</Text>
+                  </View>
+                  <View style={[styles.aiBadge, { borderColor: theme.border, backgroundColor: 'rgba(0,0,0,0.02)' }]}>
+                  <MaterialCommunityIcons name="star-four-points" size={14} color={COLORS.teal} />
+                  <Text style={[styles.aiBadgeText, { color: theme.textSecondary }]}>AI</Text>
+                </View>
+                </View>
+              {monthlySummary.radarParams && (
+                <View style={styles.radarWrapper}>
+                  <RadarChart
+                    size={width - 80}
+                    params={monthlySummary.radarParams}
+                    strokeColor={COLORS.teal}
+                    fillColor={`${COLORS.teal}30`}
+                    labelColor={theme.text}
+                    gridColor={theme.textSecondary}
+                    theme={theme}
+                  />
+                </View>
+              )}
+              <View style={styles.insightsContainer}>
+                {(monthlySummary.aiInsights?.length ? monthlySummary.aiInsights : monthlySummary.insights).map((line, idx) => {
+                  const anim = monthlyInsightAnims[idx] || new Animated.Value(1);
+                  return (
+                    <Animated.Text
+                      key={`mins-${idx}`}
+                      style={[
+                        styles.insightLine,
+                        {
+                          color: theme.text,
+                          opacity: anim,
+                          transform: [
+                            {
+                              translateY: anim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [6, 0],
+                              }),
+                            },
+                          ],
+                        },
+                      ]}
+                    >
+                      {line}
+                    </Animated.Text>
+                  );
+                })}
+              </View>
+            </>
+          ) : (
+            <View style={styles.emptyCard}>
+              <ActivityIndicator size="small" color={theme.textSecondary} />
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>データを集計中です</Text>
+            </View>
+          )}
+        </View>
       </View>
 
       {/* TOTAL JOURNEY Card（無料） */}
@@ -989,37 +1476,6 @@ export default function ReportScreen() {
         )}
       </View>
 
-      {/* AI Partner Coming Soon */}
-      <View style={[styles.aiCard, { backgroundColor: 'rgba(0, 168, 150, 0.1)' }]}>
-        <TouchableOpacity
-          onPress={handleAITap}
-          activeOpacity={0.7}
-        >
-          <View style={styles.aiContent}>
-            <MaterialCommunityIcons name="robot-outline" size={24} color={COLORS.teal} />
-            <View style={styles.aiTextContainer}>
-              <Text style={[styles.aiTitle, { color: theme.text }]}>
-                {t('report.aiPartner.title')}
-              </Text>
-              <Text style={[styles.aiDescription, { color: theme.textSecondary }]}>
-                {t('report.aiPartner.description')}
-              </Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        {/* データの使い道ボタン */}
-        <TouchableOpacity
-          style={styles.dataInfoButton}
-          onPress={handleDataInfoTap}
-          activeOpacity={0.7}
-        >
-          <MaterialCommunityIcons name="information-outline" size={16} color={COLORS.teal} />
-          <Text style={[styles.dataInfoText, { color: COLORS.teal }]}>
-            {t('report.aiPartner.dataInfoButton')}
-          </Text>
-        </TouchableOpacity>
-      </View>
     </ScrollView>
 
     {/* Journey詳細モーダル */}
@@ -1146,6 +1602,102 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.5,
   },
+  weeklyStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    gap: 12,
+  },
+  weeklyStat: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+  },
+  weeklyStatLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  weeklyStatValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  weeklyStatSub: {
+    fontSize: 11,
+    marginTop: 4,
+  },
+  weeklyTrendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 12,
+  },
+  trendBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  trendText: {
+    marginLeft: 6,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  monthlyHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  typeBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  typeBadgeText: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  radarWrapper: {
+    marginVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bestDayText: {
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+  },
+  insightsContainer: {
+    marginTop: 18,
+    gap: 4,
+  },
+  insightLine: {
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  weeklyInsightHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginBottom: 4,
+  },
+  aiBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  aiBadgeText: { marginLeft: 4, fontSize: 11, fontWeight: '700' },
   card: {
     marginHorizontal: 20,
     marginBottom: 16,

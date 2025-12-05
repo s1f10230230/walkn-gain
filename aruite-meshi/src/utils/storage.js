@@ -47,6 +47,14 @@ const normalizeSettings = (s) => ({
   unit: typeof s?.unit === 'string' ? s.unit : 'kcal',
   goalCalories: toNumber(s?.goalCalories, 500),
   language: typeof s?.language === 'string' ? s.language : 'auto', // 'auto' | 'ja' | 'en' | 'zh-Hans'
+  // AIパーソナライズ関連
+  aiMode: typeof s?.aiMode === 'string' ? s.aiMode : 'balance', // 'balance' | 'aggressive'
+  aiAdaptiveGoal: toBoolean(s?.aiAdaptiveGoal ?? true), // 可変目標
+  aiRestDays: toBoolean(s?.aiRestDays ?? true), // 休み日提案
+  aiUseMood: toBoolean(s?.aiUseMood ?? true), // 気分を利用
+  aiUseDiary: toBoolean(s?.aiUseDiary ?? false), // 日記本文/感情を利用
+  aiUseCalendar: toBoolean(s?.aiUseCalendar ?? false), // 予定有無を利用
+  aiUseWeather: toBoolean(s?.aiUseWeather ?? false), // 天気を利用
 });
 
 // デフォルトのユーザープロフィール
@@ -64,6 +72,14 @@ const DEFAULT_SETTINGS = {
   unit: 'kcal', // 'kcal' or 'kJ'
   goalCalories: 500,
   language: 'auto',
+  // AIパーソナライズ既定値（プライバシー配慮）
+  aiMode: 'balance',
+  aiAdaptiveGoal: true,
+  aiRestDays: true,
+  aiUseMood: true,
+  aiUseDiary: false,
+  aiUseCalendar: false,
+  aiUseWeather: false,
 };
 
 // 日別データの取得

@@ -29,6 +29,31 @@ export default function HourlyChart({
 
   const safeHourlySteps = hourlySteps || Array(24).fill(0);
   const maxSteps = Math.max(...safeHourlySteps, 1);
+  // 4枠表示するため、6時間ごとの代表天気を抽出（優先順位: 雷雨/雨 > くもり/晴れ）
+  let weatherSlots = null;
+  if (hourlyWeather && hourlyWeather.length === 24) {
+    const slotRanges = [
+      [0, 5],
+      [6, 11],
+      [12, 17],
+      [18, 23],
+    ];
+    const pickCode = (codes) => {
+      const valid = codes.filter((c) => c !== null && c !== undefined);
+      if (!valid.length) return null;
+      // 優先度: 95-99(雷雨) > 80-82(強めの雨) > 61-67(雨) > 51-57(霧雨) > その他
+      const thunder = valid.find((c) => c >= 95);
+      if (thunder !== undefined) return thunder;
+      const heavyRain = valid.find((c) => c >= 80 && c <= 82);
+      if (heavyRain !== undefined) return heavyRain;
+      const rain = valid.find((c) => c >= 61 && c <= 67);
+      if (rain !== undefined) return rain;
+      const drizzle = valid.find((c) => c >= 51 && c <= 57);
+      if (drizzle !== undefined) return drizzle;
+      return valid[0];
+    };
+    weatherSlots = slotRanges.map(([start, end]) => pickCode(hourlyWeather.slice(start, end + 1)));
+  }
 
   // タッチ位置から時間を計算
   const getHourFromX = useCallback((x) => {
@@ -107,13 +132,12 @@ export default function HourlyChart({
           </View>
               <View style={styles.chartArea}>
                 {/* Weather Icons Row */}
-                {hourlyWeather && hourlyWeather.length === 24 && (
+                {weatherSlots && (
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}>
-                    {weatherHours.map((hour) => {
-                      const weatherCode = hourlyWeather[hour];
+                    {weatherSlots.map((weatherCode, idx) => {
                       const iconName = weatherCode !== null && weatherCode !== undefined ? getWeatherIconName(weatherCode) : null;
                       return (
-                        <View key={hour} style={{ flex: 1, alignItems: 'center' }}>
+                        <View key={idx} style={{ flex: 1, alignItems: 'center' }}>
                           {iconName ? (
                             <AppIcon name={iconName} size={26} color={theme.isDark ? '#F0F0F0' : theme.text} />
                           ) : (

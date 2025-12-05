@@ -14,47 +14,54 @@ import { getTheme } from '../utils/theme';
 import { useI18n } from '../i18n/I18nProvider';
 import { useSubscription } from '../contexts/SubscriptionContext';
 
-// プレミアム特典リスト
+// プレミアム特典リスト（最新機能に合わせて更新）
 const PREMIUM_FEATURES = [
   {
+    icon: '✨',
+    title: 'AIインサイト（毎日・毎週・毎月）',
+    description: 'その日の調子や1週間の傾向をコーチ目線でフィードバック',
+  },
+  {
+    icon: '🧠',
+    title: '自動目標チューニング',
+    description: '連続達成や疲れを考慮して歩数目標を提案・調整',
+  },
+  {
+    icon: '🌦️',
+    title: '環境分析',
+    description: '気温・天気と歩数の相性を解析しベストコンディションを提示',
+  },
+  {
+    icon: '🧭',
+    title: '月次スタイル診断',
+    description: '平日・週末・朝夜などの型をレーダーチャートで可視化',
+  },
+  {
     icon: '📅',
-    title: '履歴無制限',
-    description: '過去30日以上の歩数データにアクセス',
-  },
-  {
-    icon: '📊',
-    title: '詳細グラフ',
-    description: '週間・月間の統計グラフを表示',
-  },
-  {
-    icon: '📖',
-    title: 'ストーリー全期間',
-    description: '過去すべてのストーリーを振り返り',
+    title: '履歴・グラフ無制限',
+    description: '過去すべての歩数・時間帯グラフをさかのぼり放題',
   },
   {
     icon: '📷',
     title: '写真4枚/日',
-    description: '1日に最大4枚の写真を追加',
-  },
-  {
-    icon: '⏰',
-    title: '過去の時間帯グラフ',
-    description: '過去日の時間帯別歩数を確認',
+    description: '思い出を1日に最大4枚まで保存',
   },
 ];
 
 // 価格設定（仮）
 const PRICING = {
   monthly: {
-    price: '¥400',
+    price: '¥680',
     period: '月額',
     productId: 'premium_monthly',
+    note: '1日あたり約¥23',
   },
   yearly: {
-    price: '¥3,200',
+    price: '¥5,760',
     period: '年額',
     productId: 'premium_yearly',
     discount: '2ヶ月分お得',
+    note: '月あたり約¥480',
   },
 };
 
@@ -136,14 +143,14 @@ export default function UpgradeScreen({ navigation, route }) {
         showsVerticalScrollIndicator={false}
       >
         {/* タイトル */}
-        <View style={styles.titleSection}>
-          <Text style={[styles.title, { color: theme.text }]}>
-            プレミアムにアップグレード
-          </Text>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            日常をもっと深く振り返ろう
-          </Text>
-        </View>
+      <View style={styles.titleSection}>
+        <Text style={[styles.title, { color: theme.text }]}>
+            Walkn Gain Pro
+        </Text>
+        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+            AIとデータで、歩く毎日をフルブースト。
+        </Text>
+      </View>
 
         {/* 特典リスト */}
         <View style={[styles.featuresCard, { backgroundColor: theme.card }]}>
@@ -204,9 +211,11 @@ export default function UpgradeScreen({ navigation, route }) {
               <Text style={[styles.planPrice, { color: theme.text }]}>
                 {PRICING.yearly.price}
               </Text>
-              <Text style={[styles.planNote, { color: theme.textSecondary }]}>
-                月あたり約¥267
-              </Text>
+              {PRICING.yearly.note && (
+                <Text style={[styles.planNote, { color: theme.textSecondary }]}>
+                  {PRICING.yearly.note}
+                </Text>
+              )}
             </View>
           </TouchableOpacity>
 
@@ -238,6 +247,11 @@ export default function UpgradeScreen({ navigation, route }) {
               <Text style={[styles.planPrice, { color: theme.text }]}>
                 {PRICING.monthly.price}
               </Text>
+              {PRICING.monthly.note && (
+                <Text style={[styles.planNote, { color: theme.textSecondary }]}>
+                  {PRICING.monthly.note}
+                </Text>
+              )}
             </View>
           </TouchableOpacity>
         </View>
