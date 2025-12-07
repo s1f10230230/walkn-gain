@@ -43,9 +43,10 @@ export const getTrialState = async () => {
     }
 
     const startDate = new Date(start);
-    const today = new Date();
-    // 経過日数を日単位で丸める
-    const diffMs = today.setHours(0, 0, 0, 0) - startDate.setHours(0, 0, 0, 0);
+    const startMs = new Date(startDate).setHours(0, 0, 0, 0);
+    const todayMs = new Date().setHours(0, 0, 0, 0);
+    // 経過日数を日単位で丸める（元のDateを破壊しない）
+    const diffMs = todayMs - startMs;
     const daysElapsed = Math.floor(diffMs / (1000 * 60 * 60 * 24));
     const remainingDays = Math.max(0, TRIAL_LENGTH_DAYS - 1 - daysElapsed);
     const stage = daysElapsed < TRIAL_LENGTH_DAYS ? Math.max(0, Math.min(daysElapsed, TRIAL_LENGTH_DAYS)) : 4;
