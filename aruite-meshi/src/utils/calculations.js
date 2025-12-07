@@ -79,12 +79,28 @@ export const toDateKeyLocal = (date) => {
 };
 
 // 日付文字列を整形（表示用）
-export const formatDate = (dateString) => {
+export const formatDate = (dateString, locale = 'ja') => {
   const date = new Date(dateString);
-  const year = date.getFullYear();
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  return `${year}年${month}月${day}日`;
+  try {
+    return date.toLocaleDateString(locale === 'ja' ? 'ja-JP' : 'en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch (_) {
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    return locale === 'ja' ? `${year}年${month}月${day}日` : `${month}/${day}/${year}`;
+  }
+};
+
+// スラッシュ区切りの簡易日付（言語に依存しない表示）
+export const formatDateSlash = (dateString) => {
+  const d = new Date(dateString);
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${m}/${day}`;
 };
 
 // 月/日形式でフォーマット (例: 11/22)

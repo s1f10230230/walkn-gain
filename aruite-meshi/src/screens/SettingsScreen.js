@@ -38,7 +38,9 @@ import { Pedometer } from 'expo-sensors';
 import { PermissionsAndroid, Linking, Platform } from 'react-native';
 import { requestNotificationPermissions } from '../utils/notifications';
 import { requestPedometerPermissions } from '../utils/pedometer';
+import ProTourModal from '../components/ProTourModal';
 import { useSubscription } from '../contexts/SubscriptionContext';
+import { buildProTourSlides } from '../utils/proTourSlides';
 
 export default function SettingsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -116,10 +118,16 @@ export default function SettingsScreen({ navigation }) {
   const [calendarOSGranted, setCalendarOSGranted] = useState(false);
   const [motionOSGranted, setMotionOSGranted] = useState(false);
   const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [showProTour, setShowProTour] = useState(false);
+  const [proTourSlides, setProTourSlides] = useState([]);
 
   useEffect(() => {
     loadSettings();
   }, []);
+
+  useEffect(() => {
+    setProTourSlides(buildProTourSlides(t));
+  }, [t]);
 
   const buildSettingsPayload = (base) => ({
     ...base,
@@ -140,13 +148,17 @@ export default function SettingsScreen({ navigation }) {
       stride: String(userProfile.stride),
     });
 
+    const detectedLang = (userSettings.language === 'ja' || userSettings.language === 'en')
+      ? userSettings.language
+      : (userSettings.language?.startsWith?.('ja') ? 'ja' : 'en');
+
     setSettings({
       dailyGoal: String(userSettings.dailyGoal),
       defaultFood: userSettings.defaultFood,
       notifications: toBoolean(userSettings.notifications),
       unit: userSettings.unit,
       goalCalories: String(userSettings.goalCalories ?? '500'),
-      language: userSettings.language ?? 'auto',
+      language: detectedLang,
       aiMode: userSettings.aiMode ?? 'balance',
       aiAdaptiveGoal: toBoolean(userSettings.aiAdaptiveGoal),
       aiRestDays: toBoolean(userSettings.aiRestDays),
@@ -179,6 +191,19 @@ export default function SettingsScreen({ navigation }) {
         setMotionOSGranted(pm?.status === 'granted');
       }
     } catch (_) {}
+  };
+
+  const handleManageSubscription = async () => {
+    // iOS標準のサブスクリプション管理画面を開く
+    const url = Platform.OS === 'ios'
+      ? 'https://apps.apple.com/account/subscriptions'
+      : 'https://play.google.com/store/account/subscriptions';
+    try {
+      await Linking.openURL(url);
+    } catch (e) {
+      console.warn('Failed to open subscription settings', e);
+      Alert.alert(t('common.error'), t('settings.premium.proTour.manage'));
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -460,6 +485,7 @@ export default function SettingsScreen({ navigation }) {
   // 位置情報トグルは削除
 
   return (
+    <>
     <ScrollView
       style={[styles.container, { backgroundColor: theme.background }]}
       contentContainerStyle={{ paddingTop: insets.top + 20, paddingBottom: 100 + insets.bottom }}
@@ -582,14 +608,6 @@ export default function SettingsScreen({ navigation }) {
         <View style={[styles.card, { backgroundColor: theme.card }] }>
           <View style={styles.languageRow}>
             <TouchableOpacity
-              style={[styles.langButton, settings.language === 'auto' && styles.langActive]}
-              onPress={() => handleChangeLanguage('auto')}
-            >
-              <Text style={[styles.langText, settings.language === 'auto' && styles.langActiveText]}>
-                {t('settings.languageAuto')}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
               style={[styles.langButton, settings.language === 'ja' && styles.langActive]}
               onPress={() => handleChangeLanguage('ja')}
             >
@@ -605,14 +623,6 @@ export default function SettingsScreen({ navigation }) {
                 {t('settings.languageEn')}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.langButton, settings.language === 'zh-Hans' && styles.langActive]}
-              onPress={() => handleChangeLanguage('zh-Hans')}
-            >
-              <Text style={[styles.langText, settings.language === 'zh-Hans' && styles.langActiveText]}>
-                {t('settings.languageZhHans')}
-              </Text>
-            </TouchableOpacity>
           </View>
           <Text style={[styles.helperText, { color: theme.textSecondary }] }>
             {t('settings.helpers.languageHelper')}
@@ -620,110 +630,114 @@ export default function SettingsScreen({ navigation }) {
         </View>
       </View>
 
-      {/* AIパーソナライズ */}
-      <View style={styles.section}>
-        <View style={styles.sectionTitleContainer}>
-          <Text style={{ fontSize: 20 }}>🤖</Text>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>AIパーソナライズ</Text>
-        </View>
-        <View style={[styles.card, { backgroundColor: theme.card }]}>
-          <View style={styles.languageRow}>
-            <TouchableOpacity
-              style={[styles.langButton, settings.aiMode === 'balance' && styles.langActive]}
-              onPress={() => handleChangeAiMode('balance')}
-            >
-              <Text style={[styles.langText, settings.aiMode === 'balance' && styles.langActiveText]}>
-                バランス
+      {/* AIパーソナライズ（Proのみ表示） */}
+      {isPremium && (
+        <View>
+          <View style={styles.section}>
+            <View style={styles.sectionTitleContainer}>
+              <Text style={{ fontSize: 20 }}>🤖</Text>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>AIパーソナライズ</Text>
+            </View>
+            <View style={[styles.card, { backgroundColor: theme.card }]}>
+              <View style={styles.languageRow}>
+                <TouchableOpacity
+                  style={[styles.langButton, settings.aiMode === 'balance' && styles.langActive]}
+                  onPress={() => handleChangeAiMode('balance')}
+                >
+                  <Text style={[styles.langText, settings.aiMode === 'balance' && styles.langActiveText]}>
+                    バランス
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.langButton, settings.aiMode === 'aggressive' && styles.langActive]}
+                  onPress={() => handleChangeAiMode('aggressive')}
+                >
+                  <Text style={[styles.langText, settings.aiMode === 'aggressive' && styles.langActiveText]}>
+                    アグレッシブ
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.helperText, { color: theme.textSecondary, marginBottom: 12 }]}>
+                目標と休み提案の強さを選べます。初期設定はバランスで、プライバシーが気になる情報はデフォルトでOFFです。
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.langButton, settings.aiMode === 'aggressive' && styles.langActive]}
-              onPress={() => handleChangeAiMode('aggressive')}
-            >
-              <Text style={[styles.langText, settings.aiMode === 'aggressive' && styles.langActiveText]}>
-                アグレッシブ
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={[styles.helperText, { color: theme.textSecondary, marginBottom: 12 }]}>
-            目標と休み提案の強さを選べます。初期設定はバランスで、プライバシーが気になる情報はデフォルトでOFFです。
-          </Text>
 
-          <View style={styles.switchRow}>
-            <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>可変目標</Text>
-              <Text style={[styles.helperText, { color: theme.textSecondary }]}>週ごとに目標を±5〜10%調整します</Text>
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>可変目標</Text>
+                  <Text style={[styles.helperText, { color: theme.textSecondary }]}>週ごとに目標を±5〜10%調整します</Text>
+                </View>
+                <Switch
+                  value={toBoolean(settings.aiAdaptiveGoal)}
+                  onValueChange={(v) => handleToggleAiSetting('aiAdaptiveGoal', v)}
+                  trackColor={{ false: '#ccc', true: theme.accent }}
+                />
+              </View>
+
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>休み日を提案</Text>
+                  <Text style={[styles.helperText, { color: theme.textSecondary }]}>連続達成や疲れが見えたらオフ日を出します</Text>
+                </View>
+                <Switch
+                  value={toBoolean(settings.aiRestDays)}
+                  onValueChange={(v) => handleToggleAiSetting('aiRestDays', v)}
+                  trackColor={{ false: '#ccc', true: theme.accent }}
+                />
+              </View>
+
+              <View style={[styles.menuDivider, { backgroundColor: theme.border }]} />
+
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>気分を使う（端末内）</Text>
+                  <Text style={[styles.helperText, { color: theme.textSecondary }]}>日記の気分ラベルだけを使って提案を調整します</Text>
+                </View>
+                <Switch
+                  value={toBoolean(settings.aiUseMood)}
+                  onValueChange={(v) => handleToggleAiSetting('aiUseMood', v)}
+                  trackColor={{ false: '#ccc', true: theme.accent }}
+                />
+              </View>
+
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>日記本文を使う</Text>
+                  <Text style={[styles.helperText, { color: theme.textSecondary }]}>送信前に端末で感情スコア化。本文は送信しません</Text>
+                </View>
+                <Switch
+                  value={toBoolean(settings.aiUseDiary)}
+                  onValueChange={(v) => handleToggleAiSetting('aiUseDiary', v)}
+                  trackColor={{ false: '#ccc', true: theme.accent }}
+                />
+              </View>
+
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>予定の有無を使う</Text>
+                  <Text style={[styles.helperText, { color: theme.textSecondary }]}>タイトル/本文は取得せず「埋まっている時間帯」だけ使います</Text>
+                </View>
+                <Switch
+                  value={toBoolean(settings.aiUseCalendar)}
+                  onValueChange={(v) => handleToggleAiSetting('aiUseCalendar', v)}
+                  trackColor={{ false: '#ccc', true: theme.accent }}
+                />
+              </View>
+
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>天気を使う</Text>
+                  <Text style={[styles.helperText, { color: theme.textSecondary }]}>雨の日は目標を少し下げて室内タスクに切り替えます</Text>
+                </View>
+                <Switch
+                  value={toBoolean(settings.aiUseWeather)}
+                  onValueChange={(v) => handleToggleAiSetting('aiUseWeather', v)}
+                  trackColor={{ false: '#ccc', true: theme.accent }}
+                />
+              </View>
             </View>
-            <Switch
-              value={toBoolean(settings.aiAdaptiveGoal)}
-              onValueChange={(v) => handleToggleAiSetting('aiAdaptiveGoal', v)}
-              trackColor={{ false: '#ccc', true: theme.accent }}
-            />
-          </View>
-
-          <View style={styles.switchRow}>
-            <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>休み日を提案</Text>
-              <Text style={[styles.helperText, { color: theme.textSecondary }]}>連続達成や疲れが見えたらオフ日を出します</Text>
-            </View>
-            <Switch
-              value={toBoolean(settings.aiRestDays)}
-              onValueChange={(v) => handleToggleAiSetting('aiRestDays', v)}
-              trackColor={{ false: '#ccc', true: theme.accent }}
-            />
-          </View>
-
-          <View style={[styles.menuDivider, { backgroundColor: theme.border }]} />
-
-          <View style={styles.switchRow}>
-            <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>気分を使う（端末内）</Text>
-              <Text style={[styles.helperText, { color: theme.textSecondary }]}>日記の気分ラベルだけを使って提案を調整します</Text>
-            </View>
-            <Switch
-              value={toBoolean(settings.aiUseMood)}
-              onValueChange={(v) => handleToggleAiSetting('aiUseMood', v)}
-              trackColor={{ false: '#ccc', true: theme.accent }}
-            />
-          </View>
-
-          <View style={styles.switchRow}>
-            <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>日記本文を使う</Text>
-              <Text style={[styles.helperText, { color: theme.textSecondary }]}>送信前に端末で感情スコア化。本文は送信しません</Text>
-            </View>
-            <Switch
-              value={toBoolean(settings.aiUseDiary)}
-              onValueChange={(v) => handleToggleAiSetting('aiUseDiary', v)}
-              trackColor={{ false: '#ccc', true: theme.accent }}
-            />
-          </View>
-
-          <View style={styles.switchRow}>
-            <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>予定の有無を使う</Text>
-              <Text style={[styles.helperText, { color: theme.textSecondary }]}>タイトル/本文は取得せず「埋まっている時間帯」だけ使います</Text>
-            </View>
-            <Switch
-              value={toBoolean(settings.aiUseCalendar)}
-              onValueChange={(v) => handleToggleAiSetting('aiUseCalendar', v)}
-              trackColor={{ false: '#ccc', true: theme.accent }}
-            />
-          </View>
-
-          <View style={styles.switchRow}>
-            <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>天気を使う</Text>
-              <Text style={[styles.helperText, { color: theme.textSecondary }]}>雨の日は目標を少し下げて室内タスクに切り替えます</Text>
-            </View>
-            <Switch
-              value={toBoolean(settings.aiUseWeather)}
-              onValueChange={(v) => handleToggleAiSetting('aiUseWeather', v)}
-              trackColor={{ false: '#ccc', true: theme.accent }}
-            />
           </View>
         </View>
-      </View>
+      )}
 
       {/* 位置情報・都市選択は非表示 */}
 
@@ -796,6 +810,21 @@ export default function SettingsScreen({ navigation }) {
               <Text style={[styles.helperText, { color: theme.textSecondary, marginBottom: 12 }]}>
                 {t('settings.premium.activeDesc')}
               </Text>
+              <TouchableOpacity
+                style={[
+                  styles.reimportButton,
+                  { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, marginBottom: 8 },
+                ]}
+                onPress={() => setShowProTour(true)}
+              >
+                <Text style={[styles.reimportButtonText, { color: theme.text }]}>{t('settings.premium.proTour.seeDetails')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.reimportButton, { backgroundColor: theme.primary, marginBottom: 8 }]}
+                onPress={handleManageSubscription}
+              >
+                <Text style={styles.reimportButtonText}>{t('settings.premium.proTour.manage')}</Text>
+              </TouchableOpacity>
             </>
           ) : (
             <>
@@ -805,6 +834,15 @@ export default function SettingsScreen({ navigation }) {
               <Text style={[styles.helperText, { color: theme.textSecondary, marginBottom: 12 }]}>
                 {t('settings.premium.upgradeDesc')}
               </Text>
+              <TouchableOpacity
+                style={[
+                  styles.reimportButton,
+                  { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, marginBottom: 8 },
+                ]}
+                onPress={() => setShowProTour(true)}
+              >
+                <Text style={[styles.reimportButtonText, { color: theme.text }]}>{t('settings.premium.proTour.seeDetails')}</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.reimportButton, { backgroundColor: theme.primary }]}
                 onPress={presentPaywall}
@@ -934,6 +972,18 @@ export default function SettingsScreen({ navigation }) {
       {/* データ再取り込みは提出版では非表示 */}
       {/* 都市選択モーダルは非表示 */}
     </ScrollView>
+    <ProTourModal
+      visible={showProTour}
+      onClose={() => setShowProTour(false)}
+      onDone={() => {
+        setShowProTour(false);
+        presentPaywall();
+      }}
+      slides={proTourSlides}
+      theme={theme}
+      t={t}
+    />
+    </>
   );
 }
 

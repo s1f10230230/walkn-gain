@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTheme } from '../utils/theme';
 import { useI18n } from '../i18n/I18nProvider';
 import { useSubscription } from '../contexts/SubscriptionContext';
+import ProTourModal from '../components/ProTourModal';
+import { buildProTourSlides } from '../utils/proTourSlides';
 
 // プレミアム特典リスト（最新機能に合わせて更新）
 const PREMIUM_FEATURES = [
@@ -70,10 +72,13 @@ export default function UpgradeScreen({ navigation, route }) {
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
   const { t } = useI18n();
-  const { setDebugPremium } = useSubscription();
+  const { setDebugPremium, trialEligible } = useSubscription();
 
   const [selectedPlan, setSelectedPlan] = useState('yearly');
   const [isLoading, setIsLoading] = useState(false);
+  const [showProTour, setShowProTour] = useState(false);
+
+  const proSlides = useMemo(() => buildProTourSlides(t), [t]);
 
   // 元の画面に戻る
   const handleClose = () => {
@@ -149,6 +154,9 @@ export default function UpgradeScreen({ navigation, route }) {
         </Text>
         <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
             AIとデータで、歩く毎日をフルブースト。
+        </Text>
+        <Text style={[styles.trialNote, { color: trialEligible ? theme.primary : theme.textSecondary }]}>
+          {trialEligible ? '初回3日間の無料トライアルが適用されます' : 'トライアルは適用対象外です'}
         </Text>
       </View>
 
@@ -256,6 +264,16 @@ export default function UpgradeScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
+        {/* Pro詳細モーダル起動 */}
+        <TouchableOpacity
+          style={[styles.detailButton, { borderColor: theme.primary }]}
+          onPress={() => setShowProTour(true)}
+        >
+          <Text style={[styles.detailButtonText, { color: theme.primary }]}>
+            {t('settings.premium.proTour.seeDetails')}
+          </Text>
+        </TouchableOpacity>
+
         {/* 購入ボタン */}
         <TouchableOpacity
           style={[styles.purchaseButton, { backgroundColor: theme.primary }]}
@@ -266,7 +284,11 @@ export default function UpgradeScreen({ navigation, route }) {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.purchaseButtonText}>
-              {selectedPlan === 'yearly' ? '年額プランで始める' : '月額プランで始める'}
+              {trialEligible
+                ? '3日トライアルを開始'
+                : selectedPlan === 'yearly'
+                  ? '年額プランで始める'
+                  : '月額プランで始める'}
             </Text>
           )}
         </TouchableOpacity>
@@ -294,6 +316,15 @@ export default function UpgradeScreen({ navigation, route }) {
           同じ価格で自動的に更新されます。
         </Text>
       </ScrollView>
+
+      <ProTourModal
+        visible={showProTour}
+        onClose={() => setShowProTour(false)}
+        onDone={() => setShowProTour(false)}
+        slides={proSlides}
+        theme={theme}
+        t={t}
+      />
     </View>
   );
 }
@@ -337,6 +368,11 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 16,
+  },
+  trialNote: {
+    fontSize: 13,
+    marginTop: 6,
+    textAlign: 'center',
   },
   featuresCard: {
     borderRadius: 16,
@@ -421,6 +457,18 @@ const styles = StyleSheet.create({
   planNote: {
     fontSize: 12,
     marginTop: 2,
+  },
+  detailButton: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 8,
+    borderWidth: 1,
+  },
+  detailButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   purchaseButton: {
     borderRadius: 12,

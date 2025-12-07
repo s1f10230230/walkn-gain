@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Platform, NativeModules } from 'react-native';
-import Purchases, { LOG_LEVEL } from 'react-native-purchases';
+import Purchases, { LOG_LEVEL, INTRO_ELIGIBILITY_STATUS } from 'react-native-purchases';
 
 const { PaywallModule } = NativeModules;
 
@@ -27,6 +27,7 @@ export const PREMIUM_LIMITS = {
 const SubscriptionContext = createContext({
   isPremium: false,
   isLoading: true,
+  trialEligible: true,
   limits: FREE_LIMITS,
   checkSubscription: () => {},
   presentPaywall: () => {},
@@ -38,6 +39,7 @@ export function SubscriptionProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
   const [debugOverride, setDebugOverride] = useState(null); // null = no override, true/false = force value
+  const [trialEligible, setTrialEligible] = useState(true);
 
   // RevenueCat初期化
   useEffect(() => {
@@ -56,6 +58,7 @@ export function SubscriptionProvider({ children }) {
 
       setIsInitialized(true);
       await checkSubscriptionStatus();
+      await checkTrialEligibility();
     } catch (error) {
       console.error('Error initializing RevenueCat:', error);
       setIsLoading(false);
@@ -78,7 +81,24 @@ export function SubscriptionProvider({ children }) {
     if (!isInitialized) return;
     setIsLoading(true);
     await checkSubscriptionStatus();
+    await checkTrialEligibility();
   }, [isInitialized]);
+
+  // トライアル/イントロ価格の適格性チェック
+  const checkTrialEligibility = useCallback(async () => {
+    try {
+      const eligibilityMap = await Purchases.checkTrialOrIntroductoryPriceEligibility([
+        'premium_monthly',
+        'premium_yearly',
+      ]);
+      const eligValues = Object.values(eligibilityMap || {});
+      const eligible = eligValues.some((v) => v?.status === INTRO_ELIGIBILITY_STATUS.ELIGIBLE);
+      setTrialEligible(eligible);
+    } catch (error) {
+      console.warn('Error checking trial eligibility:', error);
+      setTrialEligible(false);
+    }
+  }, []);
 
   // Paywallを表示（ネイティブSwiftUI版）
   const presentPaywall = useCallback(async () => {
@@ -87,7 +107,7 @@ export function SubscriptionProvider({ children }) {
     try {
       // iOSの場合はネイティブPaywallを使用
       if (Platform.OS === 'ios' && PaywallModule) {
-        const result = await PaywallModule.showPaywall();
+        const result = await PaywallModule.showPaywall(trialEligible === true);
         if (result?.action === 'purchased') {
           await checkSubscriptionStatus();
           return true;
@@ -102,7 +122,7 @@ export function SubscriptionProvider({ children }) {
       console.error('Error presenting paywall:', error);
       return false;
     }
-  }, [isInitialized]);
+  }, [isInitialized, trialEligible]);
 
   // 購入を復元
   const restorePurchases = useCallback(async () => {
@@ -150,6 +170,7 @@ export function SubscriptionProvider({ children }) {
   const value = {
     isPremium: effectivePremium,
     isLoading,
+    trialEligible,
     limits,
     checkSubscription,
     presentPaywall,

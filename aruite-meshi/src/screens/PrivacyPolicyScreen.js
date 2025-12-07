@@ -83,7 +83,7 @@ export default function PrivacyPolicyScreen() {
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('policy.sections.contact.title')}</Text>
           <Text style={[styles.paragraph, { color: theme.textSecondary }]}>{t('policy.sections.contact.intro')}</Text>
           <Text style={[styles.paragraph, { color: theme.textSecondary }]}>
-            {t('policy.sections.contact.emailLabel')}: support@walkngain.app{'\n'}
+            {t('policy.sections.contact.emailLabel')}: ask.help.thisapp@gmail.com{'\n'}
             {t('policy.sections.contact.appNameLabel')}: Walk'n Gain
           </Text>
         </View>

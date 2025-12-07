@@ -21,6 +21,7 @@ import {
   Image,
   Platform,
   ImageBackground,
+  Alert,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -197,6 +198,8 @@ import {
 } from "../utils/weather";
 import { generateAdaptivePlanFromStorage } from "../utils/aiAdaptiveGoal";
 import { generateDailyAIFeedback } from "../utils/aiFeedback";
+import { getTrialState } from "../utils/trial";
+import { requestCalendarPermissions } from "../utils/calendar";
 
 export default function HomeScreen({ navigation, route }) {
   // RecentNotesコンポーネントへの参照
@@ -216,6 +219,10 @@ export default function HomeScreen({ navigation, route }) {
   const [lastFeedbackDate, setLastFeedbackDate] = useState(null);
   const [settingsCache, setSettingsCache] = useState(null);
   const [feedbackLineAnims, setFeedbackLineAnims] = useState([]);
+  const [trialState, setTrialState] = useState(null);
+  const [bestDay, setBestDay] = useState(null);
+  const [suggestedWalk, setSuggestedWalk] = useState(null);
+  const [calendarGranted, setCalendarGranted] = useState(null);
 
   // Weather History Sync (One-time on mount)
   useEffect(() => {
@@ -249,6 +256,59 @@ export default function HomeScreen({ navigation, route }) {
       refreshDailyFeedback();
     }
   }, [isSelectedToday, selectedDate, lastFeedbackDate, refreshDailyFeedback]);
+
+  useEffect(() => {
+    // トライアル状態の取得
+    const loadTrial = async () => {
+      try {
+        const state = await getTrialState();
+        setTrialState(state);
+      } catch (_) {
+        setTrialState(null);
+      }
+    };
+    loadTrial();
+
+    // ベストデイ取得（トップ1）
+    const loadBestDay = async () => {
+      try {
+        const top = await getTop3Days();
+        if (Array.isArray(top) && top.length > 0) {
+          setBestDay(top[0]);
+        }
+      } catch (_) {}
+    };
+    loadBestDay();
+
+    // 簡易ウォーキング予約提案（時間帯のみでサジェスト）
+    const computeSuggestion = () => {
+      const now = new Date();
+      const morning = now.getHours() < 12;
+      setSuggestedWalk({
+        time: morning ? "08:00" : "18:00",
+        duration: 15,
+        label: morning ? t("home.trial.walkLabelMorning") : t("home.trial.walkLabelEvening"),
+      });
+    };
+    computeSuggestion();
+
+    // カレンダー権限確認（プロンプトはボタンで実行するためここはスキップ）
+    setCalendarGranted(null);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const loadTrial = async () => {
+        try {
+          const state = await getTrialState();
+          setTrialState(state);
+        } catch (_) {
+          setTrialState(null);
+        }
+      };
+      loadTrial();
+    }, [])
+  );
 
   useEffect(() => {
     const lines = feedbackPlan?.lines || [];
@@ -1638,8 +1698,17 @@ export default function HomeScreen({ navigation, route }) {
         // 注意: progressの再計算は useEffect([steps, goal]) に任せる
         // ここで計算すると steps のクロージャが古い値を参照してしまう
       };
+      const reloadTrial = async () => {
+        try {
+          const state = await getTrialState();
+          setTrialState(state);
+        } catch (_) {
+          setTrialState(null);
+        }
+      };
       reloadFavorites();
       reloadSettings();
+      reloadTrial();
       loadFeedbackMessage(selectedDateRef.current || selectedDate);
     }, [loadFeedbackMessage, selectedDate])
   );
@@ -2486,7 +2555,7 @@ export default function HomeScreen({ navigation, route }) {
         <View style={[styles.topIconRow, { top: insets.top + 30 }]}>
           <TouchableOpacity
             accessibilityRole="button"
-            accessibilityLabel="今日のフィードバックを開く"
+            accessibilityLabel={t("home.a11y.openFeedback")}
             hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
             style={[styles.mailIconButton, { backgroundColor: theme.card }]}
             onPress={handleToggleFeedback}
@@ -2530,7 +2599,7 @@ export default function HomeScreen({ navigation, route }) {
           >
               <View style={styles.feedbackDrawerHeader}>
                 <Text style={[styles.feedbackTitle, { color: theme.text }]}>
-                  今日のフィードバック
+                  {t("home.feedback.title")}
                 </Text>
               <View style={[styles.aiBadge, { borderColor: theme.border }]}>
                 <MaterialCommunityIcons name="star-four-points" size={14} color={theme.accent} />
@@ -2545,7 +2614,7 @@ export default function HomeScreen({ navigation, route }) {
                   <ActivityIndicator size="small" color={theme.text} />
                 ) : (
                   <Text style={[styles.feedbackRefreshText, { color: theme.textSecondary }]}>
-                    更新
+                    {t("home.feedback.refresh")}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -2728,22 +2797,24 @@ export default function HomeScreen({ navigation, route }) {
         </View>
 
         {/* スワイプ可能なメインコンテンツエリア */}
-        <Animated.View
-          {...panResponder.panHandlers}
-          style={{
-            transform: [{ translateX: slideAnim }],
-            position: "relative",
-            zIndex: 5,
-          }}
-        >
-          {/* フリップ可能なデータカード（タブとフリップ連動） */}
-          <ScrollView
-            style={{ flex: 1, width: width }}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}
-            showsVerticalScrollIndicator={false}
-          >
-            <DataFlipCard
-              theme={theme}
+            <Animated.View
+              {...panResponder.panHandlers}
+              style={{
+                transform: [{ translateX: slideAnim }],
+                position: "relative",
+                zIndex: 5,
+              }}
+            >
+              {/* フリップ可能なデータカード（タブとフリップ連動） */}
+              <ScrollView
+                style={{ flex: 1, width: width }}
+                contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}
+                showsVerticalScrollIndicator={false}
+              >
+                {/* トライアル関連UIは非表示 */}
+
+                <DataFlipCard
+                  theme={theme}
               t={t}
               selectedDate={selectedDate}
               steps={steps}

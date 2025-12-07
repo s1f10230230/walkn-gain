@@ -163,13 +163,36 @@ export default function DiaryCard({
       let image;
       if (source === 'camera') {
         image = await ImagePicker.openCamera(cropOptions);
+        if (image?.path) {
+          const newPhotos = [...photos, image.path].slice(0, limits.photosPerDay);
+          await savePhotos(newPhotos);
+        }
       } else {
-        image = await ImagePicker.openPicker(cropOptions);
-      }
+        const remainingSlots = limits.photosPerDay === Infinity
+          ? 9
+          : Math.max(1, limits.photosPerDay - photos.length);
 
-      if (image && image.path) {
-        const newPhotos = [...photos, image.path].slice(0, limits.photosPerDay);
-        await savePhotos(newPhotos);
+        // Pro かつ複数枚余裕があるときはまとめて選択（クロップなし）
+        if (isPremium && remainingSlots > 1) {
+          const images = await ImagePicker.openPicker({
+            multiple: true,
+            mediaType: 'photo',
+            compressImageQuality: 0.8,
+            maxFiles: remainingSlots,
+          });
+          const paths = (images || []).map((img) => img.path).filter(Boolean);
+          if (paths.length) {
+            const newPhotos = [...photos, ...paths].slice(0, limits.photosPerDay);
+            await savePhotos(newPhotos);
+          }
+        } else {
+          // 単枚は従来どおりクロップして配置用に整える
+          image = await ImagePicker.openPicker(cropOptions);
+          if (image?.path) {
+            const newPhotos = [...photos, image.path].slice(0, limits.photosPerDay);
+            await savePhotos(newPhotos);
+          }
+        }
       }
     } catch (error) {
       // ユーザーがキャンセルした場合は何もしない

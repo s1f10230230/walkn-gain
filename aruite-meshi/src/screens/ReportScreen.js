@@ -13,12 +13,13 @@ import {
   Modal,
   Animated,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { getTheme } from '../utils/theme';
 import { getStepsInRange } from '../utils/healthKit';
-import { calculateCalories, toDateKeyLocal } from '../utils/calculations';
+import { calculateCalories, toDateKeyLocal, formatDateSlash } from '../utils/calculations';
 import { getUserProfile, getMultipleDaysData, getSettings } from '../utils/storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import PaperTexture from '../components/PaperTexture';
@@ -213,6 +214,16 @@ export default function ReportScreen() {
   // 環境分析データをロード
   const loadEnvironmentAnalysis = async () => {
     try {
+      const todayKey = toDateKeyLocal(new Date());
+      const cached = await AsyncStorage.getItem(`envAnalysis:${todayKey}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.dateKey === todayKey && parsed.data) {
+          setEnvAnalysis(parsed.data);
+          return;
+        }
+      }
+
       // 過去92日分の日付キーを生成
       const dateKeys = [];
       const today = new Date();
@@ -304,16 +315,19 @@ export default function ReportScreen() {
         }
       }
 
-      // 最適気温を計算 (平均歩数が最も高い気温帯)
+      // ゾーン別平均
+      const tempZoneAvgs = tempZoneTotals.map((total, i) =>
+        tempZoneCounts[i] > 0 ? Math.round(total / tempZoneCounts[i]) : 0
+      );
+
+      // 最適気温ゾーンを決定（サンプルがあるゾーンのうち最大平均を採用）
+      const zoneMidTemps = [2, 10, 20, 27, 33]; // 各ゾーンの中心目安
       let bestTempKey = null;
       let bestTempAvg = 0;
-      Object.entries(tempStepsMap).forEach(([temp, stepsArr]) => {
-        if (stepsArr.length >= 3) { // 最低3日のデータが必要
-          const avg = stepsArr.reduce((a, b) => a + b, 0) / stepsArr.length;
-          if (avg > bestTempAvg) {
-            bestTempAvg = avg;
-            bestTempKey = parseInt(temp);
-          }
+      tempZoneAvgs.forEach((avg, idx) => {
+        if (tempZoneCounts[idx] > 0 && avg > bestTempAvg) {
+          bestTempAvg = avg;
+          bestTempKey = zoneMidTemps[idx];
         }
       });
 
@@ -324,12 +338,7 @@ export default function ReportScreen() {
         else if (bestTempKey >= 25) tempTitle = '🔥 Summer Pro';
       }
 
-      // ゾーン別平均
-      const tempZoneAvgs = tempZoneTotals.map((total, i) =>
-        tempZoneCounts[i] > 0 ? Math.round(total / tempZoneCounts[i]) : 0
-      );
-
-      setEnvAnalysis({
+      const newAnalysis = {
         bestTemp: bestTempKey,
         bestTempRange: bestTempKey !== null ? `${bestTempKey - 2}°C - ${bestTempKey + 3}°C` : null,
         tempTitle,
@@ -339,7 +348,10 @@ export default function ReportScreen() {
         rainyHero: rainyHeroData,
         hasEnoughData: true,
         dataCount: daysWithWeather.length,
-      });
+        dateKey: todayKey,
+      };
+      setEnvAnalysis(newAnalysis);
+      await AsyncStorage.setItem(`envAnalysis:${todayKey}`, JSON.stringify({ dateKey: todayKey, data: newAnalysis }));
 
     } catch (error) {
       console.error('Error loading environment analysis:', error);
@@ -413,28 +425,34 @@ export default function ReportScreen() {
       );
 
       // 型判定
-      let type = 'バランス型';
-      if (morning > evening * 1.2 && morning > midday * 1.1) type = '朝型ウォーカー';
-      else if (evening > morning * 1.2 && evening > midday * 1.1) type = '夜型ウォーカー';
-      else if (weekendTotal > weekdayTotal * 1.2) type = '週末集中型';
-      else if (weekdayTotal > weekendTotal * 1.2) type = '平日積み上げ型';
-      else if (sunnyTotal > rainyTotal * 1.5 && sunnyCount > 3) type = '晴れ優先型';
+      let type = t('report.monthly.types.balance');
+      if (morning > evening * 1.2 && morning > midday * 1.1) type = t('report.monthly.types.morning');
+      else if (evening > morning * 1.2 && evening > midday * 1.1) type = t('report.monthly.types.night');
+      else if (weekendTotal > weekdayTotal * 1.2) type = t('report.monthly.types.weekend');
+      else if (weekdayTotal > weekendTotal * 1.2) type = t('report.monthly.types.weekday');
+      else if (sunnyTotal > rainyTotal * 1.5 && sunnyCount > 3) type = t('report.monthly.types.sunny');
 
       const insights = [];
       insights.push(`先月は合計${formatNumber(total)}歩、平均${formatNumber(average)}歩/日。`);
       insights.push(`達成率は${achievedRate}%でした。`);
-      if (type === '朝型ウォーカー') {
-        insights.push('朝に強いタイプ。夜は軽めの散歩で底上げを。');
-      } else if (type === '夜型ウォーカー') {
-        insights.push('夕方〜夜に歩きやすい傾向。朝に短い散歩を足すと安定します。');
-      } else if (type === '週末集中型') {
-        insights.push('週末に歩数が伸びています。平日に10分だけ足すと平均が上がります。');
-      } else if (type === '平日積み上げ型') {
-        insights.push('平日に積み上げできています。週末の維持が次のステップ。');
-      } else if (type === '晴れ優先型') {
-        insights.push('晴れの日に大きく伸びるタイプ。雨の日は室内1,000歩を目安に。');
+      if (type === t('report.monthly.types.morning')) {
+        insights.push(t('report.monthly.insights.morning1'));
+        insights.push(t('report.monthly.insights.morning2'));
+      } else if (type === t('report.monthly.types.night')) {
+        insights.push(t('report.monthly.insights.night1'));
+        insights.push(t('report.monthly.insights.night2'));
+      } else if (type === t('report.monthly.types.weekend')) {
+        insights.push(t('report.monthly.insights.weekend1'));
+        insights.push(t('report.monthly.insights.weekend2'));
+      } else if (type === t('report.monthly.types.weekday')) {
+        insights.push(t('report.monthly.insights.weekday1'));
+        insights.push(t('report.monthly.insights.weekday2'));
+      } else if (type === t('report.monthly.types.sunny')) {
+        insights.push(t('report.monthly.insights.sunny1'));
+        insights.push(t('report.monthly.insights.sunny2'));
       } else {
-        insights.push('大きな偏りは少なめ。好調な時間帯を1つ決めて増やしましょう。');
+        insights.push(t('report.monthly.insights.balance1'));
+        insights.push(t('report.monthly.insights.balance2'));
       }
 
       const totalStepsAll = total || 1;
@@ -545,7 +563,7 @@ export default function ReportScreen() {
         insights.push('達成率がやや低め。今日は短い散歩からリズムを戻しましょう。');
       }
       if (last.best?.steps) {
-        insights.push(`ベストデイは ${formatDate(last.best.date).replace('年', '/').replace('月', '/').replace('日', '')} に ${formatNumber(last.best.steps)} 歩でした。`);
+        insights.push(`ベストデイは ${formatDate(last.best.date, locale)} に ${formatNumber(last.best.steps)} ${t('report.common.steps')}でした。`);
       }
       const wk = last.weekdayVsWeekend;
       const weekdayAvg = wk.weekday.count ? Math.round(wk.weekday.total / wk.weekday.count) : 0;
@@ -759,7 +777,7 @@ export default function ReportScreen() {
           STEPS
         </Text>
         <Text style={[styles.personalBestDate, { color: theme.text }]}>
-          {formatDate(item.date)}
+          {formatDate(item.date, locale)}
         </Text>
 
         {index === 0 && (
@@ -771,7 +789,7 @@ export default function ReportScreen() {
         <View style={styles.tapHint}>
           <MaterialCommunityIcons name="gesture-tap" size={14} color={theme.textSecondary} />
           <Text style={[styles.tapHintText, { color: theme.textSecondary }]}>
-            タップして詳細へ
+            {locale === 'ja' ? 'タップして詳細へ' : 'Tap for details'}
           </Text>
         </View>
       </TouchableOpacity>
@@ -803,6 +821,57 @@ export default function ReportScreen() {
         <Text style={[styles.headerTitle, { color: theme.text }]}>Report</Text>
       </View>
 
+      {/* TOTAL JOURNEY Card（無料・先頭表示） */}
+      <View style={styles.sectionContainer}>
+        <View style={styles.sectionHeader}>
+          <MaterialCommunityIcons name="map-marker-path" size={20} color={COLORS.teal} />
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>TOTAL JOURNEY</Text>
+        </View>
+
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => setShowJourneyModal(true)}
+          style={[styles.card, { backgroundColor: theme.isDark ? theme.card : '#FFFFFF', marginHorizontal: 0 }]}
+        >
+          <PaperTexture isDark={theme.isDark} />
+          <View style={styles.cardTitleRow}>
+            <Text style={[styles.dataSourceLabel, { color: theme.textSecondary }]}>
+              {t('report.pastDaysData', { count: dataDaysCount })}
+            </Text>
+            <MaterialCommunityIcons name="chevron-right" size={18} color={theme.textSecondary} />
+          </View>
+
+          <View style={styles.journeyContent}>
+            <View style={styles.journeyLeft}>
+              <Text style={[styles.totalSteps, { color: theme.text }]}>
+                {formatNumber(stats.totalSteps)}
+              </Text>
+                  <Text style={[styles.totalStepsLabel, { color: theme.textSecondary }]}>
+                STEPS
+              </Text>
+
+              <View style={styles.subStats}>
+                <Text style={[styles.subStatText, { color: theme.textSecondary }]}>
+                  Total distance: <Text style={{ color: theme.text, fontWeight: '700' }}>{Math.round(stats.totalDistance)} km</Text>
+                </Text>
+                <Text style={[styles.subStatText, { color: theme.textSecondary }]}>
+                  Total calories: <Text style={{ color: theme.text, fontWeight: '700' }}>{formatNumber(Math.round(stats.totalCalories))} kcal</Text>
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.journeyRight}>
+              <View style={styles.mapIllustration}>
+                <MaterialCommunityIcons name="map-marker-path" size={48} color={COLORS.teal} />
+              </View>
+              <Text style={[styles.landmarkText, { color: theme.textSecondary }]}>
+                {getDistanceLandmark(stats.totalDistance)}
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </View>
+
       {/* WEEKLY RECAP */}
       <View style={styles.sectionContainer}>
         <View style={styles.sectionHeader}>
@@ -811,21 +880,42 @@ export default function ReportScreen() {
         </View>
         <View style={[styles.card, { backgroundColor: theme.isDark ? theme.card : '#FFFFFF', marginHorizontal: 0 }]}>
           <PaperTexture isDark={theme.isDark} />
-          {weeklySummary.ready ? (
+          {!isPremium ? (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={presentPaywall}
+              style={{ alignItems: 'center', paddingVertical: 24 }}
+            >
+              <View style={styles.envTeaserLockBadge}>
+                <MaterialCommunityIcons name="crown" size={18} color="#5D4E37" />
+                <Text style={styles.envTeaserProLabel}>PRO</Text>
+              </View>
+              <Text style={[styles.envTeaserTitle, { color: theme.text }]}>{t('report.locks.weeklyTitle')}</Text>
+              <Text style={[styles.envTeaserDescription, { color: theme.textSecondary }]}>
+                {t('report.locks.weeklyDesc')}
+              </Text>
+              <TouchableOpacity
+                style={[styles.envTeaserButton, { marginTop: 4 }]}
+                onPress={presentPaywall}
+              >
+                <Text style={styles.envTeaserButtonText}>{t('report.locks.button')}</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          ) : weeklySummary.ready ? (
             <>
               <View style={styles.weeklyStatsRow}>
                 <View style={styles.weeklyStat}>
-                  <Text style={[styles.weeklyStatLabel, { color: theme.textSecondary }]}>合計</Text>
+                  <Text style={[styles.weeklyStatLabel, { color: theme.textSecondary }]}>{t('report.weekly.total')}</Text>
                   <Text style={[styles.weeklyStatValue, { color: theme.text }]}>{formatNumber(weeklySummary.total)}</Text>
-                  <Text style={[styles.weeklyStatSub, { color: theme.textSecondary }]}>steps / 7日</Text>
+                  <Text style={[styles.weeklyStatSub, { color: theme.textSecondary }]}>steps / 7</Text>
                 </View>
                 <View style={styles.weeklyStat}>
-                  <Text style={[styles.weeklyStatLabel, { color: theme.textSecondary }]}>平均</Text>
+                  <Text style={[styles.weeklyStatLabel, { color: theme.textSecondary }]}>{t('report.weekly.avg')}</Text>
                   <Text style={[styles.weeklyStatValue, { color: theme.text }]}>{formatNumber(weeklySummary.average)}</Text>
-                  <Text style={[styles.weeklyStatSub, { color: theme.textSecondary }]}>steps / 日</Text>
+                  <Text style={[styles.weeklyStatSub, { color: theme.textSecondary }]}>steps / day</Text>
                 </View>
                 <View style={styles.weeklyStat}>
-                  <Text style={[styles.weeklyStatLabel, { color: theme.textSecondary }]}>達成率</Text>
+                  <Text style={[styles.weeklyStatLabel, { color: theme.textSecondary }]}>{t('report.weekly.rate')}</Text>
                   <Text style={[styles.weeklyStatValue, { color: theme.text }]}>{weeklySummary.achievedRate}%</Text>
                   <Text style={[styles.weeklyStatSub, { color: theme.textSecondary }]}>
                     {weeklySummary.achievedDays} / 7日
@@ -833,31 +923,31 @@ export default function ReportScreen() {
                 </View>
               </View>
 
-              <View style={styles.weeklyTrendRow}>
-                <View style={styles.trendBadge}>
-                  <MaterialCommunityIcons
-                    name={weeklySummary.trendPct >= 0 ? 'trending-up' : 'trending-down'}
-                    size={16}
-                    color={weeklySummary.trendPct >= 0 ? COLORS.teal : COLORS.orange}
-                  />
-                  <Text
-                    style={[
-                      styles.trendText,
-                      { color: weeklySummary.trendPct >= 0 ? COLORS.teal : COLORS.orange },
-                    ]}
-                  >
-                    {weeklySummary.trendPct === null
-                      ? '先週比: データ不足'
-                      : `先週比 ${weeklySummary.trendPct >= 0 ? '+' : ''}${weeklySummary.trendPct}%`}
+                <View style={styles.weeklyTrendRow}>
+                  <View style={styles.trendBadge}>
+                    <MaterialCommunityIcons
+                      name={weeklySummary.trendPct >= 0 ? 'trending-up' : 'trending-down'}
+                      size={16}
+                      color={weeklySummary.trendPct >= 0 ? COLORS.teal : COLORS.orange}
+                    />
+                    <Text
+                      style={[
+                        styles.trendText,
+                        { color: weeklySummary.trendPct >= 0 ? COLORS.teal : COLORS.orange },
+                      ]}
+                    >
+                      {weeklySummary.trendPct === null
+                      ? t('report.weekly.trendNoData')
+                      : `${t('report.weekly.trendPrefix')} ${weeklySummary.trendPct >= 0 ? '+' : ''}${weeklySummary.trendPct}%`}
+                    </Text>
+                  </View>
+                  {weeklySummary.bestDay?.date && (
+                    <Text style={[styles.bestDayText, { color: theme.text }]}>
+                    {t('report.weekly.best')}: {formatDate(weeklySummary.bestDay.date, locale)}
+                    {' '}({formatNumber(weeklySummary.bestDay.steps)} {t('report.common.steps')})
                   </Text>
+                  )}
                 </View>
-                {weeklySummary.bestDay?.date && (
-                  <Text style={[styles.bestDayText, { color: theme.text }]}>
-                    ベスト: {formatDate(weeklySummary.bestDay.date).replace('年', '/').replace('月', '/').replace('日', '')}
-                    {' '}({formatNumber(weeklySummary.bestDay.steps)}歩)
-                  </Text>
-                )}
-              </View>
 
               <View style={styles.insightsContainer}>
                 <View style={styles.weeklyInsightHeader}>
@@ -910,7 +1000,28 @@ export default function ReportScreen() {
         </View>
         <View style={[styles.card, { backgroundColor: theme.isDark ? theme.card : '#FFFFFF', marginHorizontal: 0 }]}>
           <PaperTexture isDark={theme.isDark} />
-          {monthlySummary.ready ? (
+          {!isPremium ? (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={presentPaywall}
+              style={{ alignItems: 'center', paddingVertical: 24 }}
+            >
+              <View style={styles.envTeaserLockBadge}>
+                <MaterialCommunityIcons name="crown" size={18} color="#5D4E37" />
+                <Text style={styles.envTeaserProLabel}>PRO</Text>
+              </View>
+              <Text style={[styles.envTeaserTitle, { color: theme.text }]}>{t('report.locks.monthlyTitle')}</Text>
+              <Text style={[styles.envTeaserDescription, { color: theme.textSecondary }]}>
+                {t('report.locks.monthlyDesc')}
+              </Text>
+              <TouchableOpacity
+                style={[styles.envTeaserButton, { marginTop: 4 }]}
+                onPress={presentPaywall}
+              >
+                <Text style={styles.envTeaserButtonText}>{t('report.locks.button')}</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          ) : monthlySummary.ready ? (
             <>
                 <View style={styles.monthlyHeaderRow}>
                   <View style={styles.typeBadge}>
@@ -931,6 +1042,14 @@ export default function ReportScreen() {
                     labelColor={theme.text}
                     gridColor={theme.textSecondary}
                     theme={theme}
+                    labelMap={{
+                      morning: t('report.monthly.types.morning'),
+                      burst: t('report.monthly.axes.burst'),
+                      power: t('report.monthly.axes.power'),
+                      night: t('report.monthly.types.night'),
+                      keep: t('report.monthly.axes.keep'),
+                      weekend: t('report.monthly.types.weekend'),
+                    }}
                   />
                 </View>
               )}
@@ -969,57 +1088,6 @@ export default function ReportScreen() {
             </View>
           )}
         </View>
-      </View>
-
-      {/* TOTAL JOURNEY Card（無料） */}
-      <View style={styles.sectionContainer}>
-        <View style={styles.sectionHeader}>
-          <MaterialCommunityIcons name="map-marker-path" size={20} color={COLORS.teal} />
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>TOTAL JOURNEY</Text>
-        </View>
-
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => setShowJourneyModal(true)}
-          style={[styles.card, { backgroundColor: theme.isDark ? theme.card : '#FFFFFF', marginHorizontal: 0 }]}
-        >
-          <PaperTexture isDark={theme.isDark} />
-          <View style={styles.cardTitleRow}>
-            <Text style={[styles.dataSourceLabel, { color: theme.textSecondary }]}>
-              過去{dataDaysCount}日分
-            </Text>
-            <MaterialCommunityIcons name="chevron-right" size={18} color={theme.textSecondary} />
-          </View>
-
-          <View style={styles.journeyContent}>
-            <View style={styles.journeyLeft}>
-              <Text style={[styles.totalSteps, { color: theme.text }]}>
-                {formatNumber(stats.totalSteps)}
-              </Text>
-              <Text style={[styles.totalStepsLabel, { color: theme.textSecondary }]}>
-                STEPS
-              </Text>
-
-              <View style={styles.subStats}>
-                <Text style={[styles.subStatText, { color: theme.textSecondary }]}>
-                  Total distance: <Text style={{ color: theme.text, fontWeight: '700' }}>{Math.round(stats.totalDistance)} km</Text>
-                </Text>
-                <Text style={[styles.subStatText, { color: theme.textSecondary }]}>
-                  Total calories: <Text style={{ color: theme.text, fontWeight: '700' }}>{formatNumber(Math.round(stats.totalCalories))} kcal</Text>
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.journeyRight}>
-              <View style={styles.mapIllustration}>
-                <MaterialCommunityIcons name="map-marker-path" size={48} color={COLORS.teal} />
-              </View>
-              <Text style={[styles.landmarkText, { color: theme.textSecondary }]}>
-                {getDistanceLandmark(stats.totalDistance)}
-              </Text>
-            </View>
-          </View>
-        </TouchableOpacity>
       </View>
 
       {/* PERSONAL BEST Card (Carousel) */}
@@ -1450,7 +1518,10 @@ export default function ReportScreen() {
                   <Text style={styles.rainyHeroEmoji}>🌧️</Text>
                   <Text style={styles.rainyHeroIcon}>🏆</Text>
                   <Text style={styles.rainyHeroText}>
-                    RAINY DAY HERO: {formatDate(envAnalysis.rainyHero.date).slice(5)} - {formatNumber(envAnalysis.rainyHero.steps)} steps!
+                    {t('report.envHero.title', {
+                      date: formatDateSlash(envAnalysis.rainyHero.date),
+                      steps: formatNumber(envAnalysis.rainyHero.steps),
+                    })}
                   </Text>
                 </LinearGradient>
               </TouchableOpacity>

@@ -3,6 +3,7 @@
 
 import Constants from 'expo-constants';
 import { buildFeedbackPrompt, pickVariant } from './aiPrompts';
+import { ensureTrialStart } from './trial';
 
 const OPENAI_MODEL = 'gpt-4o-mini';
 
@@ -88,6 +89,8 @@ export const generateDailyAIFeedback = async ({
   steps,
   userId,
 }) => {
+  // トライアル開始を保証（初回アクセス時に走らせる）
+  ensureTrialStart().catch(() => {});
   const variant = pickVariant({ userId, horizon: 'daily' });
   const payload = {
     date,

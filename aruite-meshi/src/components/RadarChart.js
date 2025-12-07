@@ -47,6 +47,7 @@ const RadarChart = ({
   gridColor = '#E0E0E0',
   labelColor = '#2D3142',
   theme,
+  labelMap = {},
 }) => {
   const scale = size / SIZE;
   const center = CENTER * scale;
@@ -166,6 +167,7 @@ const RadarChart = ({
             const IconComponent = IconCfg.component || MaterialCommunityIcons;
             const iconName = IconCfg.name || 'checkbox-blank-circle-outline';
             const iconColor = IconCfg.color || effectiveLabelColor;
+            const labelText = labelMap[key] || param.label;
             return (
               <View
                 key={`label-${key}`}
@@ -180,7 +182,7 @@ const RadarChart = ({
               >
                 <IconComponent name={iconName} size={16} color={iconColor} />
                 <Text style={[styles.labelText, { color: effectiveLabelColor }]}>
-                  {param.label}
+                  {labelText}
                 </Text>
               </View>
             );
@@ -216,8 +218,11 @@ const styles = StyleSheet.create({
   },
   labelText: {
     marginTop: 2,
-    fontSize: 11,
+    fontSize: 10,
+    lineHeight: 12,
     fontWeight: '700',
+    maxWidth: 70,
+    textAlign: 'center',
   },
 });
 
