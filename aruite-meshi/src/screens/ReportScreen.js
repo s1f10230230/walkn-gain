@@ -28,6 +28,7 @@ import { useI18n } from '../i18n/I18nProvider';
 import { generateWeeklyAIInsight, generateMonthlyAIStyle } from '../utils/aiFeedback';
 import { fetchHourlyWeather } from '../utils/weather';
 import RadarChart from '../components/RadarChart';
+import ScreenContainer from '../components/ScreenContainer';
 // AI機能追加時に有効化
 // import RadarChart from '../components/RadarChart';
 // import { calculateWalkingDna, DNA_PARAMS } from '../utils/walkingDna';
@@ -477,21 +478,24 @@ export default function ReportScreen() {
       };
 
       let aiInsights = null;
-      try {
-        aiInsights = await generateMonthlyAIStyle({
-          locale: locale || 'ja',
-          summary: {
-            type,
-            total,
-            average,
-            achievedRate,
-            bestWindow: morning > evening ? 'morning' : 'evening',
-            weekdayVsWeekend: { weekdayTotal, weekendTotal },
-            weatherBias: { sunnyTotal, rainyTotal },
-          },
-        });
-      } catch (e) {
-        console.warn('[Report] monthly AI insight skipped', e?.message || e);
+      if (isPremium) {
+        try {
+          aiInsights = await generateMonthlyAIStyle({
+            locale: locale || 'ja',
+            detail: 'long',
+            summary: {
+              type,
+              total,
+              average,
+              achievedRate,
+              bestWindow: morning > evening ? 'morning' : 'evening',
+              weekdayVsWeekend: { weekdayTotal, weekendTotal },
+              weatherBias: { sunnyTotal, rainyTotal },
+            },
+          });
+        } catch (e) {
+          console.warn('[Report] monthly AI insight skipped', e?.message || e);
+        }
       }
 
       setMonthlySummary({
@@ -580,20 +584,23 @@ export default function ReportScreen() {
       }
 
       let aiInsights = null;
-      try {
-        aiInsights = await generateWeeklyAIInsight({
-          locale: locale || 'ja',
-          summary: {
-            total: last.total,
-            average: avg,
-            achievedRate,
-            achievedDays: last.achieved,
-            trendPct,
-            bestDay: last.best,
-          },
-        });
-      } catch (e) {
-        console.warn('[Report] weekly AI insight skipped', e?.message || e);
+      if (isPremium) {
+        try {
+          aiInsights = await generateWeeklyAIInsight({
+            locale: locale || 'ja',
+            detail: 'long',
+            summary: {
+              total: last.total,
+              average: avg,
+              achievedRate,
+              achievedDays: last.achieved,
+              trendPct,
+              bestDay: last.best,
+            },
+          });
+        } catch (e) {
+          console.warn('[Report] weekly AI insight skipped', e?.message || e);
+        }
       }
 
       setWeeklySummary({
@@ -811,10 +818,10 @@ export default function ReportScreen() {
 
   return (
     <>
-    <ScrollView
+    <ScreenContainer
+      scroll
       style={[styles.container, { backgroundColor: theme.background }]}
-      contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
-      showsVerticalScrollIndicator={false}
+      contentStyle={{ paddingBottom: 100 + insets.bottom }}
     >
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
@@ -1547,7 +1554,7 @@ export default function ReportScreen() {
         )}
       </View>
 
-    </ScrollView>
+    </ScreenContainer>
 
     {/* Journey詳細モーダル */}
     <Modal

@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TextInput,
   Switch,
   TouchableOpacity,
@@ -41,6 +40,7 @@ import { requestPedometerPermissions } from '../utils/pedometer';
 import ProTourModal from '../components/ProTourModal';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { buildProTourSlides } from '../utils/proTourSlides';
+import ScreenContainer from '../components/ScreenContainer';
 
 export default function SettingsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -102,7 +102,7 @@ export default function SettingsScreen({ navigation }) {
     notifications: true,
     unit: 'kcal',
     goalCalories: '500',
-    language: 'auto',
+    language: 'ja',
     aiMode: 'balance',
     aiAdaptiveGoal: true,
     aiRestDays: true,
@@ -133,7 +133,7 @@ export default function SettingsScreen({ navigation }) {
     ...base,
     dailyGoal: parseInt(base.dailyGoal) || 10000,
     goalCalories: parseInt(base.goalCalories) || 500,
-    language: base.language || 'auto',
+    language: base.language || 'ja',
   });
 
   const loadSettings = async () => {
@@ -301,6 +301,13 @@ export default function SettingsScreen({ navigation }) {
           setReminderEnabled(true);
         }
       } catch (_) {}
+    } else {
+      // 通知OFFならリマインダーもOFFにして、スケジュール済みを止める
+      try {
+        await cancelReminderNotifications();
+        await saveReminderEnabled(false);
+        setReminderEnabled(false);
+      } catch (_) {}
     }
 
     try { logEvent('settings_changed', { field: 'notifications' }); } catch (_) {}
@@ -430,6 +437,13 @@ export default function SettingsScreen({ navigation }) {
     }
   };
 
+  const handleOpenEula = () => {
+    const url = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+    Linking.openURL(url).catch(() => {
+      Alert.alert(t('common.error'), t('settings.alerts.linkOpenError') || 'リンクを開けませんでした。');
+    });
+  };
+
 
   // 30日再取り込み機能は提出版では非表示
 
@@ -486,9 +500,10 @@ export default function SettingsScreen({ navigation }) {
 
   return (
     <>
-    <ScrollView
+    <ScreenContainer
+      scroll
       style={[styles.container, { backgroundColor: theme.background }]}
-      contentContainerStyle={{ paddingTop: insets.top + 20, paddingBottom: 100 + insets.bottom }}
+      contentStyle={{ paddingTop: insets.top + 20, paddingBottom: 100 + insets.bottom }}
     >
       {/* 基本情報 */}
       <View style={styles.section}>
@@ -951,7 +966,7 @@ export default function SettingsScreen({ navigation }) {
         <View style={[styles.card, { backgroundColor: theme.card }] }>
           <View style={styles.infoRow}>
             <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>{t('settings.about.appNameLabel')}</Text>
-            <Text style={[styles.infoValue, { color: theme.text }]}>Walk'n Gain</Text>
+            <Text style={[styles.infoValue, { color: theme.text }]}>Walk'n Life</Text>
           </View>
           <View style={styles.infoRow}>
             <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>{t('settings.about.version')}</Text>
@@ -967,11 +982,18 @@ export default function SettingsScreen({ navigation }) {
             <Text style={[styles.menuText, { color: theme.text }]}>{t('settings.privacyPolicy')}</Text>
             <Text style={[styles.menuArrow, { color: theme.textSecondary }]}>›</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={handleOpenEula}
+          >
+            <Text style={[styles.menuText, { color: theme.text }]}>{t('settings.eula')}</Text>
+            <Text style={[styles.menuArrow, { color: theme.textSecondary }]}>›</Text>
+          </TouchableOpacity>
         </View>
       </View>
       {/* データ再取り込みは提出版では非表示 */}
       {/* 都市選択モーダルは非表示 */}
-    </ScrollView>
+    </ScreenContainer>
     <ProTourModal
       visible={showProTour}
       onClose={() => setShowProTour(false)}

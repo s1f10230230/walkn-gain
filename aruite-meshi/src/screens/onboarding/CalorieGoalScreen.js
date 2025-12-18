@@ -4,19 +4,23 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
+  ScrollView,
   useColorScheme,
+  useWindowDimensions,
 } from 'react-native';
 import { getSettings } from '../../utils/storage';
 import { getTheme } from '../../utils/theme';
 import { useI18n } from '../../i18n/I18nProvider';
 import StepIndicator from '../../components/StepIndicator';
+import ScreenContainer from '../../components/ScreenContainer';
 
 export default function CalorieGoalScreen({ navigation, route }) {
   const { gender, age, height, weight, goalSteps } = route.params;
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
   const { t, formatNumber } = useI18n();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
 
   // 目標歩数から推奨カロリーを計算
   const getRecommendedCalories = () => {
@@ -29,7 +33,8 @@ export default function CalorieGoalScreen({ navigation, route }) {
   const recommendedCalories = getRecommendedCalories();
   const [selectedCalories, setSelectedCalories] = useState(recommendedCalories);
 
-  const calorieOptions = [300, 400, 500, 600, 700, 800];
+  // タブレットでは横幅に収めるため選択肢を3つに絞る
+  const calorieOptions = isTablet ? [300, 400, 500] : [300, 400, 500, 600, 700, 800];
 
   const handleComplete = (skipCalorieGoal = false) => {
     // ProIntro画面へ遷移（保存処理はProIntroで実行）
@@ -44,93 +49,107 @@ export default function CalorieGoalScreen({ navigation, route }) {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={styles.content}>
-        <StepIndicator currentStep={6} theme={theme} />
+    <ScreenContainer scroll style={{ backgroundColor: theme.background }} contentStyle={[styles.scrollContent, isTablet && styles.scrollContentTablet]}>
+        <View style={[styles.content, isTablet && styles.contentTablet]}>
+          <StepIndicator currentStep={6} theme={theme} />
 
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>{t('onboarding.calorie.title')}</Text>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            {t('onboarding.calorie.subtitle')}
-          </Text>
-        </View>
-
-        <View style={styles.mainSection}>
-          <View style={[styles.recommendBox, { backgroundColor: theme.card, borderColor: theme.accent }]}>
-            <Text style={[styles.recommendLabel, { color: theme.accent }]}>{t('onboarding.calorie.recommended')}</Text>
-            <Text style={[styles.recommendValue, { color: theme.text }]}>{formatNumber(recommendedCalories)} {t('units.kcal')}</Text>
-            <Text style={[styles.recommendDescription, { color: theme.textSecondary }]}>
-              {t('onboarding.calorie.autoFromSteps', { steps: formatNumber(goalSteps) })}
+          <View style={[styles.header, isTablet && styles.headerTablet]}>
+            <Text style={[styles.title, { color: theme.text }]}>{t('onboarding.calorie.title')}</Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+              {t('onboarding.calorie.subtitle')}
             </Text>
           </View>
 
-          <Text style={[styles.optionsTitle, { color: theme.text }]}>{t('onboarding.calorie.pickAny')}</Text>
-          <View style={styles.optionsGrid}>
-            {calorieOptions.map((cal) => (
-              <TouchableOpacity
-                key={cal}
-                style={[
-                  styles.optionButton,
-                  { backgroundColor: theme.card, borderColor: theme.border },
-                  selectedCalories === cal && { borderColor: theme.accent, backgroundColor: theme.isDark ? '#1A3A36' : '#E0F7F4' },
-                ]}
-                onPress={() => setSelectedCalories(cal)}
-              >
-                <Text
+          <View style={[styles.mainSection, isTablet && styles.mainSectionTablet]}>
+            <View style={[styles.recommendBox, isTablet && styles.recommendBoxTablet, { backgroundColor: theme.card, borderColor: theme.accent }]}>
+              <Text style={[styles.recommendLabel, { color: theme.accent }]}>{t('onboarding.calorie.recommended')}</Text>
+              <Text style={[styles.recommendValue, { color: theme.text }]}>{formatNumber(recommendedCalories)} {t('units.kcal')}</Text>
+              <Text style={[styles.recommendDescription, { color: theme.textSecondary }]}>
+                {t('onboarding.calorie.autoFromSteps', { steps: formatNumber(goalSteps) })}
+              </Text>
+            </View>
+
+            <Text style={[styles.optionsTitle, { color: theme.text }]}>{t('onboarding.calorie.pickAny')}</Text>
+            <View style={[styles.optionsGrid, isTablet && styles.optionsGridTablet]}>
+              {calorieOptions.map((cal) => (
+                <TouchableOpacity
+                  key={cal}
                   style={[
-                    styles.optionText,
-                    { color: theme.text },
-                    selectedCalories === cal && { color: theme.accent },
+                    styles.optionButton,
+                    isTablet && styles.optionButtonTablet,
+                    { backgroundColor: theme.card, borderColor: theme.border },
+                    selectedCalories === cal && { borderColor: theme.accent, backgroundColor: theme.isDark ? '#1A3A36' : '#E0F7F4' },
                   ]}
+                  onPress={() => setSelectedCalories(cal)}
                 >
-                  {cal}
-                </Text>
-                <Text
-                  style={[
-                    styles.optionUnit,
-                    { color: theme.textTertiary },
-                    selectedCalories === cal && { color: theme.accent },
-                  ]}
-                >
-                  {t('units.kcal')}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={[
+                      styles.optionText,
+                      { color: theme.text },
+                      selectedCalories === cal && { color: theme.accent },
+                    ]}
+                  >
+                    {cal}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.optionUnit,
+                      { color: theme.textTertiary },
+                      selectedCalories === cal && { color: theme.accent },
+                    ]}
+                  >
+                    {t('units.kcal')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={[styles.footer, isTablet && styles.footerTablet]}>
+            <TouchableOpacity
+              style={[styles.completeButton, isTablet && styles.completeButtonTablet, { backgroundColor: theme.primary }]}
+              onPress={() => handleComplete(false)}
+            >
+              <Text style={styles.completeButtonText}>
+                {t('onboarding.calorie.startWith', { cal: formatNumber(selectedCalories) })}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.skipButton}
+              onPress={() => handleComplete(true)}
+            >
+              <Text style={[styles.skipButtonText, { color: theme.textSecondary }]}>{t('onboarding.calorie.setLater')}</Text>
+            </TouchableOpacity>
           </View>
         </View>
-
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={[styles.completeButton, { backgroundColor: theme.primary }]}
-            onPress={() => handleComplete(false)}
-          >
-            <Text style={styles.completeButtonText}>
-              {t('onboarding.calorie.startWith', { cal: formatNumber(selectedCalories) })}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.skipButton}
-            onPress={() => handleComplete(true)}
-          >
-            <Text style={[styles.skipButtonText, { color: theme.textSecondary }]}>{t('onboarding.calorie.setLater')}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
   content: {
     flex: 1,
     paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  contentTablet: {
+    paddingHorizontal: 48,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  scrollContentTablet: {
+    alignItems: 'center',
   },
   header: {
     marginTop: 8,
     marginBottom: 24,
+    alignItems: 'flex-start',
+    width: '100%',
+    maxWidth: 700,
+  },
+  headerTablet: {
+    alignItems: 'center',
   },
   title: {
     fontSize: 32,
@@ -144,6 +163,12 @@ const styles = StyleSheet.create({
   },
   mainSection: {
     flex: 1,
+    width: '100%',
+    maxWidth: 720,
+  },
+  mainSectionTablet: {
+    alignSelf: 'center',
+    maxWidth: 560,
   },
   recommendBox: {
     padding: 24,
@@ -156,6 +181,10 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 4,
     borderWidth: 2,
+  },
+  recommendBoxTablet: {
+    paddingHorizontal: 32,
+    width: '100%',
   },
   recommendLabel: {
     fontSize: 14,
@@ -180,12 +209,22 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 12,
   },
+  optionsGridTablet: {
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 560,
+  },
   optionButton: {
     width: '30%',
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
     borderWidth: 2,
+  },
+  optionButtonTablet: {
+    width: '30%',
+    minWidth: 160,
+    maxWidth: 180,
   },
   optionText: {
     fontSize: 24,
@@ -197,6 +236,13 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingBottom: 32,
+    width: '100%',
+    maxWidth: 700,
+    alignSelf: 'center',
+  },
+  footerTablet: {
+    paddingHorizontal: 12,
+    maxWidth: 560,
   },
   completeButton: {
     paddingVertical: 16,
@@ -208,6 +254,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
+  },
+  completeButtonTablet: {
+    paddingVertical: 18,
   },
   completeButtonText: {
     color: '#FFFFFF',

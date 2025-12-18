@@ -62,7 +62,7 @@ const mapToSupportedLocale = (raw) => {
   const lower = String(raw).toLowerCase();
   if (lower.startsWith("ja")) return "ja";
   if (lower.startsWith("en")) return "en";
-  if (lower.startsWith("zh")) return "zh-Hans";
+  if (lower.startsWith("zh")) return "en";
   return DEFAULT_LOCALE;
 };
 

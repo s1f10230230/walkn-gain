@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Platform, NativeModules } from 'react-native';
+import { Platform, NativeModules, Alert } from 'react-native';
 import Purchases, { LOG_LEVEL, INTRO_ELIGIBILITY_STATUS } from 'react-native-purchases';
+import Constants from 'expo-constants';
 
 const { PaywallModule } = NativeModules;
 
-// RevenueCat API Keys
-const REVENUECAT_API_KEY = 'test_tWBFNJDfeUNKREdSXjlYozMcggc';
+// RevenueCat API Keys（.env / app.config.js の extra から取得）
+const REVENUECAT_API_KEY = Constants?.expoConfig?.extra?.REVENUECAT_API_KEY || '';
 const ENTITLEMENT_ID = "Walk'n Gain Pro";
 
 // 無料プランの制限
@@ -50,11 +51,15 @@ export function SubscriptionProvider({ children }) {
     try {
       Purchases.setLogLevel(LOG_LEVEL.VERBOSE);
 
-      if (Platform.OS === 'ios') {
-        await Purchases.configure({ apiKey: REVENUECAT_API_KEY });
-      } else if (Platform.OS === 'android') {
-        await Purchases.configure({ apiKey: REVENUECAT_API_KEY });
+      const apiKey = REVENUECAT_API_KEY;
+      if (!apiKey) {
+        console.warn('[RevenueCat] API key is not set. Set REVENUECAT_API_KEY in .env / app.config.js');
+        setIsInitialized(false);
+        setIsLoading(false);
+        return;
       }
+
+      await Purchases.configure({ apiKey });
 
       setIsInitialized(true);
       await checkSubscriptionStatus();
@@ -107,17 +112,77 @@ export function SubscriptionProvider({ children }) {
     try {
       // iOSの場合はネイティブPaywallを使用
       if (Platform.OS === 'ios' && PaywallModule) {
-        const result = await PaywallModule.showPaywall(trialEligible === true);
-        if (result?.action === 'purchased') {
-          await checkSubscriptionStatus();
-          return true;
+        try {
+          console.log('[RevenueCat] presentPaywall: showing native PaywallModule');
+          const result = await PaywallModule.showPaywall(trialEligible === true);
+          if (result?.action === 'purchased') {
+            await checkSubscriptionStatus();
+            return true;
+          }
+          console.log('[RevenueCat] presentPaywall: native paywall dismissed', result);
+          return false;
+        } catch (e) {
+          console.warn('[RevenueCat] Native paywall failed, falling back to JS purchase flow', e);
+          // fallthrough to JS fallback
         }
-        return false;
       }
 
-      // Android等のフォールバック（今後対応予定）
-      console.warn('Native paywall not available on this platform');
-      return false;
+      // フォールバック: JS側でOfferingを取得して購入ダイアログを出す
+      const offerings = await Purchases.getOfferings();
+      const packages = offerings?.current?.availablePackages || [];
+      if (!packages.length) {
+        Alert.alert('Purchase unavailable', '現在購入情報を取得できませんでした。しばらくしてからお試しください。');
+        return false;
+      }
+      const annual = packages.find((p) => p.packageType === 'annual');
+      const monthly = packages.find((p) => p.packageType === 'monthly');
+      const target = annual || monthly || packages[0];
+
+      const purchaseSelected = async (pkg) => {
+        try {
+          const { customerInfo } = await Purchases.purchasePackage(pkg);
+          const hasPremium = typeof customerInfo.entitlements.active[ENTITLEMENT_ID] !== 'undefined';
+          setIsPremium(hasPremium);
+          return hasPremium;
+        } catch (err) {
+          console.warn('Purchase failed', err);
+          return false;
+        }
+      };
+
+      // NOTE: フォールバックでは「自動で購入処理を開始しない」。
+      // Appleの購入シートがPaywallより先に出てしまい、UX/審査で不利になるため。
+      return await new Promise((resolve) => {
+        if (annual && monthly) {
+          Alert.alert(
+            'プランを選択',
+            '',
+            [
+              {
+                text: '年額',
+                onPress: async () => resolve(await purchaseSelected(annual)),
+              },
+              {
+                text: '月額',
+                onPress: async () => resolve(await purchaseSelected(monthly)),
+              },
+              { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
+            ],
+            { cancelable: true }
+          );
+          return;
+        }
+
+        Alert.alert(
+          '購入確認',
+          'このプランでProを開始しますか？',
+          [
+            { text: 'キャンセル', style: 'cancel', onPress: () => resolve(false) },
+            { text: '購入する', onPress: async () => resolve(await purchaseSelected(target)) },
+          ],
+          { cancelable: true }
+        );
+      });
     } catch (error) {
       console.error('Error presenting paywall:', error);
       return false;

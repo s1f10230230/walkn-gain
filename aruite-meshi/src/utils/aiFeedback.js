@@ -87,6 +87,7 @@ export const generateDailyAIFeedback = async ({
   plan,
   currentGoal,
   steps,
+  detail = 'short', // 'short' | 'long'
   userId,
 }) => {
   // トライアル開始を保証（初回アクセス時に走らせる）
@@ -105,12 +106,13 @@ export const generateDailyAIFeedback = async ({
     locale,
     horizon: 'daily',
     variant,
+    detail,
     userId,
     payload,
   });
 
   console.log('[aiFeedback] daily variant:', variant, 'locale:', locale, 'date:', date, 'goal:', currentGoal, 'steps:', steps);
-  return await callOpenAI({ system, user, maxTokens: 180 });
+  return await callOpenAI({ system, user, maxTokens: detail === 'long' ? 260 : 180 });
 };
 
 // ---------------------------------------------------------
@@ -119,6 +121,7 @@ export const generateDailyAIFeedback = async ({
 export const generateWeeklyAIInsight = async ({
   locale = 'ja',
   summary,
+  detail = 'short',
   userId,
 }) => {
   const variant = pickVariant({ userId, horizon: 'weekly' });
@@ -126,11 +129,12 @@ export const generateWeeklyAIInsight = async ({
     locale,
     horizon: 'weekly',
     variant,
+    detail,
     userId,
     payload: summary,
   });
   console.log('[aiFeedback] weekly variant:', variant, 'locale:', locale);
-  return await callOpenAI({ system, user, maxTokens: 220 });
+  return await callOpenAI({ system, user, maxTokens: detail === 'long' ? 320 : 220 });
 };
 
 // ---------------------------------------------------------
@@ -139,6 +143,7 @@ export const generateWeeklyAIInsight = async ({
 export const generateMonthlyAIStyle = async ({
   locale = 'ja',
   summary,
+  detail = 'short',
   userId,
 }) => {
   const variant = pickVariant({ userId, horizon: 'monthly' });
@@ -146,9 +151,10 @@ export const generateMonthlyAIStyle = async ({
     locale,
     horizon: 'monthly',
     variant,
+    detail,
     userId,
     payload: summary,
   });
   console.log('[aiFeedback] monthly variant:', variant, 'locale:', locale);
-  return await callOpenAI({ system, user, maxTokens: 220 });
+  return await callOpenAI({ system, user, maxTokens: detail === 'long' ? 320 : 220 });
 };

@@ -118,6 +118,7 @@ import { AppIcon } from "../components/AppIcon";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { seedPastDaysPedometer } from "../utils/pedometerSeed";
 import styles from "./home/styles";
+import ScreenContainer from "../components/ScreenContainer";
 import {
   isToday as isTodayHelper,
   isFuture as isFutureHelper,
@@ -373,6 +374,7 @@ export default function HomeScreen({ navigation, route }) {
             plan,
             currentGoal: goalForFeedback,
             steps: stepsForFeedback,
+            detail: isPremium ? 'long' : 'short',
           });
         }
       } catch (e) {
@@ -2479,7 +2481,7 @@ export default function HomeScreen({ navigation, route }) {
   }
 
   return (
-    <View style={{ flex: 1, position: "relative" }}>
+    <ScreenContainer scroll={false} style={{ backgroundColor: theme.background }}>
       <ScrollView
         style={[styles.container, { backgroundColor: theme.background }]}
         contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
@@ -2952,6 +2954,6 @@ export default function HomeScreen({ navigation, route }) {
           }}
         />
       </ScrollView>
-    </View>
+    </ScreenContainer>
   );
 }

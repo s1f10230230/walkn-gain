@@ -9,7 +9,6 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../../i18n/I18nProvider';
 import { getTheme } from '../../utils/theme';
 import { useColorScheme } from 'react-native';
@@ -19,9 +18,9 @@ import { saveReminderEnabled } from '../../utils/storage';
 import { requestPedometerPermissions } from '../../utils/pedometer';
 import * as Notifications from 'expo-notifications';
 import StepIndicator from '../../components/StepIndicator';
+import ScreenContainer from '../../components/ScreenContainer';
 
 export default function PermissionsScreen({ navigation, route }) {
-  const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
@@ -106,11 +105,11 @@ export default function PermissionsScreen({ navigation, route }) {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
+    <ScreenContainer scroll style={{ backgroundColor: theme.background }}>
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
+          { paddingTop: 20, paddingBottom: 40 },
           isLargeScreen && styles.scrollContentTablet,
         ]}
         showsVerticalScrollIndicator={false}
@@ -198,7 +197,7 @@ export default function PermissionsScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </View>
+    </ScreenContainer>
   );
 }
 

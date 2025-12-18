@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
   DAILY_REMINDER_ID: 'notifications_daily_reminder_id',
   PROGRESS_STATE: 'notifications_progress_state', // { date: 'YYYY-MM-DD', count: number, lastTs: number }
   PERSISTENT_ID: 'persistent_widget_notification_id',
+  GOAL_ACHIEVED_DATE: 'notifications_goal_achieved_date', // 'YYYY-MM-DD'
 };
 
 // 通知の動作設定
@@ -24,14 +25,14 @@ Notifications.setNotificationHandler({
 });
 
 // --- i18n helpers for non-React modules ---
-const SUPPORTED = ['ja', 'en', 'zh-Hans'];
+const SUPPORTED = ['ja', 'en'];
 const mapToSupported = (raw) => {
   if (!raw) return 'ja';
   const lower = String(raw).toLowerCase();
   if (lower.startsWith('ja')) return 'ja';
   if (lower.startsWith('en')) return 'en';
-  if (lower.startsWith('zh')) return 'zh-Hans';
-  return 'ja';
+  if (lower.startsWith('zh')) return 'en';
+  return 'en';
 };
 
 const detectSystemLocale = () => {
@@ -48,7 +49,7 @@ const getNested = (obj, path) => path.split('.').reduce((o, k) => (o && o[k] != 
 const getLocale = async () => {
   try {
     const s = await getSettings();
-    const choice = s?.language && s.language !== 'auto' ? s.language : detectSystemLocale();
+    const choice = s?.language ? s.language : detectSystemLocale();
     return SUPPORTED.includes(choice) ? choice : 'ja';
   } catch (e) {
     return 'ja';
@@ -188,6 +189,16 @@ export const markProgressNotificationSent = async () => {
  * @param {number} goal 目標歩数
  */
 export const sendGoalAchievedNotification = async (steps, goal) => {
+  try {
+    const today = getTodayDateString();
+    const already = await AsyncStorage.getItem(STORAGE_KEYS.GOAL_ACHIEVED_DATE);
+    if (already === today) return;
+
+    await AsyncStorage.setItem(STORAGE_KEYS.GOAL_ACHIEVED_DATE, today);
+  } catch (_) {
+    // ignore dedupe errors; still attempt to send once
+  }
+
   const title = await tAsync('notifications.goalAchieved.title');
   const body = await tAsync('notifications.goalAchieved.body', { goal });
   const data = { type: 'goal_achieved', steps, goal };

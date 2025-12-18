@@ -6,7 +6,6 @@ import { getOnboardingComplete } from '../utils/storage';
 import { getTheme } from '../utils/theme';
 
 // オンボーディングスクリーン
-import SplashScreen from '../screens/onboarding/SplashScreen';
 import WelcomeScreen from '../screens/onboarding/WelcomeScreen';
 import ProfileInputScreen from '../screens/onboarding/ProfileInputScreen';
 import GoalStepsScreen from '../screens/onboarding/GoalStepsScreen';
@@ -18,7 +17,6 @@ import LanguageSelectScreen from '../screens/onboarding/LanguageSelectScreen';
 
 // メインアプリ
 import AppNavigator from './AppNavigator';
-import AppSplashScreen from '../screens/AppSplashScreen';
 import UpgradeScreen from '../screens/UpgradeScreen';
 
 const Stack = createStackNavigator();
@@ -32,11 +30,6 @@ function OnboardingStack() {
         detachPreviousScreen: false,
       }}
     >
-      <Stack.Screen
-        name="Splash"
-        component={SplashScreen}
-        options={{ detachPreviousScreen: false }}
-      />
       <Stack.Screen
         name="LanguageSelect"
         component={LanguageSelectScreen}
@@ -84,7 +77,6 @@ function OnboardingStack() {
 export default function RootNavigator() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
-  const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
     const checkOnboardingStatus = async () => {
@@ -92,30 +84,15 @@ export default function RootNavigator() {
         const completed = await getOnboardingComplete();
         setHasCompletedOnboarding(completed);
 
-        // オンボーディング済みの場合のみアニメーション付きスプラッシュを表示
-        if (completed) {
-          setTimeout(() => {
-            setShowSplash(false);
-            setIsLoading(false);
-          }, 1200);
-        } else {
-          setShowSplash(false);
-          setIsLoading(false);
-        }
+        setIsLoading(false);
       } catch (error) {
         console.error('Error checking onboarding status:', error);
-        setShowSplash(false);
         setIsLoading(false);
       }
     };
 
     checkOnboardingStatus();
   }, []);
-
-  // アニメーション付きスプラッシュ表示中
-  if (showSplash && hasCompletedOnboarding) {
-    return <AppSplashScreen navigation={{ replace: () => {} }} />;
-  }
 
   if (isLoading) {
     return null;

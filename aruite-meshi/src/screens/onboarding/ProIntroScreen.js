@@ -4,8 +4,9 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   useColorScheme,
+  ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getSettings, saveSettings, saveUserProfile, saveOnboardingComplete } from '../../utils/storage';
@@ -13,6 +14,7 @@ import { CommonActions } from '@react-navigation/native';
 import { getTheme } from '../../utils/theme';
 import { useI18n } from '../../i18n/I18nProvider';
 import { useSubscription } from '../../contexts/SubscriptionContext';
+import ScreenContainer from '../../components/ScreenContainer';
 
 // Pro機能の紹介（簡潔に）
 const PRO_FEATURES = [
@@ -31,6 +33,8 @@ export default function ProIntroScreen({ navigation, route }) {
   const theme = getTheme(colorScheme);
   const { t, formatNumber } = useI18n();
   const { presentPaywall } = useSubscription();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
 
   const handleComplete = async () => {
     try {
@@ -121,79 +125,92 @@ export default function ProIntroScreen({ navigation, route }) {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>
-            {t('onboarding.proIntro.title')}
-          </Text>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            {t('onboarding.proIntro.subtitle')}
-          </Text>
-        </View>
+    <ScreenContainer scroll style={{ backgroundColor: theme.background }} contentStyle={[styles.scrollContent, isTablet && styles.scrollContentTablet]}>
+        <View style={[styles.content, isTablet && styles.contentTablet]}>
+          <View style={[styles.header, isTablet && styles.headerTablet]}>
+            <Text style={[styles.title, isTablet && styles.titleTablet, { color: theme.text }]}>
+              {t('onboarding.proIntro.title')}
+            </Text>
+            <Text style={[styles.subtitle, isTablet && styles.subtitleTablet, { color: theme.textSecondary }]}>
+              {t('onboarding.proIntro.subtitle')}
+            </Text>
+          </View>
 
-        <View style={styles.mainSection}>
-          {/* Pro機能カード */}
-          <View style={[styles.featuresCard, { backgroundColor: theme.card }]}>
-            <View style={styles.proHeader}>
-              <Text style={[styles.proLabel, { color: theme.accent }]}>Pro</Text>
-              <Text style={[styles.proTitle, { color: theme.text }]}>
-                {t('onboarding.proIntro.proFeatures')}
-              </Text>
-            </View>
+          <View style={[styles.mainSection, isTablet && styles.mainSectionTablet]}>
+            {/* Pro機能カード */}
+            <View style={[styles.featuresCard, isTablet && styles.featuresCardTablet, { backgroundColor: theme.card }]}>
+              <View style={styles.proHeader}>
+                <Text style={[styles.proLabel, { color: theme.accent }]}>Pro</Text>
+                <Text style={[styles.proTitle, { color: theme.text }]}>
+                  {t('onboarding.proIntro.proFeatures')}
+                </Text>
+              </View>
 
-            <View style={styles.featuresList}>
-              {PRO_FEATURES.map((feature, index) => (
-                <View key={index} style={styles.featureItem}>
-                  <View style={[styles.featureIconContainer, { backgroundColor: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)' }]}>
-                    <Ionicons name={feature.icon} size={20} color="#FFC8A2" />
+              <View style={[styles.featuresList, isTablet && styles.featuresListTablet]}>
+                {PRO_FEATURES.map((feature, index) => (
+                  <View key={index} style={styles.featureItem}>
+                    <View style={[styles.featureIconContainer, { backgroundColor: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)' }]}>
+                      <Ionicons name={feature.icon} size={20} color="#FFC8A2" />
+                    </View>
+                    <Text style={[styles.featureText, { color: theme.text }]}>
+                      {t(`onboarding.proIntro.features.${feature.titleKey}`)}
+                    </Text>
                   </View>
-                  <Text style={[styles.featureText, { color: theme.text }]}>
-                    {t(`onboarding.proIntro.features.${feature.titleKey}`)}
-                  </Text>
-                </View>
-              ))}
+                ))}
+              </View>
             </View>
           </View>
-        </View>
 
-        <View style={styles.footer}>
-          {/* メインCTA: Proを体験する */}
-          <TouchableOpacity
-            style={[styles.primaryButton, { backgroundColor: theme.primary }]}
-            onPress={handleViewPro}
-          >
-            <Text style={styles.primaryButtonText}>
-              {t('onboarding.proIntro.startPro')}
-            </Text>
-          </TouchableOpacity>
+          <View style={[styles.footer, isTablet && styles.footerTablet]}>
+            {/* メインCTA: Proを体験する */}
+            <TouchableOpacity
+              style={[styles.primaryButton, isTablet && styles.primaryButtonTablet, { backgroundColor: theme.primary }]}
+              onPress={handleViewPro}
+            >
+              <Text style={[styles.primaryButtonText, isTablet && styles.primaryButtonTextTablet]}>
+                {t('onboarding.proIntro.startPro')}
+              </Text>
+            </TouchableOpacity>
 
-          {/* サブリンク: 今は無料で始める */}
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={handleComplete}
-          >
-            <Text style={[styles.secondaryButtonText, { color: theme.textSecondary }]}>
-              {t('onboarding.proIntro.startFree')}
-            </Text>
-          </TouchableOpacity>
+            {/* サブリンク: 今は無料で始める */}
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={handleComplete}
+            >
+              <Text style={[styles.secondaryButtonText, { color: theme.textSecondary }]}>
+                {t('onboarding.proIntro.startFree')}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
+  },
+  scrollContentTablet: {
+    alignItems: 'center',
   },
   content: {
     flex: 1,
     paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  contentTablet: {
+    paddingHorizontal: 48,
   },
   header: {
     marginTop: 40,
     marginBottom: 32,
+    alignItems: 'flex-start',
+    width: '100%',
+    maxWidth: 720,
+  },
+  headerTablet: {
+    alignItems: 'center',
   },
   title: {
     fontSize: 32,
@@ -201,12 +218,25 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     letterSpacing: 0.3,
   },
+  titleTablet: {
+    fontSize: 36,
+    textAlign: 'center',
+  },
   subtitle: {
     fontSize: 16,
     lineHeight: 24,
   },
+  subtitleTablet: {
+    fontSize: 17,
+    textAlign: 'center',
+  },
   mainSection: {
     flex: 1,
+    width: '100%',
+    maxWidth: 720,
+  },
+  mainSectionTablet: {
+    alignSelf: 'center',
   },
   featuresCard: {
     borderRadius: 16,
@@ -217,6 +247,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 4,
+  },
+  featuresCardTablet: {
+    width: '100%',
   },
   proHeader: {
     flexDirection: 'row',
@@ -240,6 +273,9 @@ const styles = StyleSheet.create({
   featuresList: {
     gap: 14,
   },
+  featuresListTablet: {
+    width: '100%',
+  },
   featureItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -259,6 +295,12 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingBottom: 32,
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
+  },
+  footerTablet: {
+    paddingHorizontal: 12,
   },
   primaryButton: {
     paddingVertical: 16,
@@ -271,11 +313,17 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  primaryButtonTablet: {
+    paddingVertical: 18,
+  },
   primaryButtonText: {
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  primaryButtonTextTablet: {
+    fontSize: 20,
   },
   secondaryButton: {
     paddingVertical: 12,

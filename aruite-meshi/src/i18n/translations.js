@@ -25,7 +25,7 @@ export const TRANSLATIONS = {
       sections: {
         collection: {
           title: '1. 収集する情報',
-          intro: "Walk'n Gain（以下「本アプリ」）は、以下の情報を収集します：",
+          intro: "Walk'n Life（以下「本アプリ」）は、以下の情報を収集します：",
           bullets: [
             '歩数データ（デバイスのセンサーまたはヘルスケアアプリから取得）',
             '個人プロフィール情報（性別、年齢、身長、体重）',
@@ -168,6 +168,7 @@ export const TRANSLATIONS = {
     },
     settings: {
       privacyPolicy: 'プライバシーポリシー',
+      eula: '利用規約 (EULA)',
       language: '言語',
       languageAuto: '自動',
       languageJa: '日本語',
@@ -274,6 +275,7 @@ export const TRANSLATIONS = {
         healthEnabledTitle: '成功',
         healthEnabledMessage: 'ヘルスケア連携を有効にしました',
         healthPermissionFail: 'ヘルスケアの権限が取得できませんでした',
+        linkOpenError: 'リンクを開けませんでした。ネットワークをご確認ください。',
         healthDisabledTitle: '無効化',
         healthDisabledMessage: 'ヘルスケア連携を無効にしました',
         obResetTitle: 'オンボーディングをやり直す',
@@ -352,7 +354,7 @@ export const TRANSLATIONS = {
         subtitle: 'アプリで使用する言語を選んでください',
       },
       welcome: {
-        title: "Walk'n Gain へようこそ",
+        title: "Walk'n Life へようこそ",
         featureSteps: '歩数を自動で記録',
         featureCalories: '消費カロリーを計算',
         featureFood: '食べ物に換算',
@@ -894,6 +896,7 @@ export const TRANSLATIONS = {
     },
     settings: {
       privacyPolicy: 'Privacy Policy',
+      eula: 'Terms of Use (EULA)',
       language: 'Language',
       languageJa: '日本語',
       languageEn: 'English',
@@ -999,6 +1002,7 @@ export const TRANSLATIONS = {
         healthEnabledTitle: 'Success',
         healthEnabledMessage: 'Health sync enabled',
         healthPermissionFail: 'Could not obtain Health permissions',
+        linkOpenError: 'Could not open the link. Please check your network.',
         healthDisabledTitle: 'Disabled',
         healthDisabledMessage: 'Health sync disabled',
         obResetTitle: 'Restart onboarding',
@@ -1077,7 +1081,7 @@ export const TRANSLATIONS = {
         subtitle: 'Select the language used in the app',
       },
       welcome: {
-        title: "Welcome to Walk'n Gain",
+        title: "Welcome to Walk'n Life",
         featureSteps: 'Auto step tracking',
         featureCalories: 'Calculate calories burned',
         featureFood: 'Convert to foods',
@@ -1818,7 +1822,7 @@ export const TRANSLATIONS = {
         subtitle: '请选择应用中使用的语言',
       },
       welcome: {
-        title: "欢迎使用 Walk'n Gain",
+        title: "欢迎使用 Walk'n Life",
         featureSteps: '自动记录步数',
         featureCalories: '计算消耗热量',
         featureFood: '换算成食物分量',

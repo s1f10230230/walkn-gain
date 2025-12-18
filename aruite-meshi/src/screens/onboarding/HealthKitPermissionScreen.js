@@ -10,13 +10,13 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../../i18n/I18nProvider';
 import { importHistoricalData } from '../../utils/healthKit';
 import { saveHealthSyncEnabled } from '../../utils/storage';
 import { useColorScheme } from 'react-native';
 import { getTheme } from '../../utils/theme';
 import StepIndicator from '../../components/StepIndicator';
+import ScreenContainer from '../../components/ScreenContainer';
 
 // Swiftネイティブモジュールを直接使用
 let HealthKitSwift = null;
@@ -28,9 +28,8 @@ try {
 
 export default function HealthKitPermissionScreen({ navigation, route }) {
   const ENABLE_HEALTHKIT_IMPORT = true; // 初回にサイレントで過去データを取り込み（ユーザー通知なし）
-  const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(false);
-  const { gender, age, height, weight, goalSteps, goalCalories, fromSkip } = route.params;
+  const { gender, age, height, weight, goalSteps, goalCalories } = route.params;
   const { t } = useI18n();
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
@@ -38,26 +37,13 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
   const isLargeScreen = width >= 768;
 
   const navigateToNext = () => {
-    if (fromSkip) {
-      // スキップモード: CalorieGoalをスキップしてProIntroへ直接遷移
-      navigation.navigate('ProIntro', {
-        gender,
-        age,
-        height,
-        weight,
-        goalSteps,
-        goalCalories,
-      });
-    } else {
-      // 通常モード: CalorieGoalへ
-      navigation.navigate('CalorieGoal', {
-        gender,
-        age,
-        height,
-        weight,
-        goalSteps,
-      });
-    }
+    navigation.navigate('CalorieGoal', {
+      gender,
+      age,
+      height,
+      weight,
+      goalSteps,
+    });
   };
 
   const handleContinue = async () => {
@@ -133,12 +119,12 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
+    <ScreenContainer scroll style={{ backgroundColor: theme.background }}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
+          { paddingTop: 20, paddingBottom: 40 },
           isLargeScreen && styles.scrollContentTablet,
         ]}
       >
@@ -226,16 +212,6 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={navigateToNext}
-            disabled={isLoading}
-          >
-            <Text style={[styles.secondaryButtonText, { color: theme.textSecondary }]}>
-              {t('onboarding.health.skip') || 'スキップ'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
             style={styles.backButton}
             onPress={() => navigation.goBack()}
             disabled={isLoading}
@@ -246,7 +222,7 @@ export default function HealthKitPermissionScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </View>
+    </ScreenContainer>
   );
 }
 
@@ -358,16 +334,6 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: '700',
-  },
-  secondaryButton: {
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  secondaryButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   backButton: {
     paddingVertical: 12,

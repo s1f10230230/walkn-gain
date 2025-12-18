@@ -46,7 +46,7 @@ const normalizeSettings = (s) => ({
   notifications: toBoolean(s?.notifications),
   unit: typeof s?.unit === 'string' ? s.unit : 'kcal',
   goalCalories: toNumber(s?.goalCalories, 500),
-  language: typeof s?.language === 'string' ? s.language : 'auto', // 'auto' | 'ja' | 'en' | 'zh-Hans'
+  language: typeof s?.language === 'string' ? s.language : 'ja', // 'ja' | 'en'
   // AIパーソナライズ関連
   aiMode: typeof s?.aiMode === 'string' ? s.aiMode : 'balance', // 'balance' | 'aggressive'
   aiAdaptiveGoal: toBoolean(s?.aiAdaptiveGoal ?? true), // 可変目標
@@ -71,7 +71,7 @@ const DEFAULT_SETTINGS = {
   notifications: true,
   unit: 'kcal', // 'kcal' or 'kJ'
   goalCalories: 500,
-  language: 'auto',
+  language: 'ja',
   // AIパーソナライズ既定値（プライバシー配慮）
   aiMode: 'balance',
   aiAdaptiveGoal: true,

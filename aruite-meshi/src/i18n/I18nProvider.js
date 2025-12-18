@@ -11,20 +11,14 @@ const I18nContext = createContext({
   formatWeekRange: (mondayDate) => '',
 });
 
-const SUPPORTED = ['ja', 'en', 'zh-Hans'];
+const SUPPORTED = ['ja', 'en'];
 
 const mapToSupported = (raw) => {
   if (!raw) return 'ja';
   const lower = raw.toLowerCase();
   if (lower.startsWith('ja')) return 'ja';
   if (lower.startsWith('en')) return 'en';
-  if (lower.startsWith('zh')) {
-    // default to Simplified if unspecified
-    if (lower.includes('hant') || lower.includes('tw') || lower.includes('hk')) {
-      return 'zh-Hans'; // fallback to Simplified for now
-    }
-    return 'zh-Hans';
-  }
+  if (lower.startsWith('zh')) return 'en';
   return 'en';
 };
 
@@ -47,7 +41,8 @@ export function I18nProvider({ children }) {
   useEffect(() => {
     (async () => {
       const s = await getSettings();
-      const chosen = s?.language && s.language !== 'auto' ? s.language : detectSystemLocale();
+      const stored = s?.language;
+      const chosen = SUPPORTED.includes(stored) ? stored : detectSystemLocale();
       setLocaleState(SUPPORTED.includes(chosen) ? chosen : 'ja');
     })();
   }, []);
@@ -100,23 +95,18 @@ export function I18nProvider({ children }) {
       return `${sLabel}–${eLabel}`;
     }
 
-    if (locale === 'zh-Hans') {
-      if (sameMonth) return `${sM + 1}月${sD}日—${eD}日`;
-      return `${sM + 1}月${sD}日—${eM + 1}月${eD}日`;
-    }
-
     // ja default
     if (sameMonth) return `${sM + 1}月${sD}日〜${eD}日`;
     return `${sM + 1}月${sD}日〜${eM + 1}月${eD}日`;
   };
 
   const setLocale = async (next) => {
-    const mapped = next === 'auto' ? detectSystemLocale() : (SUPPORTED.includes(next) ? next : 'ja');
+    const mapped = SUPPORTED.includes(next) ? next : detectSystemLocale();
     setLocaleState(mapped);
     // best-effort persist into settings.language
     try {
       const s = await getSettings();
-      await saveSettings({ ...s, language: next });
+      await saveSettings({ ...s, language: mapped });
     } catch (e) {
       // ignore
     }

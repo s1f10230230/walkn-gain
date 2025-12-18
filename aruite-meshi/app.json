@@ -1,12 +1,17 @@
 {
   "expo": {
     "owner": "s.shion",
-    "name": "Walk'n Gain",
+    "name": "Walk'n Life",
     "slug": "aruite-meshi",
     "version": "1.0.2",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "plugins": [
       [
         "@kingstinct/react-native-healthkit",
@@ -27,19 +32,33 @@
     ],
     "ios": {
       "bundleIdentifier": "com.walkngain.app",
-      "supportsTablet": false,
+      "supportsTablet": true,
       "requireFullScreen": true,
       "buildNumber": "55",
+      "splash": {
+        "image": "./assets/icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#ffffff"
+      },
       "infoPlist": {
-        "NSHealthShareUsageDescription": "歩数データを読み取り、アプリ内で表示します。",
-        "NSHealthUpdateUsageDescription": "歩数データを記録します。",
-        "NSMotionUsageDescription": "歩数を計測するために、モーションセンサーにアクセスします。",
-        "NSCalendarsUsageDescription": "履歴にカレンダーの予定を表示します。",
-        "NSCalendarsFullAccessUsageDescription": "履歴にカレンダーの予定を表示します。",
-        "NSPhotoLibraryAddUsageDescription": "画像を写真ライブラリに保存します。",
-        "NSPhotoLibraryUsageDescription": "画像を保存するために写真ライブラリへアクセスします。",
+        "NSHealthShareUsageDescription": "歩数・距離・消費カロリーをヘルスケアから読み取り、歩数グラフやAIインサイトに反映します。（例：正確な歩数で達成率を計算）",
+        "NSHealthUpdateUsageDescription": "歩数データをヘルスケアに書き戻して同期を保ちます。（例：アプリで記録した歩数をヘルスケアにも反映）",
+        "NSMotionUsageDescription": "端末のモーションセンサーで歩数を計測します。（例：ポケットに入れて歩いた歩数をカウント）",
+        "NSCalendarsUsageDescription": "歩く時間を予定と重ねて表示します。（例：会議や外出予定の時間に歩く提案を表示）",
+        "NSCalendarsFullAccessUsageDescription": "歩く時間を予定と重ねて表示します。（例：会議や外出予定の時間に歩く提案を表示）",
+        "NSPhotoLibraryAddUsageDescription": "歩いた日のカード画像を写真に保存します。（例：今日の歩数カードをアルバムに保存）",
+        "NSPhotoLibraryUsageDescription": "日記に写真を添付したり、カード画像を保存するために使用します。（例：歩いた日の写真を日記に追加）",
+        "NSCameraUsageDescription": "日記に写真を追加するためにカメラを使います。（例：散歩中の写真を撮影して日記に添付）",
+        "NSLocationWhenInUseUsageDescription": "現在地の天気を取得し、歩きやすい目標や提案を行います。（例：雨の地域では目標を軽めに提案）",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "現在地の天気を取得し、歩きやすい目標や提案を行います。（例：雨の地域では目標を軽めに提案）",
         "UIBackgroundModes": [
           "fetch"
+        ],
+        "UISupportedInterfaceOrientations~ipad": [
+          "UIInterfaceOrientationPortrait",
+          "UIInterfaceOrientationPortraitUpsideDown",
+          "UIInterfaceOrientationLandscapeLeft",
+          "UIInterfaceOrientationLandscapeRight"
         ],
         "ITSAppUsesNonExemptEncryption": false
       },

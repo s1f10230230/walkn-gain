@@ -3,36 +3,68 @@
 
 const PROMPT_RULES = {
   ja: {
-    system: [
+    systemShort: [
       "あなたは落ち着いたウォーキングコーチです。先生/医者の口調は使わないこと。",
       "過去を採点せず、“これから”の行動を1つだけ提案すること。",
       "数値は最大2つまで。本文では目安として添えるだけ。",
       "テンプレ称賛（お疲れさまでした/素晴らしいです 等）は禁止。",
-      "1文は30文字以内、全体で3〜4文に収めること。",
+      "1文は30文字以内に収めること。",
       "各ラベルの直後に本文を1行だけ書き、行数はラベル数と一致させること。",
     ].join("\n"),
 
-    labels: {
+    systemLong: [
+      "あなたは落ち着いたウォーキングコーチです。先生/医者の口調は使わないこと。",
+      "過去を採点せず、“これから”の行動を1つだけ提案すること。",
+      "数値は最大2つまで。本文では目安として添えるだけ。",
+      "テンプレ称賛（お疲れさまでした/素晴らしいです 等）は禁止。",
+      "各行は1文、30文字以内に収めること。",
+      "アプリ内で読みやすい“短い一言”を積み重ねること。",
+      "各ラベルの直後に本文を1行だけ書き、行数はラベル数と一致させること。",
+    ].join("\n"),
+
+    labelsShort: {
       daily: ["今の様子：", "次の一歩："],
       weekly: ["今週の様子：", "気になったところ：", "次の一歩："],
       monthly: ["今月のスタイル：", "強み：", "来月のチャレンジ："],
     },
+
+    labelsLong: {
+      daily: ["今の様子：", "気づき：", "次の一歩：", "ひとこと："],
+      weekly: ["今週の様子：", "ハイライト：", "気になったところ：", "次の一歩：", "ひとこと："],
+      monthly: ["今月のスタイル：", "強み：", "気づき：", "来月のチャレンジ：", "ひとこと："],
+    },
   },
 
   en: {
-    system: [
+    systemShort: [
       "You are a calm walking coach. Avoid teacher/doctor tone.",
       "Do not grade the past; propose exactly one next action.",
       "Use at most two numbers; treat them as hints, not central points.",
       'Ban generic praise like "great job" or "well done".',
-      "Keep each sentence under ~15 words, total 3–4 sentences.",
+      "Keep each sentence under ~15 words.",
       "After each label, write exactly one line of text; line count must match labels.",
     ].join("\n"),
 
-    labels: {
+    systemLong: [
+      "You are a calm walking coach. Avoid teacher/doctor tone.",
+      "Do not grade the past; propose exactly one next action.",
+      "Use at most two numbers; treat them as hints, not central points.",
+      'Ban generic praise like "great job" or "well done".',
+      "Write one short sentence per line (<= ~15 words).",
+      "Make it feel like a helpful companion inside the app.",
+      "After each label, write exactly one line of text; line count must match labels.",
+    ].join("\n"),
+
+    labelsShort: {
       daily: ["This time:", "Next step:"],
       weekly: ["This week:", "What stood out:", "Next step:"],
       monthly: ["This month:", "Strength:", "Next month:"],
+    },
+
+    labelsLong: {
+      daily: ["This time:", "Noticed:", "Next step:", "Note:"],
+      weekly: ["This week:", "Highlight:", "What stood out:", "Next step:", "Note:"],
+      monthly: ["This month:", "Strength:", "Noticed:", "Next month:", "Note:"],
     },
   },
 };
@@ -72,6 +104,39 @@ const TEMPLATES = {
   },
 };
 
+const TEMPLATES_LONG = {
+  daily: {
+    A: {
+      ja: "4行固定。様子→気づき→次の一歩→ひとこと。押し付けず短く。",
+      en: "4 lines fixed. This time → Noticed → Next step → Note. Keep it short and gentle.",
+    },
+    B: {
+      ja: "4行固定。今のペース→気づき→小さな行動→ひとこと。数字は最小限。",
+      en: "4 lines fixed. Pace → Noticed → One small action → Note. Minimal numbers.",
+    },
+  },
+  weekly: {
+    A: {
+      ja: "5行固定。様子→ハイライト→気になったところ→次の一歩→ひとこと。",
+      en: "5 lines fixed. This week → Highlight → What stood out → Next step → Note.",
+    },
+    B: {
+      ja: "5行固定。まとめ→良い点→課題→小さな行動→ひとこと。",
+      en: "5 lines fixed. Summary → Good sign → Challenge → One action → Note.",
+    },
+  },
+  monthly: {
+    A: {
+      ja: "5行固定。スタイル→強み→気づき→来月の行動→ひとこと。",
+      en: "5 lines fixed. Style → Strength → Noticed → Next month → Note.",
+    },
+    B: {
+      ja: "5行固定。傾向→強み→気づき→来月の一手→ひとこと。",
+      en: "5 lines fixed. Pattern → Strength → Noticed → Next month → Note.",
+    },
+  },
+};
+
 // variant決定（ユーザー×horizonで固定）
 const hashVariant = (seed) => {
   let h = 0;
@@ -92,13 +157,21 @@ export const buildFeedbackPrompt = ({
   locale = "ja",
   horizon = "daily",
   variant = "A",
+  detail = "short", // 'short' | 'long'
   userId = "",
   payload = {},
 }) => {
   const lang = locale === "en" ? "en" : "ja";
-  const sysBase = PROMPT_RULES[lang].system;
-  const labels = PROMPT_RULES[lang].labels[horizon] || [];
-  const templateHint = TEMPLATES[horizon]?.[variant]?.[lang] || "";
+  const rules = PROMPT_RULES[lang];
+  const sysBase = detail === "long" ? rules.systemLong : rules.systemShort;
+  const labels =
+    detail === "long"
+      ? rules.labelsLong?.[horizon] || []
+      : rules.labelsShort?.[horizon] || [];
+  const templateHint =
+    detail === "long"
+      ? TEMPLATES_LONG[horizon]?.[variant]?.[lang] || ""
+      : TEMPLATES[horizon]?.[variant]?.[lang] || "";
 
   // フォーマット拘束（例示つきで強制）
   const formatRule =

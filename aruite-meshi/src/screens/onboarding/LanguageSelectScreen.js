@@ -5,22 +5,20 @@ import { getTheme } from '../../utils/theme';
 import { getSettings } from '../../utils/storage';
 
 const OPTIONS = [
-  { key: 'auto', labelKey: 'settings.languageAuto' },
   { key: 'ja', labelKey: 'settings.languageJa' },
   { key: 'en', labelKey: 'settings.languageEn' },
-  { key: 'zh-Hans', labelKey: 'settings.languageZhHans' },
 ];
 
 export default function LanguageSelectScreen({ navigation }) {
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
   const { t, setLocale } = useI18n();
-  const [selected, setSelected] = useState('auto');
+  const [selected, setSelected] = useState('ja');
 
   useEffect(() => {
     (async () => {
       const s = await getSettings();
-      setSelected(s?.language || 'auto');
+      setSelected(['ja', 'en'].includes(s?.language) ? s.language : 'ja');
     })();
   }, []);
 
@@ -113,4 +111,3 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
-
