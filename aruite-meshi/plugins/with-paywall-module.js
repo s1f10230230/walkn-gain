@@ -39,15 +39,19 @@ const withPaywallModule = (config) => {
   return withXcodeProject(config, (config) => {
     const projectRoot = config.modRequest.projectRoot;
     const projectName = IOSConfig.XcodeUtils.getProjectName(projectRoot);
-    const groupName = projectName;
+    const basePath = projectName;
 
     PAYWALL_FILES.forEach((file) => {
-      IOSConfig.XcodeUtils.addBuildSourceFileToGroup({
-        filepath: file,
-        groupName,
-        project: config.modResults,
-        verbose: false,
-      });
+      const filePath = path.join(basePath, file);
+      const groupName = path.dirname(filePath);
+      if (!config.modResults.hasFile(filePath)) {
+        IOSConfig.XcodeUtils.addBuildSourceFileToGroup({
+          filepath: filePath,
+          groupName,
+          project: config.modResults,
+          verbose: false,
+        });
+      }
     });
 
     return config;
