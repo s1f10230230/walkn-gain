@@ -15,9 +15,11 @@ export default function ScreenContainer({
 }) {
   const Wrapper = scroll ? ScrollView : View;
   return (
-    <SafeAreaView style={styles.safe}>
+    // SafeAreaView にも `style` を適用しないと、上下のSafeArea部分だけデフォルト背景色が残って
+    // 「固定の枠」っぽく見える（特にiPad/ダークテーマで目立つ）。
+    <SafeAreaView style={[styles.safe, style]}>
       <Wrapper
-        style={[styles.fill, style]}
+        style={styles.fill}
         // ScrollView の contentContainerStyle に `flex: 1` を付けると、
         // コンテンツが「はみ出す」だけでスクロール領域が伸びず、スクロールできないことがある。
         // `flexGrow: 1` で最小は画面を満たしつつ、内容に応じて伸びるようにする。

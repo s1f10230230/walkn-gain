@@ -5,13 +5,13 @@ import {
   Modal, 
   TouchableOpacity, 
   StyleSheet, 
-  Dimensions, 
   TextInput, 
   Animated,
   PanResponder,
   Keyboard,
   TouchableWithoutFeedback,
-  Platform
+  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,11 +22,6 @@ import { getDayNote, setDayNote } from '../utils/dayNotes';
 import { toDateKeyLocal, getDayOfWeek } from '../utils/calculations';
 import { AppIcon } from './AppIcon';
 import { getWeatherIconName } from '../utils/weather';
-
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-const PAPER_WIDTH = Math.min(SCREEN_WIDTH - 40, 380);
-const PAPER_HEIGHT = Math.min(SCREEN_HEIGHT - 100, 600);
 
 // Helper for editorial weather text
 const getEditorialWeather = (code) => {
@@ -45,6 +40,9 @@ export default function DiaryModal({ visible, onClose, initialDate }) {
   const insets = useSafeAreaInsets();
   const theme = getTheme();
   const { t, locale } = useI18n();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const paperWidth = Math.min(screenWidth - 40, 380);
+  const paperHeight = Math.min(screenHeight - 100, 600);
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [dailyData, setDailyData] = useState(null);
@@ -130,7 +128,10 @@ export default function DiaryModal({ visible, onClose, initialDate }) {
 
   const renderPaperStack = () => {
     return (
-      <View style={styles.stackContainer} {...panResponder.panHandlers}>
+      <View
+        style={[styles.stackContainer, { width: paperWidth, height: paperHeight }]}
+        {...panResponder.panHandlers}
+      >
         <View style={[styles.paperLayer, styles.layer5]} />
         <View style={[styles.paperLayer, styles.layer4]} />
         <View style={[styles.paperLayer, styles.layer3]} />
@@ -280,7 +281,7 @@ export default function DiaryModal({ visible, onClose, initialDate }) {
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.modalOverlay}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={styles.container}>
+            <View style={[styles.container, { width: paperWidth + 20, height: paperHeight + 20 }]}>
               {renderPaperStack()}
             </View>
           </TouchableWithoutFeedback>
@@ -300,14 +301,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   container: {
-    width: PAPER_WIDTH + 20,
-    height: PAPER_HEIGHT + 20,
     justifyContent: 'center',
     alignItems: 'center',
   },
   stackContainer: {
-    width: PAPER_WIDTH,
-    height: PAPER_HEIGHT,
     position: 'relative',
   },
   paperLayer: {

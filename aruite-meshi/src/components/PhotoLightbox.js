@@ -6,16 +6,14 @@ import {
   TouchableOpacity,
   Text,
   StyleSheet,
-  Dimensions,
   FlatList,
   Platform,
   ActionSheetIOS,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function PhotoLightbox({
   visible,
@@ -27,6 +25,7 @@ export default function PhotoLightbox({
   canAddMore,
 }) {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const flatListRef = useRef(null);
 
@@ -82,10 +81,10 @@ export default function PhotoLightbox({
   };
 
   const renderPhoto = ({ item }) => (
-    <View style={styles.photoContainer}>
+    <View style={[styles.photoContainer, { width: screenWidth, height: screenHeight }]}>
       <Image
         source={{ uri: item }}
-        style={styles.photo}
+        style={[styles.photo, { width: screenWidth, height: screenHeight * 0.7 }]}
         resizeMode="contain"
       />
     </View>
@@ -141,8 +140,8 @@ export default function PhotoLightbox({
           showsHorizontalScrollIndicator={false}
           initialScrollIndex={initialIndex}
           getItemLayout={(_, index) => ({
-            length: SCREEN_WIDTH,
-            offset: SCREEN_WIDTH * index,
+            length: screenWidth,
+            offset: screenWidth * index,
             index,
           })}
           onViewableItemsChanged={onViewableItemsChanged}
@@ -198,14 +197,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   photoContainer: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
   },
   photo: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT * 0.7,
   },
   pagination: {
     position: 'absolute',

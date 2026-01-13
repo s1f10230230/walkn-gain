@@ -5,25 +5,17 @@ import {
   Text,
   SafeAreaView,
   FlatList,
-  Dimensions,
   TouchableOpacity,
   TextInput,
   StatusBar,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getMultipleDaysData, getDailyData, saveDailyData } from '../utils/storage';
 import { toDateKeyLocal } from '../utils/calculations';
 import { useSubscription, FREE_LIMITS, PREMIUM_LIMITS } from '../contexts/SubscriptionContext';
 import DiaryModal from '../components/DiaryModal';
-
-// --- Constants & Theme Colors ---
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-// カードの横幅（画面幅から少し余白を引く）
-const CARD_WIDTH = SCREEN_WIDTH * 0.85;
-// カード間のスペース
-const CARD_SPACING = (SCREEN_WIDTH - CARD_WIDTH) / 2;
 
 const COLORS = {
   bgMain: '#F8F4E3', // 全体の背景（少し温かみのあるオフホワイト）
@@ -39,16 +31,18 @@ const COLORS = {
 // ==========================================
 // Component: 上部のカレンダーバー
 // ==========================================
-const CalendarStrip = ({ data, selectedIndex, onDateSelect }) => {
+const CalendarStrip = ({ data, selectedIndex, onDateSelect, screenWidth }) => {
   const flatListRef = useRef(null);
+  const viewWidth = typeof screenWidth === 'number' ? screenWidth : 0;
+  const sidePadding = Math.max(0, viewWidth / 2 - 30);
 
   // 選択された日付が常に中央に来るようにスクロール制御
   useEffect(() => {
-    if (flatListRef.current && data.length > 0) {
-      const offset = selectedIndex * 60 - (SCREEN_WIDTH / 2) + 30;
+    if (flatListRef.current && data.length > 0 && viewWidth) {
+      const offset = selectedIndex * 60 - (viewWidth / 2) + 30;
       flatListRef.current.scrollToOffset({ offset, animated: true });
     }
-  }, [selectedIndex]);
+  }, [selectedIndex, viewWidth]);
 
   const renderItem = ({ item, index }) => {
     const isSelected = index === selectedIndex;
@@ -78,7 +72,7 @@ const CalendarStrip = ({ data, selectedIndex, onDateSelect }) => {
         showsHorizontalScrollIndicator={false}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={styles.calendarContentContainer}
+        contentContainerStyle={[styles.calendarContentContainer, { paddingHorizontal: sidePadding }]}
       />
     </View>
   );
@@ -87,7 +81,7 @@ const CalendarStrip = ({ data, selectedIndex, onDateSelect }) => {
 // ==========================================
 // Component: メインのストーリーカード
 // ==========================================
-const StoryCard = ({ item, onJournalChange }) => {
+const StoryCard = ({ item, onJournalChange, cardWidth }) => {
   const [journalText, setJournalText] = useState(item.memo || '');
 
   const handleTextChange = (text) => {
@@ -96,7 +90,7 @@ const StoryCard = ({ item, onJournalChange }) => {
   };
 
   return (
-    <View style={styles.cardContainerOuter}>
+    <View style={[styles.cardContainerOuter, { width: cardWidth }]}>
       <View style={styles.cardPaper}>
         {/* --- Photo Area --- */}
         <View style={styles.photoPlaceholder}>
@@ -153,8 +147,11 @@ const StoryCard = ({ item, onJournalChange }) => {
 // Main Screen: 全体の組み立て
 // ==========================================
 export default function StoryScreen() {
-  const navigation = useNavigation();
-  const { isPremium, limits } = useSubscription();
+  const { isPremium, limits, presentPaywall } = useSubscription();
+  const { width: screenWidth } = useWindowDimensions();
+  const cardWidth = Math.min(screenWidth * 0.85, 640);
+  const cardSpacing = Math.max(0, (screenWidth - cardWidth) / 2);
+  const snapInterval = cardWidth + 20;
   const [data, setData] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showDiaryModal, setShowDiaryModal] = useState(false);
@@ -203,7 +200,7 @@ export default function StoryScreen() {
   // スクロールが終わった時に現在地のインデックスを計算する
   const onMomentumScrollEnd = (event) => {
     const offsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(offsetX / (CARD_WIDTH + 20));
+    const index = Math.round(offsetX / snapInterval);
     setSelectedIndex(index);
   };
 
@@ -211,7 +208,7 @@ export default function StoryScreen() {
     setSelectedIndex(index);
     if (flatListRef.current) {
       flatListRef.current.scrollToOffset({
-        offset: index * (CARD_WIDTH + 20),
+        offset: index * snapInterval,
         animated: true
       });
     }
@@ -229,7 +226,7 @@ export default function StoryScreen() {
   };
 
   const renderCardItem = ({ item }) => {
-    return <StoryCard item={item} onJournalChange={handleJournalChange} />;
+    return <StoryCard item={item} onJournalChange={handleJournalChange} cardWidth={cardWidth} />;
   };
 
   if (data.length === 0) {
@@ -254,7 +251,7 @@ export default function StoryScreen() {
       {!isPremium && (
         <TouchableOpacity
           style={styles.upgradeBanner}
-          onPress={() => navigation.navigate('Upgrade')}
+          onPress={presentPaywall}
         >
           <Text style={styles.upgradeBannerText}>
             🔓 過去30日のストーリーを見る
@@ -267,6 +264,7 @@ export default function StoryScreen() {
         data={data} 
         selectedIndex={selectedIndex}
         onDateSelect={handleDateSelect}
+        screenWidth={screenWidth}
       />
 
       {/* Main Swipeable Cards */}
@@ -278,14 +276,14 @@ export default function StoryScreen() {
           showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => item.id}
           renderItem={renderCardItem}
-          snapToInterval={CARD_WIDTH + 20}
+          snapToInterval={snapInterval}
           decelerationRate="fast"
           pagingEnabled={false}
-          contentContainerStyle={styles.carouselContentContainer}
+          contentContainerStyle={[styles.carouselContentContainer, { paddingHorizontal: cardSpacing }]}
           onMomentumScrollEnd={onMomentumScrollEnd}
           initialScrollIndex={selectedIndex}
           getItemLayout={(data, index) => (
-            { length: CARD_WIDTH + 20, offset: (CARD_WIDTH + 20) * index, index }
+            { length: snapInterval, offset: snapInterval * index, index }
           )}
         />
       </View>
@@ -337,7 +335,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   calendarContentContainer: {
-    paddingHorizontal: SCREEN_WIDTH / 2 - 30,
     alignItems: 'center',
   },
   calendarItemContainer: {
@@ -378,11 +375,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   carouselContentContainer: {
-    paddingHorizontal: CARD_SPACING,
     alignItems: 'center',
   },
   cardContainerOuter: {
-    width: CARD_WIDTH,
     marginHorizontal: 10,
     paddingVertical: 20,
     alignItems: 'center',

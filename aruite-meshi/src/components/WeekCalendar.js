@@ -1,9 +1,7 @@
 import React, { useMemo, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Animated, Alert, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Animated, Alert, StyleSheet, useWindowDimensions } from 'react-native';
 import { toDateKeyLocal } from '../utils/calculations';
 import { useSubscription } from '../contexts/SubscriptionContext';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // カラー定義
 const COLORS = {
@@ -32,7 +30,10 @@ export default function WeekCalendar({
   calendarScrollRef,
   handleCalendarScroll,
   handleCalendarScrollEnd,
+  containerWidth,
 }) {
+  const { width: screenWidth } = useWindowDimensions();
+  const viewWidth = typeof containerWidth === 'number' ? containerWidth : screenWidth;
   const { isPremium } = useSubscription();
 
   // 歩数データは無制限で閲覧可能なのでロック機能は無効化
@@ -50,13 +51,13 @@ export default function WeekCalendar({
       const todayIndex = calendarDates.findIndex(d => isToday(d));
       if (todayIndex >= 0) {
         const itemWidth = 52 + 4; // dayContainer width + gap
-        const scrollX = todayIndex * itemWidth - (SCREEN_WIDTH / 2) + (itemWidth / 2) + 16;
+        const scrollX = todayIndex * itemWidth - (viewWidth / 2) + (itemWidth / 2) + 16;
         setTimeout(() => {
           calendarScrollRef.current?.scrollTo({ x: Math.max(0, scrollX), animated: false });
         }, 100);
       }
     }
-  }, [calendarDates.length]);
+  }, [calendarDates.length, viewWidth]);
 
   // 選択した日付を中央にスクロール（日付選択時）
   useEffect(() => {
@@ -66,13 +67,13 @@ export default function WeekCalendar({
       );
       if (selectedIndex >= 0) {
         const itemWidth = 52 + 4; // dayContainer width + gap
-        const scrollX = selectedIndex * itemWidth - (SCREEN_WIDTH / 2) + (itemWidth / 2) + 16;
+        const scrollX = selectedIndex * itemWidth - (viewWidth / 2) + (itemWidth / 2) + 16;
         setTimeout(() => {
           calendarScrollRef.current?.scrollTo({ x: Math.max(0, scrollX), animated: true });
         }, 50);
       }
     }
-  }, [selectedDate, calendarDates]);
+  }, [selectedDate, calendarDates, viewWidth]);
 
   return (
     <View style={styles.container}>

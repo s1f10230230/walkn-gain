@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Modal, View, Text, TouchableOpacity, Dimensions, Image } from "react-native";
-
-const { width } = Dimensions.get("window");
+import { Modal, View, Text, TouchableOpacity, Image, useWindowDimensions } from "react-native";
 
 export default function ProTourModal({
   visible,
@@ -12,6 +10,8 @@ export default function ProTourModal({
   t,
 }) {
   const [index, setIndex] = useState(0);
+  const { width: screenWidth } = useWindowDimensions();
+  const modalWidth = Math.min(screenWidth - 32, 360);
 
   useEffect(() => {
     if (visible) setIndex(0);
@@ -35,7 +35,7 @@ export default function ProTourModal({
       >
         <View
           style={{
-            width: Math.min(width - 32, 360),
+            width: modalWidth,
             backgroundColor: theme?.card || "#FFF",
             borderRadius: 16,
             padding: 20,

@@ -9,7 +9,6 @@ import {
   View,
   Text,
   ScrollView,
-  Dimensions,
   TouchableOpacity,
   AppState,
   useColorScheme,
@@ -22,6 +21,7 @@ import {
   Platform,
   ImageBackground,
   Alert,
+  useWindowDimensions,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -132,8 +132,6 @@ import {
   backfillFeedbackHistory,
 } from "../utils/feedback";
 
-const { width } = Dimensions.get("window");
-
 // 0〜1に正規化（NaN/Infinityも0として扱う）
 const clamp01 = (value) => {
   const n = Number(value);
@@ -208,6 +206,9 @@ export default function HomeScreen({ navigation, route }) {
 
   // 課金状態
   const { isPremium, limits, presentPaywall } = useSubscription();
+  const { width: screenWidth } = useWindowDimensions();
+  const MAX_CONTENT_WIDTH = 720;
+  const contentWidth = Math.min(screenWidth, MAX_CONTENT_WIDTH);
 
   // 日付関連（週単位のスライドウィンドウ）
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -756,7 +757,7 @@ export default function HomeScreen({ navigation, route }) {
           // 画面端30px以内ではPanResponderを無効化（戻るジェスチャー優先）
           const touchX = evt.nativeEvent.pageX;
           const edgeThreshold = 30;
-          if (touchX < edgeThreshold || touchX > width - edgeThreshold) {
+          if (touchX < edgeThreshold || touchX > screenWidth - edgeThreshold) {
             return false;
           }
 
@@ -768,7 +769,7 @@ export default function HomeScreen({ navigation, route }) {
         onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
           const touchX = evt.nativeEvent.pageX;
           const edgeThreshold = 30;
-          if (touchX < edgeThreshold || touchX > width - edgeThreshold) {
+          if (touchX < edgeThreshold || touchX > screenWidth - edgeThreshold) {
             return false;
           }
           return Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2 && Math.abs(gestureState.dx) > 15;
@@ -835,7 +836,7 @@ export default function HomeScreen({ navigation, route }) {
           }).start();
         },
       }),
-    [slideAnim, width, selectedDateRef, weekStartDateRef, Haptics, isPremium, navigation]
+    [slideAnim, screenWidth, selectedDateRef, weekStartDateRef, Haptics, isPremium, navigation]
   );
 
   // 日付変更関数（スワイプ用）- スムーズアニメーション
@@ -860,7 +861,7 @@ export default function HomeScreen({ navigation, route }) {
     // 歩数データの閲覧は無期限（履歴制限なし）
 
     // 現在位置からスライドアウト（スムーズ）
-    const outTo = direction < 0 ? width : -width;
+    const outTo = direction < 0 ? contentWidth : -contentWidth;
     Animated.timing(slideAnim, {
       toValue: outTo,
       duration: 180,
@@ -884,7 +885,7 @@ export default function HomeScreen({ navigation, route }) {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       }
       // 反対側からスライドイン
-      slideAnim.setValue(direction < 0 ? -width : width);
+      slideAnim.setValue(direction < 0 ? -contentWidth : contentWidth);
       Animated.spring(slideAnim, {
         toValue: 0,
         tension: 80,
@@ -913,7 +914,7 @@ export default function HomeScreen({ navigation, route }) {
     // 歩数データの閲覧は無期限（履歴制限なし）
 
     // スライドアニメーション付きで日付変更（スムーズ）
-    const outTo = direction < 0 ? width : -width;
+    const outTo = direction < 0 ? contentWidth : -contentWidth;
 
     // スライドアウト
     Animated.timing(slideAnim, {
@@ -942,7 +943,7 @@ export default function HomeScreen({ navigation, route }) {
       }
 
       // スライドイン（バウンス効果）
-      slideAnim.setValue(direction < 0 ? -width : width);
+      slideAnim.setValue(direction < 0 ? -contentWidth : contentWidth);
       Animated.spring(slideAnim, {
         toValue: 0,
         tension: 80,
@@ -2483,16 +2484,19 @@ export default function HomeScreen({ navigation, route }) {
   return (
     <ScreenContainer scroll={false} style={{ backgroundColor: theme.background }}>
       <ScrollView
-        style={[styles.container, { backgroundColor: theme.background }]}
-        contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
+        style={[
+          styles.container,
+          { backgroundColor: theme.background, width: contentWidth, alignSelf: "center" },
+        ]}
+        contentContainerStyle={{ paddingBottom: 100 }}
         scrollEventThrottle={16}
       >
         {/* センサー未対応バナーは表示しない（UI簡素化） */}
         {/* 週のナビゲーション */}
-        <View style={[styles.dateNavigation, { paddingTop: insets.top + 20 }]}>
+        <View style={[styles.dateNavigation, { paddingTop: 20 }]}>
           {/* トロフィー数とストリーク（縦2行） */}
           <View
-            style={{ position: "absolute", left: 20, top: insets.top + 12 }}
+            style={{ position: "absolute", left: 20, top: 12 }}
           >
             {/* Free/Pro Badge - Subtle & Clickable */}
             <TouchableOpacity
@@ -2554,7 +2558,7 @@ export default function HomeScreen({ navigation, route }) {
           </Text>
         </TouchableOpacity>
 
-        <View style={[styles.topIconRow, { top: insets.top + 30 }]}>
+        <View style={[styles.topIconRow, { top: 30 }]}>
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel={t("home.a11y.openFeedback")}
@@ -2592,7 +2596,7 @@ export default function HomeScreen({ navigation, route }) {
             style={[
               styles.feedbackDrawer,
               {
-                top: insets.top + 72,
+                top: 72,
                 backgroundColor: theme.card,
                 borderColor: theme.border,
                 shadowColor: theme.shadow,
@@ -2680,6 +2684,7 @@ export default function HomeScreen({ navigation, route }) {
           theme={theme}
           t={t}
           styles={styles}
+          containerWidth={contentWidth}
           calendarDates={calendarDates}
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
@@ -2809,7 +2814,7 @@ export default function HomeScreen({ navigation, route }) {
             >
               {/* フリップ可能なデータカード（タブとフリップ連動） */}
               <ScrollView
-                style={{ flex: 1, width: width }}
+                style={{ flex: 1, width: "100%" }}
                 contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}
                 showsVerticalScrollIndicator={false}
               >

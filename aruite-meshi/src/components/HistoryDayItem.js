@@ -3,10 +3,10 @@ import {
   View,
   Text,
   StyleSheet,
-  Dimensions,
   TouchableOpacity,
   useColorScheme,
   Platform,
+  useWindowDimensions,
 } from "react-native";
 import { getTheme } from "../utils/theme";
 import { getEventsForDate, getEventsSummary } from "../utils/calendar";
@@ -14,17 +14,17 @@ import { getDayNote } from "../utils/dayNotes";
 import { getWeatherIconName } from "../utils/weather";
 import { AppIcon } from "./AppIcon";
 
-const { width } = Dimensions.get("window");
-
 export default function HistoryDayItem({
   dayData,
   getWeekdayShort,
   formatNumber,
   onDatePress,
   t, // 翻訳関数（未来日表示用）
+  contentWidth,
 }) {
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
+  const { width: screenWidth } = useWindowDimensions();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [noteText, setNoteText] = useState("");
@@ -68,7 +68,9 @@ export default function HistoryDayItem({
     (dayData.steps / dayData.goal) * 100,
     100
   );
-  const barWidth = (width - 100) * (progressPercentage / 100);
+  const maxWidth = typeof contentWidth === "number" ? contentWidth : screenWidth;
+  const barMaxWidth = Math.max(0, maxWidth - 80);
+  const barWidth = barMaxWidth * (progressPercentage / 100);
   const isGoalAchieved = !isFuture && dayData.steps >= dayData.goal;
 
   // Progress bar color based on achievement

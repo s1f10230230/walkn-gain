@@ -28,6 +28,7 @@ export const PREMIUM_LIMITS = {
 const SubscriptionContext = createContext({
   isPremium: false,
   isLoading: true,
+  isInitialized: false,
   trialEligible: true,
   limits: FREE_LIMITS,
   checkSubscription: () => {},
@@ -107,7 +108,13 @@ export function SubscriptionProvider({ children }) {
 
   // Paywallを表示（ネイティブSwiftUI版）
   const presentPaywall = useCallback(async () => {
-    if (!isInitialized) return false;
+    if (!isInitialized) {
+      Alert.alert(
+        '購入情報が利用できません',
+        '課金設定がまだ準備できていません。しばらくしてからお試しください。'
+      );
+      return false;
+    }
 
     try {
       // iOSの場合はネイティブPaywallを使用
@@ -235,6 +242,7 @@ export function SubscriptionProvider({ children }) {
   const value = {
     isPremium: effectivePremium,
     isLoading,
+    isInitialized,
     trialEligible,
     limits,
     checkSubscription,

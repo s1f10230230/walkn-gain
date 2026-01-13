@@ -5,12 +5,12 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
   InteractionManager,
   Platform,
   ImageBackground,
   PanResponder,
   Animated,
+  useWindowDimensions,
 } from 'react-native';
 import { useColorScheme } from 'react-native';
 
@@ -51,13 +51,14 @@ import { getTheme } from '../utils/theme';
 import { logEvent } from '../utils/analytics';
 import HistoryDayItem from '../components/HistoryDayItem';
 
-const { width } = Dimensions.get('window');
-
 export default function HistoryScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { t, formatNumber, getWeekdayShort, locale } = useI18n();
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
+  const { width: screenWidth } = useWindowDimensions();
+  const MAX_CONTENT_WIDTH = 720;
+  const contentWidth = Math.min(screenWidth, MAX_CONTENT_WIDTH);
   const { isPremium, presentPaywall } = useSubscription();
   const [activeTab, setActiveTab] = useState('week'); // 'week' or 'month'
   const [weekOffset, setWeekOffset] = useState(0); // Pro: 0=今週, -1=先週...
@@ -386,7 +387,7 @@ export default function HistoryScreen({ navigation }) {
         </View>
         <LineChart
           data={chartData}
-          width={width - 70}
+          width={lineChartWidth}
           height={220}
           chartConfig={chartConfig}
           bezier
@@ -408,7 +409,7 @@ export default function HistoryScreen({ navigation }) {
             style={[
               styles.chartTooltip,
               {
-                left: Math.max(6, Math.min((width - 70) - 66, tipState.x - 30)),
+                left: Math.max(6, Math.min(lineChartWidth - 66, tipState.x - 30)),
                 top: Math.max(6, Math.min(220 - 34, tipState.y - 30)),
                 backgroundColor: theme.card,
                 borderColor: theme.border,
@@ -442,7 +443,8 @@ export default function HistoryScreen({ navigation }) {
 
   // カルーセル用アニメーション値
   const swipeAnim = useRef(new Animated.Value(0)).current;
-  const chartWidth = width - 40; // チャートコンテナの幅
+  const carouselWidth = Math.max(280, contentWidth - 40); // チャートコンテナの幅
+  const lineChartWidth = Math.max(240, contentWidth - 70);
 
   // 隣接期間のデータ（プリロード用）
   const [prevPeriodData, setPrevPeriodData] = useState([]);
@@ -504,7 +506,7 @@ export default function HistoryScreen({ navigation }) {
     } else if (direction === -1) {
       // 過去へ（右スワイプ）
       Animated.timing(swipeAnim, {
-        toValue: chartWidth,
+        toValue: carouselWidth,
         duration: 200,
         useNativeDriver: true,
       }).start(() => {
@@ -521,7 +523,7 @@ export default function HistoryScreen({ navigation }) {
     } else if (direction === 1 && offset < 0) {
       // 未来へ（左スワイプ）
       Animated.timing(swipeAnim, {
-        toValue: -chartWidth,
+        toValue: -carouselWidth,
         duration: 200,
         useNativeDriver: true,
       }).start(() => {
@@ -625,7 +627,7 @@ export default function HistoryScreen({ navigation }) {
     return (
       <LineChart
         data={chartData}
-        width={chartWidth - 30}
+        width={Math.max(200, carouselWidth - 30)}
         height={180}
         chartConfig={chartConfig}
         bezier
@@ -700,23 +702,23 @@ export default function HistoryScreen({ navigation }) {
             style={[
               styles.carouselTrack,
               {
-                width: chartWidth * 3,
-                transform: [{ translateX: Animated.add(swipeAnim, new Animated.Value(-chartWidth)) }],
+                width: carouselWidth * 3,
+                transform: [{ translateX: Animated.add(swipeAnim, new Animated.Value(-carouselWidth)) }],
               }
             ]}
           >
             {/* 前の期間 */}
-            <View style={[styles.carouselSlide, { width: chartWidth, opacity: 0.5 }]}>
+            <View style={[styles.carouselSlide, { width: carouselWidth, opacity: 0.5 }]}>
               {renderMiniChart(prevPeriodData, 0.7)}
             </View>
 
             {/* 現在の期間 */}
-            <View style={[styles.carouselSlide, { width: chartWidth }]}>
+            <View style={[styles.carouselSlide, { width: carouselWidth }]}>
               {renderMiniChart(calendarData, 1)}
             </View>
 
             {/* 次の期間 */}
-            <View style={[styles.carouselSlide, { width: chartWidth, opacity: currentOffset < 0 ? 0.5 : 0.2 }]}>
+            <View style={[styles.carouselSlide, { width: carouselWidth, opacity: currentOffset < 0 ? 0.5 : 0.2 }]}>
               {currentOffset < 0 ? (
                 renderMiniChart(nextPeriodData, 0.7)
               ) : (
@@ -759,6 +761,7 @@ export default function HistoryScreen({ navigation }) {
       <HistoryDayItem
         key={index}
         dayData={dayData}
+        contentWidth={contentWidth}
         getWeekdayShort={getWeekdayShort}
         formatNumber={formatNumber}
         t={t}
@@ -790,64 +793,65 @@ export default function HistoryScreen({ navigation }) {
       style={[styles.container, { backgroundColor: theme.background }]}
       imageStyle={{ opacity: 0.03, resizeMode: 'repeat' }}
     >
-      {/* Journal Header */}
-      <View style={{ paddingTop: insets.top + 20, paddingHorizontal: 24, paddingBottom: 10 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <MaterialCommunityIcons name="chart-line" size={28} color={theme.accent} style={{ marginRight: 10 }} />
-          <Text style={{ fontSize: 32, fontFamily: serifFont, color: theme.text, fontWeight: '600' }}>History</Text>
+      <View style={{ flex: 1, width: contentWidth, alignSelf: 'center' }}>
+        {/* Journal Header */}
+        <View style={{ paddingTop: insets.top + 20, paddingHorizontal: 24, paddingBottom: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <MaterialCommunityIcons name="chart-line" size={28} color={theme.accent} style={{ marginRight: 10 }} />
+            <Text style={{ fontSize: 32, fontFamily: serifFont, color: theme.text, fontWeight: '600' }}>History</Text>
+          </View>
+          <Text style={{ fontSize: 14, fontFamily: serifFont, color: theme.textSecondary, fontStyle: 'italic', marginTop: 4, marginLeft: 38 }}>
+            {t('history.subtitle')}
+          </Text>
         </View>
-        <Text style={{ fontSize: 14, fontFamily: serifFont, color: theme.textSecondary, fontStyle: 'italic', marginTop: 4, marginLeft: 38 }}>
-          {t('history.subtitle')}
-        </Text>
-      </View>
 
-      {/* Pill-style Tabs */}
-      <View style={{ flexDirection: 'row', paddingHorizontal: 24, marginBottom: 16 }}>
-        <View style={{ flexDirection: 'row', backgroundColor: theme.isDark ? '#2A2A2A' : '#F5F5F5', borderRadius: 25, padding: 4 }}>
-          <TouchableOpacity
-            onPress={() => changeTab('week')}
-            style={{
-              paddingVertical: 10,
-              paddingHorizontal: 24,
-              borderRadius: 20,
-              backgroundColor: activeTab === 'week' ? theme.accent : 'transparent',
-            }}
-          >
-            <Text style={{
-              fontFamily: serifFont,
-              fontSize: 14,
-              fontWeight: '600',
-              color: activeTab === 'week' ? '#FFF' : theme.textSecondary
-            }}>
-              {t('history.tabs.week')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => changeTab('month')}
-            style={{
-              paddingVertical: 10,
-              paddingHorizontal: 24,
-              borderRadius: 20,
-              backgroundColor: activeTab === 'month' ? theme.accent : 'transparent',
-            }}
-          >
-            <Text style={{
-              fontFamily: serifFont,
-              fontSize: 14,
-              fontWeight: '600',
-              color: activeTab === 'month' ? '#FFF' : theme.textSecondary
-            }}>
-              {t('history.tabs.month')}
-            </Text>
-          </TouchableOpacity>
+        {/* Pill-style Tabs */}
+        <View style={{ flexDirection: 'row', paddingHorizontal: 24, marginBottom: 16 }}>
+          <View style={{ flexDirection: 'row', backgroundColor: theme.isDark ? '#2A2A2A' : '#F5F5F5', borderRadius: 25, padding: 4 }}>
+            <TouchableOpacity
+              onPress={() => changeTab('week')}
+              style={{
+                paddingVertical: 10,
+                paddingHorizontal: 24,
+                borderRadius: 20,
+                backgroundColor: activeTab === 'week' ? theme.accent : 'transparent',
+              }}
+            >
+              <Text style={{
+                fontFamily: serifFont,
+                fontSize: 14,
+                fontWeight: '600',
+                color: activeTab === 'week' ? '#FFF' : theme.textSecondary
+              }}>
+                {t('history.tabs.week')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => changeTab('month')}
+              style={{
+                paddingVertical: 10,
+                paddingHorizontal: 24,
+                borderRadius: 20,
+                backgroundColor: activeTab === 'month' ? theme.accent : 'transparent',
+              }}
+            >
+              <Text style={{
+                fontFamily: serifFont,
+                fontSize: 14,
+                fontWeight: '600',
+                color: activeTab === 'month' ? '#FFF' : theme.textSecondary
+              }}>
+                {t('history.tabs.month')}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
 
-      <View style={styles.contentContainer}>
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
-        >
+        <View style={styles.contentContainer}>
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
+          >
         {/* 期間説明 */}
         <View style={styles.freeRangeContainer}>
           <Text style={[styles.freeRangeText, { color: theme.textSecondary }]}>
@@ -937,7 +941,8 @@ export default function HistoryScreen({ navigation }) {
           </View>
           {historyData.map((dayData, index) => renderDayItem(dayData, index))}
         </View>
-      </ScrollView>
+          </ScrollView>
+        </View>
       </View>
     </ImageBackground>
   );

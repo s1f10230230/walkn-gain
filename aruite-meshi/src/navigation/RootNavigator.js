@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, Animated, Image, useColorScheme } from 'react-native';
+import { View, StyleSheet, Animated, Image, useColorScheme, Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 import { getOnboardingComplete } from '../utils/storage';
@@ -118,15 +118,17 @@ export default function RootNavigator() {
           component={OnboardingStack}
           options={{ detachPreviousScreen: false }}
         />
-        <Stack.Screen
-          name="Upgrade"
-          component={UpgradeScreen}
-          options={{
-            presentation: 'modal',
-            cardStyleInterpolator: CardStyleInterpolators.forModalPresentationIOS,
-            detachPreviousScreen: false,
-          }}
-        />
+        {Platform.OS !== 'ios' && (
+          <Stack.Screen
+            name="Upgrade"
+            component={UpgradeScreen}
+            options={{
+              presentation: 'modal',
+              cardStyleInterpolator: CardStyleInterpolators.forModalPresentationIOS,
+              detachPreviousScreen: false,
+            }}
+          />
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );

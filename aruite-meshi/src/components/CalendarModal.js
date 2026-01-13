@@ -5,9 +5,9 @@ import {
   Modal,
   TouchableOpacity,
   StyleSheet,
-  Dimensions,
   Platform,
   TouchableWithoutFeedback,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTheme } from '../utils/theme';
@@ -17,16 +17,14 @@ import { getDailyData, getMultipleDaysData } from '../utils/storage';
 import { toDateKeyLocal } from '../utils/calculations';
 import { AppIcon } from './AppIcon';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-const MODAL_WIDTH = Math.min(SCREEN_WIDTH - 40, 360);
-
 const serifFont = Platform.select({ ios: 'Georgia', android: 'serif' });
 
 export default function CalendarModal({ visible, onClose, onSelectDate, initialDate, onUpgrade }) {
   const theme = getTheme();
   const { t } = useI18n();
   const { isPremium, limits, presentPaywall } = useSubscription();
+  const { width: screenWidth } = useWindowDimensions();
+  const modalWidth = Math.min(screenWidth - 40, 360);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [monthlyData, setMonthlyData] = useState({});
 
@@ -206,7 +204,7 @@ export default function CalendarModal({ visible, onClose, onSelectDate, initialD
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.modalOverlay}>
           <TouchableWithoutFeedback onPress={() => {}}>
-            <View style={[styles.container, { backgroundColor: '#FFFDF9' }]}>
+            <View style={[styles.container, { backgroundColor: '#FFFDF9', width: modalWidth }]}>
               {/* Header */}
               <View style={styles.header}>
                 <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.navButton}>
@@ -249,7 +247,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   container: {
-    width: MODAL_WIDTH,
     borderRadius: 16,
     padding: 20,
     shadowColor: "#000",

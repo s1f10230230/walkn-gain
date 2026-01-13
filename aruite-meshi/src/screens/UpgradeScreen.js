@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTheme } from '../utils/theme';
 import { useI18n } from '../i18n/I18nProvider';
 import { useSubscription } from '../contexts/SubscriptionContext';
+import Purchases from 'react-native-purchases';
 import ProTourModal from '../components/ProTourModal';
 import { buildProTourSlides } from '../utils/proTourSlides';
 
@@ -72,13 +73,18 @@ export default function UpgradeScreen({ navigation, route }) {
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
   const { t } = useI18n();
-  const { setDebugPremium, trialEligible } = useSubscription();
+  const { checkSubscription, restorePurchases, isInitialized, trialEligible } = useSubscription();
 
   const [selectedPlan, setSelectedPlan] = useState('yearly');
   const [isLoading, setIsLoading] = useState(false);
   const [showProTour, setShowProTour] = useState(false);
 
   const proSlides = useMemo(() => buildProTourSlides(t), [t]);
+  const selectedPricing = PRICING[selectedPlan];
+  const priceWithPeriod = `${selectedPricing.price}${selectedPlan === 'yearly' ? '/年' : '/月'}`;
+  const billingDisclosure = trialEligible
+    ? `3日間無料。終了後は${priceWithPeriod}で自動更新されます（いつでもキャンセル可）。`
+    : `${priceWithPeriod}で自動更新されます（いつでもキャンセル可）。`;
 
   // 元の画面に戻る
   const handleClose = () => {
@@ -87,19 +93,42 @@ export default function UpgradeScreen({ navigation, route }) {
     }
   };
 
-  // 購入処理（RevenueCat実装後に置き換え）
+  const pickPackage = (packages) => {
+    const targetId = PRICING[selectedPlan].productId;
+    const byId = packages.find(
+      (pkg) => pkg?.product?.identifier === targetId || pkg?.identifier === targetId
+    );
+    if (byId) return byId;
+    const byType = packages.find(
+      (pkg) => pkg?.packageType === (selectedPlan === 'yearly' ? 'annual' : 'monthly')
+    );
+    return byType || packages[0];
+  };
+
+  // 購入処理（RevenueCat）
   const handlePurchase = async () => {
+    if (!isInitialized) {
+      Alert.alert('購入情報が利用できません', '課金設定がまだ準備できていません。');
+      return;
+    }
     setIsLoading(true);
 
     try {
-      // TODO: RevenueCat購入処理
-      // const purchaserInfo = await Purchases.purchaseProduct(PRICING[selectedPlan].productId);
+      const offerings = await Purchases.getOfferings();
+      const packages = offerings?.current?.availablePackages || [];
+      if (!packages.length) {
+        Alert.alert('購入情報が取得できません', 'しばらくしてからお試しください。');
+        return;
+      }
 
-      // 仮の処理：2秒待って成功（デバッグ用）
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const target = pickPackage(packages);
+      if (!target) {
+        Alert.alert('購入プランが見つかりません', 'App Storeの設定をご確認ください。');
+        return;
+      }
 
-      // デバッグ用：プレミアム状態を有効化
-      await setDebugPremium(true);
+      await Purchases.purchasePackage(target);
+      await checkSubscription();
 
       Alert.alert(
         'アップグレード完了',
@@ -107,6 +136,7 @@ export default function UpgradeScreen({ navigation, route }) {
         [{ text: 'OK', onPress: handleClose }]
       );
     } catch (error) {
+      if (error?.userCancelled) return;
       console.error('Purchase error:', error);
       Alert.alert('エラー', '購入処理中にエラーが発生しました。');
     } finally {
@@ -116,15 +146,19 @@ export default function UpgradeScreen({ navigation, route }) {
 
   // 復元処理
   const handleRestore = async () => {
+    if (!isInitialized) {
+      Alert.alert('購入情報が利用できません', '課金設定がまだ準備できていません。');
+      return;
+    }
     setIsLoading(true);
 
     try {
-      // TODO: RevenueCat復元処理
-      // const purchaserInfo = await Purchases.restorePurchases();
-
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      Alert.alert('復元', '購入の復元を試みました。');
+      const restored = await restorePurchases();
+      await checkSubscription();
+      Alert.alert(
+        '復元',
+        restored ? '購入を復元しました。' : '復元できる購入が見つかりませんでした。'
+      );
     } catch (error) {
       console.error('Restore error:', error);
       Alert.alert('エラー', '復元処理中にエラーが発生しました。');
@@ -156,7 +190,7 @@ export default function UpgradeScreen({ navigation, route }) {
             AIとデータで、歩く毎日をフルブースト。
         </Text>
         <Text style={[styles.trialNote, { color: trialEligible ? theme.primary : theme.textSecondary }]}>
-          {trialEligible ? '初回3日間の無料トライアルが適用されます' : 'トライアルは適用対象外です'}
+          {trialEligible ? '初回3日間の無料トライアル' : 'トライアルは適用対象外です'}
         </Text>
       </View>
 
@@ -284,14 +318,14 @@ export default function UpgradeScreen({ navigation, route }) {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.purchaseButtonText}>
-              {trialEligible
-                ? '3日トライアルを開始'
-                : selectedPlan === 'yearly'
-                  ? '年額プランで始める'
-                  : '月額プランで始める'}
+              {selectedPlan === 'yearly' ? '年額でProを始める' : '月額でProを始める'}
             </Text>
           )}
         </TouchableOpacity>
+
+        <Text style={[styles.billingNote, { color: theme.textSecondary }]}>
+          {billingDisclosure}
+        </Text>
 
         {/* 復元・利用規約 */}
         <View style={styles.footer}>
@@ -480,6 +514,13 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 17,
     fontWeight: '700',
+  },
+  billingNote: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 16,
+    marginBottom: 16,
+    paddingHorizontal: 12,
   },
   footer: {
     flexDirection: 'row',

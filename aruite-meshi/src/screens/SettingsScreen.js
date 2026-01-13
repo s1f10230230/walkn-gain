@@ -503,7 +503,7 @@ export default function SettingsScreen({ navigation }) {
     <ScreenContainer
       scroll
       style={[styles.container, { backgroundColor: theme.background }]}
-      contentStyle={{ paddingTop: insets.top + 20, paddingBottom: 100 + insets.bottom }}
+      contentStyle={{ paddingTop: 20, paddingBottom: 100 }}
     >
       {/* 基本情報 */}
       <View style={styles.section}>

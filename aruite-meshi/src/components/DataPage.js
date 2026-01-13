@@ -4,15 +4,13 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Dimensions,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { AppIcon } from './AppIcon';
 import ProgressRing from './ProgressRing';
 import HourlyChart from './HourlyChart';
 import ShareCTA from './ShareCTA';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ============================================
 // ヘルパー関数
@@ -63,13 +61,14 @@ export default function DataPage({
   // Actions
   onLongPressRing,
 }) {
+  const { width: screenWidth } = useWindowDimensions();
   const ringP = clamp01(progress);
   const isFull = ringP >= 0.999;
   const ringColor = ringP >= 1.0 ? theme.success : theme.accent;
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { width: screenWidth }]}
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
     >
@@ -219,7 +218,6 @@ export default function DataPage({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    width: SCREEN_WIDTH,
   },
   contentContainer: {
     paddingBottom: 24,

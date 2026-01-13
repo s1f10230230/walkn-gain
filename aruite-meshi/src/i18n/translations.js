@@ -21,7 +21,7 @@ export const TRANSLATIONS = {
     },
     policy: {
       title: 'プライバシーポリシー',
-      lastUpdated: '最終更新日: 2025年10月26日',
+      lastUpdated: '最終更新日: 2026年1月11日',
       sections: {
         collection: {
           title: '1. 収集する情報',
@@ -30,6 +30,10 @@ export const TRANSLATIONS = {
             '歩数データ（デバイスのセンサーまたはヘルスケアアプリから取得）',
             '個人プロフィール情報（性別、年齢、身長、体重）',
             'アプリの設定情報（目標歩数、目標カロリー）',
+            '日記/写真（任意）',
+            'カレンダー情報（任意）',
+            '位置情報（任意、天気取得に使用）',
+            '購入情報（サブスクリプション管理）',
             'スキップ時：デフォルト設定（男性、30歳、170cm、65kg）を使用',
           ],
         },
@@ -40,16 +44,18 @@ export const TRANSLATIONS = {
             '消費カロリーの計算',
             '歩数と目標の進捗状況の表示',
             '個別化された健康目標の提案',
+            '天気情報の表示',
+            'AIフィードバック/インサイトの生成',
             'アプリ機能の改善',
           ],
         },
         storage: {
           title: '3. データの保存',
-          body: 'すべてのデータはお使いのデバイス上にローカルに保存されます。本アプリは外部サーバーにデータを送信したり、保存したりすることはありません。',
+          body: '基本データはお使いのデバイス上にローカルに保存されます。天気/AI/購入のために必要最小限の外部通信が発生します。',
         },
         sharing: {
           title: '4. データの共有',
-          body: '本アプリは、ユーザーの個人情報を第三者と共有することはありません。すべてのデータはデバイス内に保持され、外部に送信されることはありません。',
+          body: '広告目的で個人情報を共有することはありません。天気/AI/購入のために必要最小限のデータを外部サービスへ送信する場合があります。',
         },
         security: {
           title: '5. データのセキュリティ',
@@ -66,11 +72,11 @@ export const TRANSLATIONS = {
         },
         health: {
           title: '7. ヘルスケアデータの取り扱い',
-          body: 'iOS版では、ユーザーの同意を得た上で、Apple HealthKitから歩数データを読み取ります。このデータは、アプリ内でのカロリー計算と進捗表示のみに使用され、外部に送信されることはありません。',
+          body: 'iOS版では、ユーザーの同意を得た上で、Apple HealthKitから歩数データを読み取ります。これらはアプリ内表示やAIフィードバック生成（該当機能利用時）に使用されます。',
         },
         analytics: {
           title: '8. 分析ツール',
-          body: '本アプリは分析ツールやトラッキングを使用していません。すべてのデータは端末内にのみ保存され、外部サーバーへ送信されることは一切ありません。',
+          body: '本アプリは広告目的の分析ツールやトラッキングを使用していません。天気/AI/購入に必要な範囲でのみ外部通信が発生します。',
         },
         children: {
           title: '9. 子供のプライバシー',
@@ -394,7 +400,7 @@ export const TRANSLATIONS = {
         benefit1: '高精度な歩数計測',
         benefit2: '正確なカロリー計算',
         benefit3: 'バックグラウンド記録',
-        privacy: '※ データはデバイス内にのみ保存され、外部に送信されることはありません',
+        privacy: '※ 基本データは端末内で処理し、AI機能利用時に必要最小限のみ外部送信します',
         importYear: '過去1年分の歩数を取得します',
         importYearDesc: 'ヘルスケアに保存されている歩数データを自動で取り込み、あなたの歩みの歴史を振り返ることができます。',
         importNote: '🗓️ 初回連携時に、端末のヘルスケアに保存されている歩数を取り込む場合があります（すべて端末内で処理）。',
@@ -456,6 +462,7 @@ export const TRANSLATIONS = {
         prevWeek: '前の週へ',
         nextWeek: '次の週へ',
         backToToday: '今日へ戻る',
+        openFeedback: '昨日のフィードバックを開く',
       },
       flipHint: {
         toBack: '長押しで裏面へ',
@@ -488,7 +495,7 @@ export const TRANSLATIONS = {
         pedometerChecking: '歩数計: 確認中...'
       },
       modal: { selectDate: '日付を選択' },
-      feedback: { title: '昨日のフィードバック', forDate: '{date}のフィードバック' },
+      feedback: { title: '昨日のフィードバック', forDate: '{date}のフィードバック', refresh: '更新' },
       trial: {
         bannerTitle: 'トライアル残り{days}日',
         day0: 'AIが今日の歩き方を診ています。インサイトを見てみましょう。',
@@ -681,7 +688,7 @@ export const TRANSLATIONS = {
       },
       dataInfoAlert: {
         title: 'データの使い道',
-        message: '【収集するデータ】\n🚶 歩数・距離・消費カロリー\n☀️ 天気・気温\n😊 毎日の気分スタンプ\n📝 一言メモ（今後対応予定）\n📅 カレンダー予定（今後対応予定）\n\n【AIがわかること】\n• 晴れた日に歩くと気分が上がるタイプ\n• 1万歩以上で90%の確率で最高の気分に\n• 月曜はブルー、水曜に持ち直す傾向\n• 会議が多い日は歩数が減りがち\n• 「疲れた」と書いた日の共通点\n\n【プライバシー】\n⚙️ 設定画面で共有するデータを選べます\n🔒 データは端末内で処理され、外部送信されません',
+        message: '【収集するデータ】\n🚶 歩数・距離・消費カロリー\n☀️ 天気・気温\n😊 毎日の気分スタンプ\n📝 一言メモ（今後対応予定）\n📅 カレンダー予定（今後対応予定）\n\n【AIがわかること】\n• 晴れた日に歩くと気分が上がるタイプ\n• 1万歩以上で90%の確率で最高の気分に\n• 月曜はブルー、水曜に持ち直す傾向\n• 会議が多い日は歩数が減りがち\n• 「疲れた」と書いた日の共通点\n\n【プライバシー】\n⚙️ 設定画面で共有するデータを選べます\n🔒 基本データは端末内で処理し、AI/天気利用時に必要最小限のみ外部送信します',
         ok: 'わかった！',
       },
       locked: {
@@ -790,7 +797,7 @@ export const TRANSLATIONS = {
     },
     policy: {
       title: 'Privacy Policy',
-      lastUpdated: 'Last updated: Oct 26, 2025',
+      lastUpdated: 'Last updated: Jan 11, 2026',
       sections: {
         collection: {
           title: '1. Information We Collect',
@@ -799,6 +806,10 @@ export const TRANSLATIONS = {
             'Step data (from device sensors or health apps)',
             'Profile info (gender, age, height, weight)',
             'App settings (step goals, calorie goals)',
+            'Journal/photos (optional)',
+            'Calendar info (optional)',
+            'Location (optional, used for weather)',
+            'Purchase info (subscription management)',
             'When skipping: Default settings (Male, 30, 170cm, 65kg) are used',
           ],
         },
@@ -809,16 +820,18 @@ export const TRANSLATIONS = {
             'Calculating calories burned',
             'Displaying steps and goal progress',
             'Suggesting personalized health goals',
+            'Displaying weather info',
+            'Generating AI feedback/insights',
             'Improving app features',
           ],
         },
         storage: {
           title: '3. Data Storage',
-          body: 'All data is stored locally on your device. The App does not transmit or store data on external servers.',
+          body: 'Core data is stored locally on your device. Limited external communications occur for weather, AI, and subscription management.',
         },
         sharing: {
           title: '4. Data Sharing',
-          body: 'We do not share personal information with third parties. All data remains on your device and is not transmitted outside.',
+          body: 'We do not share personal data for advertising. Limited data may be sent to external services for weather, AI, and subscription management.',
         },
         security: {
           title: '5. Data Security',
@@ -835,11 +848,11 @@ export const TRANSLATIONS = {
         },
         health: {
           title: '7. Health Data Handling',
-          body: 'On iOS, with user consent, the App reads step data from Apple HealthKit. This data is used only for calorie calculation and progress display within the App and is not transmitted externally.',
+          body: 'On iOS, with user consent, the App reads step data from Apple HealthKit. This data is used for in-app display and AI feedback when the feature is used.',
         },
         analytics: {
           title: '8. Analytics',
-          body: 'The App may collect anonymized usage statistics for crash reports and error logs. No personally identifiable information is included.',
+          body: 'The App does not use advertising analytics or tracking. External communication is limited to weather, AI, and subscription management.',
         },
         children: {
           title: '9. Children\'s Privacy',
@@ -1184,6 +1197,7 @@ export const TRANSLATIONS = {
         nextWeek: 'Next week',
         backToToday: 'Back to today',
         moreCount: 'Plus {count} more',
+        openFeedback: "Open yesterday's feedback",
       },
       flipHint: {
         toBack: 'Long press to flip',
@@ -1216,7 +1230,7 @@ export const TRANSLATIONS = {
         pedometerChecking: 'Pedometer: checking...'
       },
       modal: { selectDate: 'Select date' },
-      feedback: { title: "Yesterday's feedback", forDate: "Feedback for {date}" },
+      feedback: { title: "Yesterday's feedback", forDate: "Feedback for {date}", refresh: 'Refresh' },
       trial: {
         bannerTitle: '{days} days left in trial',
         day0: 'AI is learning your walking pattern. Check today’s insight.',
@@ -1560,7 +1574,7 @@ export const TRANSLATIONS = {
     },
     policy: {
       title: '隐私政策',
-      lastUpdated: '最后更新: 2025年10月26日',
+      lastUpdated: '最后更新: 2026年1月11日',
       sections: {
         collection: {
           title: '1. 收集的信息',
@@ -1569,6 +1583,10 @@ export const TRANSLATIONS = {
             '步数数据（来自设备传感器或健康应用）',
             '个人资料信息（性别、年龄、身高、体重）',
             '应用设置（步数目标、热量目标）',
+            '日记/照片（可选）',
+            '日历信息（可选）',
+            '位置（可选，用于天气）',
+            '购买信息（订阅管理）',
           ],
         },
         usage: {
@@ -1578,16 +1596,18 @@ export const TRANSLATIONS = {
             '计算消耗热量',
             '显示步数与目标进度',
             '提供个性化健康目标建议',
+            '显示天气信息',
+            '生成 AI 反馈/洞察',
             '改进应用功能',
           ],
         },
         storage: {
           title: '3. 数据存储',
-          body: '所有数据仅保存在您的设备本地。本应用不会向外部服务器传输或保存数据。',
+          body: '核心数据保存在设备本地。天气/AI/订阅管理会产生必要的外部通信。',
         },
         sharing: {
           title: '4. 数据共享',
-          body: '我们不会与第三方共享个人信息。所有数据仅保存在设备中，不会对外传输。',
+          body: '我们不会出于广告目的共享个人信息。天气/AI/订阅管理可能需要向外部服务发送最小数据。',
         },
         security: {
           title: '5. 数据安全',
@@ -1604,11 +1624,11 @@ export const TRANSLATIONS = {
         },
         health: {
           title: '7. 健康数据处理',
-          body: '在 iOS 上，经用户同意后，本应用会从 Apple HealthKit 读取步数数据。此数据仅用于应用内的热量计算与进度展示，不会对外传输。',
+          body: '在 iOS 上，经用户同意后，本应用会从 Apple HealthKit 读取步数数据。此数据用于应用内显示及 AI 反馈（使用相关功能时）。',
         },
         analytics: {
           title: '8. 分析工具',
-          body: '本应用可能会收集匿名使用统计信息用于崩溃报告与错误日志。这些信息不包含可识别个人身份的数据。',
+          body: '本应用不使用广告分析或跟踪。外部通信仅限于天气/AI/订阅管理。',
         },
         children: {
           title: '9. 儿童隐私',
@@ -1924,6 +1944,7 @@ export const TRANSLATIONS = {
         prevWeek: '上一周',
         nextWeek: '下一周',
         backToToday: '回到今日',
+        openFeedback: '打开昨日反馈',
       },
       flipHint: {
         toBack: '长按翻转',
@@ -1956,7 +1977,7 @@ export const TRANSLATIONS = {
         pedometerChecking: '计步器：检查中...'
       },
       modal: { selectDate: '选择日期' },
-      feedback: { title: '昨日的反馈', forDate: '{date}的反馈' },
+      feedback: { title: '昨日的反馈', forDate: '{date}的反馈', refresh: '刷新' },
       futureDateAlert: '无法选择未来的日期',
       goalDenominator: '/ {goal} 步',
     },

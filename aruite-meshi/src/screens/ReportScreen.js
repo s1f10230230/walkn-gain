@@ -4,7 +4,6 @@ import {
   Text,
   ScrollView,
   StyleSheet,
-  Dimensions,
   TouchableOpacity,
   ActivityIndicator,
   useColorScheme,
@@ -12,6 +11,7 @@ import {
   Alert,
   Modal,
   Animated,
+  useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,9 +32,6 @@ import ScreenContainer from '../components/ScreenContainer';
 // AI機能追加時に有効化
 // import RadarChart from '../components/RadarChart';
 // import { calculateWalkingDna, DNA_PARAMS } from '../utils/walkingDna';
-
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = width - 40;
 
 // 日本の主要距離の換算
 const DISTANCE_LANDMARKS = [
@@ -87,6 +84,11 @@ const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export default function ReportScreen() {
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
+  const { width: screenWidth } = useWindowDimensions();
+  const MAX_CONTENT_WIDTH = 720;
+  const contentWidth = Math.min(screenWidth, MAX_CONTENT_WIDTH);
+  const cardWidth = Math.max(280, contentWidth - 40);
+  const radarSize = Math.max(220, contentWidth - 80);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { isPremium, presentPaywall } = useSubscription();
@@ -761,7 +763,10 @@ export default function ReportScreen() {
 
     return (
       <TouchableOpacity
-        style={[styles.personalBestCard, { backgroundColor: theme.isDark ? theme.card : '#FFFFFF' }]}
+        style={[
+          styles.personalBestCard,
+          { backgroundColor: theme.isDark ? theme.card : '#FFFFFF', width: cardWidth },
+        ]}
         onPress={() => handlePersonalBestTap(item)}
         activeOpacity={0.8}
       >
@@ -821,43 +826,44 @@ export default function ReportScreen() {
     <ScreenContainer
       scroll
       style={[styles.container, { backgroundColor: theme.background }]}
-      contentStyle={{ paddingBottom: 100 + insets.bottom }}
+      contentStyle={{ paddingBottom: 100 }}
     >
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>Report</Text>
-      </View>
-
-      {/* TOTAL JOURNEY Card（無料・先頭表示） */}
-      <View style={styles.sectionContainer}>
-        <View style={styles.sectionHeader}>
-          <MaterialCommunityIcons name="map-marker-path" size={20} color={COLORS.teal} />
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>TOTAL JOURNEY</Text>
+      <View style={{ width: contentWidth, alignSelf: 'center' }}>
+        {/* Header */}
+        <View style={[styles.header, { paddingTop: 16 }]}>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Report</Text>
         </View>
 
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => setShowJourneyModal(true)}
-          style={[styles.card, { backgroundColor: theme.isDark ? theme.card : '#FFFFFF', marginHorizontal: 0 }]}
-        >
-          <PaperTexture isDark={theme.isDark} />
-          <View style={styles.cardTitleRow}>
-            <Text style={[styles.dataSourceLabel, { color: theme.textSecondary }]}>
-              {t('report.pastDaysData', { count: dataDaysCount })}
-            </Text>
-            <MaterialCommunityIcons name="chevron-right" size={18} color={theme.textSecondary} />
+        {/* TOTAL JOURNEY Card（無料・先頭表示） */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons name="map-marker-path" size={20} color={COLORS.teal} />
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>TOTAL JOURNEY</Text>
           </View>
 
-          <View style={styles.journeyContent}>
-            <View style={styles.journeyLeft}>
-              <Text style={[styles.totalSteps, { color: theme.text }]}>
-                {formatNumber(stats.totalSteps)}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => setShowJourneyModal(true)}
+            style={[styles.card, { backgroundColor: theme.isDark ? theme.card : '#FFFFFF', marginHorizontal: 0 }]}
+          >
+            <PaperTexture isDark={theme.isDark} />
+            <View style={styles.cardTitleRow}>
+              <Text style={[styles.dataSourceLabel, { color: theme.textSecondary }]}>
+                {t('report.pastDaysData', { count: dataDaysCount })}
               </Text>
-                  <Text style={[styles.totalStepsLabel, { color: theme.textSecondary }]}>
-                STEPS
-              </Text>
+              <MaterialCommunityIcons name="chevron-right" size={18} color={theme.textSecondary} />
+            </View>
 
-              <View style={styles.subStats}>
+            <View style={styles.journeyContent}>
+              <View style={styles.journeyLeft}>
+                <Text style={[styles.totalSteps, { color: theme.text }]}>
+                  {formatNumber(stats.totalSteps)}
+                </Text>
+                    <Text style={[styles.totalStepsLabel, { color: theme.textSecondary }]}>
+                  STEPS
+                </Text>
+
+                <View style={styles.subStats}>
                 <Text style={[styles.subStatText, { color: theme.textSecondary }]}>
                   Total distance: <Text style={{ color: theme.text, fontWeight: '700' }}>{Math.round(stats.totalDistance)} km</Text>
                 </Text>
@@ -1042,7 +1048,7 @@ export default function ReportScreen() {
               {monthlySummary.radarParams && (
                 <View style={styles.radarWrapper}>
                   <RadarChart
-                    size={width - 80}
+                    size={radarSize}
                     params={monthlySummary.radarParams}
                     strokeColor={COLORS.teal}
                     fillColor={`${COLORS.teal}30`}
@@ -1153,7 +1159,7 @@ export default function ReportScreen() {
               horizontal
               pagingEnabled
               showsHorizontalScrollIndicator={false}
-              snapToInterval={CARD_WIDTH + 16}
+              snapToInterval={cardWidth + 16}
               decelerationRate="fast"
               contentContainerStyle={{ paddingHorizontal: 0 }}
               ItemSeparatorComponent={() => <View style={{ width: 16 }} />}
@@ -1553,6 +1559,7 @@ export default function ReportScreen() {
           </View>
         )}
       </View>
+      </View>
 
     </ScreenContainer>
 
@@ -1885,7 +1892,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   personalBestCard: {
-    width: CARD_WIDTH,
     borderRadius: 20,
     padding: 20,
     shadowColor: '#8B8178',
