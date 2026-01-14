@@ -10,6 +10,8 @@ const {
 const PLUGIN_NAME = 'with-paywall-module';
 const TEMPLATE_DIR = path.join(__dirname, 'ios');
 const PAYWALL_FILES = ['PaywallView.swift', 'PaywallModule.swift', 'PaywallModule.m'];
+const PAYWALL_IMAGE_NAME = 'paywall_header';
+const PAYWALL_IMAGE_FILENAME = 'paywall.jpg';
 
 const copyTemplate = (src, dest) => {
   if (!fs.existsSync(src)) {
@@ -32,6 +34,31 @@ const withPaywallModule = (config) => {
     PAYWALL_FILES.forEach((file) => {
       copyTemplate(path.join(TEMPLATE_DIR, file), path.join(targetDir, file));
     });
+
+    const sourceImage = path.join(projectRoot, 'assets', PAYWALL_IMAGE_FILENAME);
+    const imagesetDir = path.join(
+      targetDir,
+      'Images.xcassets',
+      `${PAYWALL_IMAGE_NAME}.imageset`
+    );
+    const imageDest = path.join(imagesetDir, PAYWALL_IMAGE_FILENAME);
+    if (!fs.existsSync(sourceImage)) {
+      throw new Error(`[${PLUGIN_NAME}] Missing image: ${sourceImage}`);
+    }
+    fs.mkdirSync(imagesetDir, { recursive: true });
+    fs.copyFileSync(sourceImage, imageDest);
+    const contents = {
+      images: [
+        { idiom: 'universal', filename: PAYWALL_IMAGE_FILENAME, scale: '1x' },
+        { idiom: 'universal', scale: '2x' },
+        { idiom: 'universal', scale: '3x' },
+      ],
+      info: { version: 1, author: 'xcode' },
+    };
+    fs.writeFileSync(
+      path.join(imagesetDir, 'Contents.json'),
+      JSON.stringify(contents, null, 2)
+    );
 
     return config;
   }]);

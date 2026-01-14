@@ -119,6 +119,7 @@ export default function SettingsScreen({ navigation }) {
   const [motionOSGranted, setMotionOSGranted] = useState(false);
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [showProTour, setShowProTour] = useState(false);
+  const [pendingPaywall, setPendingPaywall] = useState(false);
   const [proTourSlides, setProTourSlides] = useState([]);
 
   useEffect(() => {
@@ -996,9 +997,17 @@ export default function SettingsScreen({ navigation }) {
     </ScreenContainer>
     <ProTourModal
       visible={showProTour}
-      onClose={() => setShowProTour(false)}
-      onDone={() => {
+      onClose={() => {
+        setPendingPaywall(false);
         setShowProTour(false);
+      }}
+      onDone={() => {
+        setPendingPaywall(true);
+        setShowProTour(false);
+      }}
+      onDismiss={() => {
+        if (!pendingPaywall) return;
+        setPendingPaywall(false);
         presentPaywall();
       }}
       slides={proTourSlides}

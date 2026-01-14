@@ -58,28 +58,40 @@ class PaywallModule: NSObject {
   }
 
   private func topViewController(_ root: UIViewController? = nil) -> UIViewController? {
-    let rootController: UIViewController?
-    if let root = root {
-      rootController = root
-    } else {
-      rootController = UIApplication.shared.connectedScenes
-        .compactMap { $0 as? UIWindowScene }
-        .flatMap { $0.windows }
-        .first { $0.isKeyWindow }?.rootViewController
-    }
+    let rootController = root ?? activeRootViewController()
+    guard let controller = rootController else { return nil }
 
-    if let navigation = rootController as? UINavigationController {
+    if let navigation = controller as? UINavigationController {
       return topViewController(navigation.visibleViewController)
     }
 
-    if let tab = rootController as? UITabBarController {
+    if let tab = controller as? UITabBarController {
       return topViewController(tab.selectedViewController)
     }
 
-    if let presented = rootController?.presentedViewController {
+    if let presented = controller.presentedViewController,
+       presented.view.window != nil {
       return topViewController(presented)
     }
 
-    return rootController
+    if controller.view.window == nil,
+       let presenting = controller.presentingViewController {
+      return topViewController(presenting)
+    }
+
+    return controller
+  }
+
+  private func activeRootViewController() -> UIViewController? {
+    let scenes = UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+    let windows = scenes.flatMap { $0.windows }
+    if let keyWindow = windows.first(where: { $0.isKeyWindow }) {
+      return keyWindow.rootViewController
+    }
+    if let visibleWindow = windows.first(where: { !$0.isHidden }) {
+      return visibleWindow.rootViewController
+    }
+    return windows.first?.rootViewController
   }
 }

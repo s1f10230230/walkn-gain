@@ -5,6 +5,7 @@ export default function ProTourModal({
   visible,
   onClose,
   onDone,
+  onDismiss,
   slides = [],
   theme,
   t,
@@ -17,13 +18,11 @@ export default function ProTourModal({
     if (visible) setIndex(0);
   }, [visible]);
 
-  if (!visible) return null;
-
   const isLast = index >= slides.length - 1;
   const current = slides[index] || {};
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="fade" onDismiss={onDismiss}>
       <View
         style={{
           flex: 1,
@@ -119,7 +118,6 @@ export default function ProTourModal({
               onPress={() => {
                 if (isLast) {
                   onDone?.();
-                  onClose?.();
                 } else {
                   setIndex((i) => Math.min(i + 1, slides.length - 1));
                 }
