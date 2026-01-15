@@ -8,9 +8,9 @@
     "userInterfaceStyle": "automatic",
     "icon": "./assets/icon-opaque.png",
     "splash": {
-      "image": "./assets/icon.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#F8F4E3"
     },
     "plugins": [
       [
@@ -36,9 +36,9 @@
       "requireFullScreen": true,
       "buildNumber": "55",
       "splash": {
-        "image": "./assets/icon.png",
+        "image": "./assets/splash-icon.png",
         "resizeMode": "contain",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#F8F4E3"
       },
       "infoPlist": {
         "NSHealthShareUsageDescription": "歩数・距離・消費カロリーをヘルスケアから読み取り、歩数グラフやAIインサイトに反映します。（例：正確な歩数で達成率を計算）",

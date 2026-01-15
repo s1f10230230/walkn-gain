@@ -184,7 +184,7 @@ export default function UpgradeScreen({ navigation, route }) {
         {/* タイトル */}
       <View style={styles.titleSection}>
         <Text style={[styles.title, { color: theme.text }]}>
-            Walkn Gain Pro
+            Walk'n Life Pro
         </Text>
         <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
             AIとデータで、歩く毎日をフルブースト。

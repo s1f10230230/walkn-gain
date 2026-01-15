@@ -514,7 +514,7 @@ export default function SharePreviewScreen({ navigation, route }) {
           </View>
           <View style={styles.footerContent}>
             <Text style={[styles.footerBrand, { color: theme.textSecondary }]}>
-              WALK'N GAIN
+              WALK'N LIFE
             </Text>
             <Text style={[styles.footerTagline, { color: theme.textSecondary }]}>
               その一歩が、思い出になる。

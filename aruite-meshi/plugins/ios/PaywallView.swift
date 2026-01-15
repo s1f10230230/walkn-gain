@@ -27,7 +27,7 @@ struct PaywallView: View {
     private func L(_ key: String) -> String {
         if isJa {
             switch key {
-            case "title": return "Walkn Gain Pro"
+            case "title": return "Walk'n Life Pro"
             case "subtitle": return "AIとデータで、歩く毎日をフルブースト。"
             case "free": return "Free"
             case "pro": return "Pro"
@@ -54,7 +54,7 @@ struct PaywallView: View {
             }
         } else {
             switch key {
-            case "title": return "Walkn Gain Pro"
+            case "title": return "Walk'n Life Pro"
             case "subtitle": return "Boost every walk with AI and your data."
             case "free": return "Free"
             case "pro": return "Pro"

@@ -801,7 +801,7 @@ export const TRANSLATIONS = {
       sections: {
         collection: {
           title: '1. Information We Collect',
-          intro: 'Walk\'n Gain (“the App”) collects the following information:',
+          intro: 'Walk\'n Life (“the App”) collects the following information:',
           bullets: [
             'Step data (from device sensors or health apps)',
             'Profile info (gender, age, height, weight)',
@@ -1578,7 +1578,7 @@ export const TRANSLATIONS = {
       sections: {
         collection: {
           title: '1. 收集的信息',
-          intro: 'Walk\'n Gain（以下简称“本应用”）会收集以下信息：',
+          intro: 'Walk\'n Life（以下简称“本应用”）会收集以下信息：',
           bullets: [
             '步数数据（来自设备传感器或健康应用）',
             '个人资料信息（性别、年龄、身高、体重）',
