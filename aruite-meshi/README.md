@@ -53,47 +53,6 @@ aruite-meshi/
     └── utils/
 ```
 
-## Requirements
-
-- Node.js 18 以上
-- npm
-- Xcode
-- iOS Simulator または iOS 実機
-- Expo CLI / EAS CLI
-
-歩数計測や HealthKit はシミュレータでは制限があります。歩数・ヘルスケア周りの確認は実機で行ってください。
-
-## Setup
-
-```bash
-npm install
-```
-
-必要に応じて `.env` を作成します。
-
-```bash
-OPENAI_API_KEY=
-REVENUECAT_API_KEY=
-```
-
-`REVENUECAT_API_KEY` は `EXPO_PUBLIC_REVENUECAT_API_KEY` でも読み込めます。
-
-## Development
-
-```bash
-# Expo 開発サーバー
-npm start
-
-# iOS
-npm run ios
-
-# Android
-npm run android
-
-# Web
-npm run web
-```
-
 ## App Configuration
 
 現在の Expo 設定:
@@ -122,6 +81,12 @@ npm run web
 - 天気、カレンダー、写真、カメラ、位置情報は機能ごとに権限説明を `app.json` で管理しています。
 - Pro 購入処理は RevenueCat の offerings / packages を参照します。
 - Web では歩数計測や一部ネイティブ機能は利用できません。
+
+## Portfolio Notes
+
+- ヘルスケアデータを扱うため、権限説明とユーザー同意の導線を重視しています。
+- 日々の記録、履歴、レポート、Pro導線を分け、継続利用を想定した画面構成にしています。
+- README は就活・ポートフォリオ確認向けに、実行手順より実装内容が伝わる構成にしています。
 
 ## License
 
