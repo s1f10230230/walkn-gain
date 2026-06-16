@@ -8,6 +8,7 @@ import {
   useColorScheme,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTheme } from '../utils/theme';
@@ -16,59 +17,52 @@ import { useSubscription } from '../contexts/SubscriptionContext';
 import Purchases from 'react-native-purchases';
 import ProTourModal from '../components/ProTourModal';
 import { buildProTourSlides } from '../utils/proTourSlides';
+import { PLAN_ORDER, PREMIUM_FEATURES, PRICING } from './upgrade/config';
+import { getBillingDisclosure, pickPackage } from './upgrade/purchase';
 
-// プレミアム特典リスト（最新機能に合わせて更新）
-const PREMIUM_FEATURES = [
-  {
-    icon: '✨',
-    title: 'AIインサイト（毎日・毎週・毎月）',
-    description: 'その日の調子や1週間の傾向をコーチ目線でフィードバック',
-  },
-  {
-    icon: '🧠',
-    title: '自動目標チューニング',
-    description: '連続達成や疲れを考慮して歩数目標を提案・調整',
-  },
-  {
-    icon: '🌦️',
-    title: '環境分析',
-    description: '気温・天気と歩数の相性を解析しベストコンディションを提示',
-  },
-  {
-    icon: '🧭',
-    title: '月次スタイル診断',
-    description: '平日・週末・朝夜などの型をレーダーチャートで可視化',
-  },
-  {
-    icon: '📅',
-    title: '履歴・グラフ無制限',
-    description: '過去すべての歩数・時間帯グラフをさかのぼり放題',
-  },
-  {
-    icon: '📷',
-    title: '写真4枚/日',
-    description: '思い出を1日に最大4枚まで保存',
-  },
-];
+function PlanCard({ pricing, selected, theme, onPress }) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.planCard,
+        { backgroundColor: theme.card, borderColor: theme.border },
+        selected && { borderColor: theme.primary, borderWidth: 2 },
+      ]}
+      onPress={onPress}
+    >
+      {pricing.discount && (
+        <View style={[styles.discountBadge, { backgroundColor: theme.primary }]}>
+          <Text style={styles.discountText}>{pricing.discount}</Text>
+        </View>
+      )}
+      <View style={styles.planRadio}>
+        <View
+          style={[
+            styles.radioOuter,
+            { borderColor: selected ? theme.primary : theme.border },
+          ]}
+        >
+          {selected && <View style={[styles.radioInner, { backgroundColor: theme.primary }]} />}
+        </View>
+      </View>
+      <View style={styles.planInfo}>
+        <Text style={[styles.planPeriod, { color: theme.textSecondary }]}>
+          {pricing.period}
+        </Text>
+        <Text style={[styles.planPrice, { color: theme.text }]}>
+          {pricing.price}
+        </Text>
+        {pricing.note && (
+          <Text style={[styles.planNote, { color: theme.textSecondary }]}>
+            {pricing.note}
+          </Text>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
 
-// 価格設定（仮）
-const PRICING = {
-  monthly: {
-    price: '¥680',
-    period: '月額',
-    productId: 'premium_monthly',
-    note: '1日あたり約¥23',
-  },
-  yearly: {
-    price: '¥5,760',
-    period: '年額',
-    productId: 'premium_yearly',
-    discount: '2ヶ月分お得',
-    note: '月あたり約¥480',
-  },
-};
-
-export default function UpgradeScreen({ navigation, route }) {
+export default function UpgradeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
@@ -81,10 +75,7 @@ export default function UpgradeScreen({ navigation, route }) {
 
   const proSlides = useMemo(() => buildProTourSlides(t), [t]);
   const selectedPricing = PRICING[selectedPlan];
-  const priceWithPeriod = `${selectedPricing.price}${selectedPlan === 'yearly' ? '/年' : '/月'}`;
-  const billingDisclosure = trialEligible
-    ? `3日間無料。終了後は${priceWithPeriod}で自動更新されます（いつでもキャンセル可）。`
-    : `${priceWithPeriod}で自動更新されます（いつでもキャンセル可）。`;
+  const billingDisclosure = getBillingDisclosure(selectedPlan, trialEligible);
 
   // 元の画面に戻る
   const handleClose = () => {
@@ -93,16 +84,14 @@ export default function UpgradeScreen({ navigation, route }) {
     }
   };
 
-  const pickPackage = (packages) => {
-    const targetId = PRICING[selectedPlan].productId;
-    const byId = packages.find(
-      (pkg) => pkg?.product?.identifier === targetId || pkg?.identifier === targetId
-    );
-    if (byId) return byId;
-    const byType = packages.find(
-      (pkg) => pkg?.packageType === (selectedPlan === 'yearly' ? 'annual' : 'monthly')
-    );
-    return byType || packages[0];
+  const handleOpenEula = () => {
+    const url = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+    Linking.openURL(url).catch(() => {
+      Alert.alert(
+        t('common.error'),
+        t('settings.alerts.linkOpenError') || 'リンクを開けませんでした。'
+      );
+    });
   };
 
   // 購入処理（RevenueCat）
@@ -121,7 +110,7 @@ export default function UpgradeScreen({ navigation, route }) {
         return;
       }
 
-      const target = pickPackage(packages);
+      const target = pickPackage(packages, selectedPlan);
       if (!target) {
         Alert.alert('購入プランが見つかりません', 'App Storeの設定をご確認ください。');
         return;
@@ -182,17 +171,17 @@ export default function UpgradeScreen({ navigation, route }) {
         showsVerticalScrollIndicator={false}
       >
         {/* タイトル */}
-      <View style={styles.titleSection}>
-        <Text style={[styles.title, { color: theme.text }]}>
+        <View style={styles.titleSection}>
+          <Text style={[styles.title, { color: theme.text }]}>
             Walk'n Life Pro
-        </Text>
-        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+          </Text>
+          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
             AIとデータで、歩く毎日をフルブースト。
-        </Text>
-        <Text style={[styles.trialNote, { color: trialEligible ? theme.primary : theme.textSecondary }]}>
-          {trialEligible ? '初回3日間の無料トライアル' : 'トライアルは適用対象外です'}
-        </Text>
-      </View>
+          </Text>
+          <Text style={[styles.trialNote, { color: trialEligible ? theme.primary : theme.textSecondary }]}>
+            {trialEligible ? '初回3日間の無料トライアル' : 'トライアルは適用対象外です'}
+          </Text>
+        </View>
 
         {/* 特典リスト */}
         <View style={[styles.featuresCard, { backgroundColor: theme.card }]}>
@@ -220,82 +209,15 @@ export default function UpgradeScreen({ navigation, route }) {
 
         {/* プラン選択 */}
         <View style={styles.plansSection}>
-          {/* 年額プラン */}
-          <TouchableOpacity
-            style={[
-              styles.planCard,
-              { backgroundColor: theme.card, borderColor: theme.border },
-              selectedPlan === 'yearly' && { borderColor: theme.primary, borderWidth: 2 },
-            ]}
-            onPress={() => setSelectedPlan('yearly')}
-          >
-            {PRICING.yearly.discount && (
-              <View style={[styles.discountBadge, { backgroundColor: theme.primary }]}>
-                <Text style={styles.discountText}>{PRICING.yearly.discount}</Text>
-              </View>
-            )}
-            <View style={styles.planRadio}>
-              <View
-                style={[
-                  styles.radioOuter,
-                  { borderColor: selectedPlan === 'yearly' ? theme.primary : theme.border },
-                ]}
-              >
-                {selectedPlan === 'yearly' && (
-                  <View style={[styles.radioInner, { backgroundColor: theme.primary }]} />
-                )}
-              </View>
-            </View>
-            <View style={styles.planInfo}>
-              <Text style={[styles.planPeriod, { color: theme.textSecondary }]}>
-                {PRICING.yearly.period}
-              </Text>
-              <Text style={[styles.planPrice, { color: theme.text }]}>
-                {PRICING.yearly.price}
-              </Text>
-              {PRICING.yearly.note && (
-                <Text style={[styles.planNote, { color: theme.textSecondary }]}>
-                  {PRICING.yearly.note}
-                </Text>
-              )}
-            </View>
-          </TouchableOpacity>
-
-          {/* 月額プラン */}
-          <TouchableOpacity
-            style={[
-              styles.planCard,
-              { backgroundColor: theme.card, borderColor: theme.border },
-              selectedPlan === 'monthly' && { borderColor: theme.primary, borderWidth: 2 },
-            ]}
-            onPress={() => setSelectedPlan('monthly')}
-          >
-            <View style={styles.planRadio}>
-              <View
-                style={[
-                  styles.radioOuter,
-                  { borderColor: selectedPlan === 'monthly' ? theme.primary : theme.border },
-                ]}
-              >
-                {selectedPlan === 'monthly' && (
-                  <View style={[styles.radioInner, { backgroundColor: theme.primary }]} />
-                )}
-              </View>
-            </View>
-            <View style={styles.planInfo}>
-              <Text style={[styles.planPeriod, { color: theme.textSecondary }]}>
-                {PRICING.monthly.period}
-              </Text>
-              <Text style={[styles.planPrice, { color: theme.text }]}>
-                {PRICING.monthly.price}
-              </Text>
-              {PRICING.monthly.note && (
-                <Text style={[styles.planNote, { color: theme.textSecondary }]}>
-                  {PRICING.monthly.note}
-                </Text>
-              )}
-            </View>
-          </TouchableOpacity>
+          {PLAN_ORDER.map((planKey) => (
+            <PlanCard
+              key={planKey}
+              pricing={PRICING[planKey]}
+              selected={selectedPlan === planKey}
+              theme={theme}
+              onPress={() => setSelectedPlan(planKey)}
+            />
+          ))}
         </View>
 
         {/* Pro詳細モーダル起動 */}
@@ -318,7 +240,7 @@ export default function UpgradeScreen({ navigation, route }) {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.purchaseButtonText}>
-              {selectedPlan === 'yearly' ? '年額でProを始める' : '月額でProを始める'}
+              {selectedPricing.purchaseLabel}
             </Text>
           )}
         </TouchableOpacity>
@@ -337,9 +259,9 @@ export default function UpgradeScreen({ navigation, route }) {
 
           <View style={styles.footerDivider} />
 
-          <TouchableOpacity onPress={() => navigation.navigate('PrivacyPolicy')}>
+          <TouchableOpacity onPress={handleOpenEula}>
             <Text style={[styles.footerLink, { color: theme.textSecondary }]}>
-              利用規約
+              {t('settings.eula')}
             </Text>
           </TouchableOpacity>
         </View>

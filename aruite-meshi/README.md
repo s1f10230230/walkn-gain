@@ -1,206 +1,128 @@
-# 歩いてメシ 🍜👟
+# Walk'n Life
 
-歩数を食べ物で可視化する楽しい歩数計アプリ
+AIとデータで、歩く毎日をフルブーストする歩数・ライフログアプリです。
 
-## 📱 概要
+Walk'n Life は、日々の歩数、消費カロリー、距離、天気、日記、写真をまとめて記録し、歩く習慣を続けやすくする React Native / Expo アプリです。AIインサイト、履歴レポート、プレミアム機能を通じて、毎日の歩行データを振り返りやすくします。
 
-「歩いてメシ」は、歩数やカロリーを日常的な食べ物に換算して表示することで、運動の成果を直感的に理解できる歩数計アプリです。
+## Features
 
-従来の歩数計：「411kcal消費」→ ピンと来ない
-このアプリ：「ラーメン0.8杯分」→ 直感的に分かる！
+- 歩数、消費カロリー、距離、時間帯別歩数の記録
+- 今日のメモ、気分、写真つき日記
+- 週間・月間の履歴、レポート、グラフ表示
+- 天気や予定を使った歩きやすさの把握
+- オンボーディングでの言語、プロフィール、目標歩数、権限設定
+- HealthKit 連携による iOS の歩数データ取得
+- RevenueCat を使った Pro サブスクリプション
+- Pro 向けの AIインサイト、自動目標チューニング、環境分析、月次スタイル診断
 
-## ✨ 主な機能
+## Tech Stack
 
-- **リアルタイム歩数計測**: スマートフォンのセンサーを使用して歩数を自動計測
-- **食べ物換算**: 消費カロリーを100種類以上の食べ物で換算表示
-- **目標管理**: 1日の歩数目標を設定し、達成率を視覚的に表示
-- **履歴機能**: 週間・月間の歩数データを確認
-- **カスタマイズ**: 身長・体重・歩幅を設定して正確な計算
+- React 19
+- React Native 0.81
+- Expo SDK 54
+- React Navigation
+- HealthKit via `@kingstinct/react-native-healthkit`
+- RevenueCat via `react-native-purchases`
+- Local storage via AsyncStorage / MMKV
+- Charts via `react-native-chart-kit` and `react-native-svg`
 
-## 🏗️ 技術スタック
+## Project Structure
 
-- **Framework**: React Native + Expo
-- **Navigation**: React Navigation v6
-- **Sensors**: expo-sensors (Pedometer)
-- **Storage**: AsyncStorage
-- **UI Components**:
-  - react-native-progress (プログレスバー・円形プログレス)
-  - react-native-svg (グラフ描画)
-  - react-native-chart-kit (グラフ表示)
-
-## 📦 依存関係
-
-```json
-{
-  "expo": "~49.0.0",
-  "expo-sensors": "歩数計測",
-  "react-native-circular-progress": "円形プログレス",
-  "@react-native-async-storage/async-storage": "データ保存",
-  "@react-navigation/native": "画面遷移",
-  "@react-navigation/bottom-tabs": "タブナビゲーション",
-  "react-native-chart-kit": "グラフ表示"
-}
+```text
+aruite-meshi/
+├── App.js
+├── app.json
+├── app.config.js
+├── assets/
+├── ios/
+│   └── WalknLife/
+├── modules/
+│   └── healthkit-swift/
+├── plugins/
+│   └── with-paywall-module.js
+└── src/
+    ├── components/
+    ├── contexts/
+    ├── data/
+    ├── i18n/
+    ├── navigation/
+    ├── screens/
+    │   ├── onboarding/
+    │   └── upgrade/
+    ├── tasks/
+    └── utils/
 ```
 
-## 🚀 セットアップ
+## Requirements
 
-### 必要な環境
+- Node.js 18 以上
+- npm
+- Xcode
+- iOS Simulator または iOS 実機
+- Expo CLI / EAS CLI
 
-- Node.js 16.x 以上
-- npm または yarn
-- Expo CLI
+歩数計測や HealthKit はシミュレータでは制限があります。歩数・ヘルスケア周りの確認は実機で行ってください。
 
-### インストール手順
+## Setup
 
-1. リポジトリをクローン
-```bash
-git clone [repository-url]
-cd aruite-meshi
-```
-
-2. 依存関係をインストール
 ```bash
 npm install
 ```
 
-3. アプリを起動
+必要に応じて `.env` を作成します。
+
 ```bash
-npm start
+OPENAI_API_KEY=
+REVENUECAT_API_KEY=
 ```
 
-4. Expo Go アプリでスキャンして実機で確認
-   - iOS: カメラアプリでQRコードをスキャン
-   - Android: Expo Go アプリでQRコードをスキャン
+`REVENUECAT_API_KEY` は `EXPO_PUBLIC_REVENUECAT_API_KEY` でも読み込めます。
 
-## 📱 実行方法
+## Development
 
 ```bash
-# 開発サーバー起動
+# Expo 開発サーバー
 npm start
 
-# Androidエミュレータで実行
-npm run android
-
-# iOSシミュレータで実行（macOSのみ）
+# iOS
 npm run ios
 
-# Webブラウザで実行
+# Android
+npm run android
+
+# Web
 npm run web
 ```
 
-## 📂 プロジェクト構造
+## App Configuration
 
-```
-aruite-meshi/
-├── App.js                      # アプリのエントリーポイント
-├── src/
-│   ├── components/             # 共通コンポーネント
-│   ├── screens/                # 画面
-│   │   ├── HomeScreen.js       # ホーム画面（歩数計測）
-│   │   ├── HistoryScreen.js    # 履歴画面
-│   │   └── SettingsScreen.js   # 設定画面
-│   ├── data/
-│   │   └── foodDatabase.js     # 食べ物データベース（100種類以上）
-│   ├── utils/
-│   │   ├── calculations.js     # 計算ユーティリティ
-│   │   └── storage.js          # ストレージ管理
-│   └── navigation/
-│       └── AppNavigator.js     # ナビゲーション設定
-├── assets/                     # 画像などのアセット
-└── package.json
-```
+現在の Expo 設定:
 
-## 🍜 食べ物データベース
+- App name: `Walk'n Life`
+- Slug: `aruite-meshi`
+- iOS bundle id: `com.walkngain.app`
+- Android package: `com.walkngain.app`
+- Version: `1.0.2`
+- iOS build number: `55`
 
-100種類以上の食べ物データを収録：
+`app.config.js` では、ネイティブの Paywall module plugin と環境変数を追加しています。
 
-- **よく見る**: ラーメン、おにぎり、ビール、カレー、寿司
-- **ファストフード**: ハンバーガー、ポテト、チキンナゲット、ピザ
-- **お酒**: ビール、ワイン、日本酒、焼酎、カクテル
-- **お菓子**: ポテトチップス、チョコレート、クッキー、アイス
-- **定食・弁当**: とんかつ定食、唐揚げ定食、焼肉定食
-- **麺類**: ラーメン各種、うどん、そば、パスタ
-- **ご飯もの**: 各種丼もの、チャーハン、オムライス
-- **パン**: 食パン、クロワッサン、あんぱん、メロンパン
-- **デザート**: ケーキ、パンケーキ、クレープ、パフェ
-- **飲み物**: ジュース、コーヒー、タピオカミルクティー
+## Main Screens
 
-## 💾 データ管理
+- Home: 今日の歩数、達成率、メモ、写真
+- History: 日別履歴、カレンダー、過去データ
+- Report: 週間・月間の振り返り、グラフ、スタイル診断
+- Settings: プロフィール、通知、共有、Pro、規約
+- Upgrade: Pro プラン、RevenueCat 購入、復元、EULA
+- Onboarding: 言語、プロフィール、目標、権限、Pro紹介
 
-### ローカルストレージ
+## Notes
 
-- **日別データ**: 歩数、カロリー、距離、時間別歩数
-- **ユーザープロフィール**: 身長、体重、歩幅
-- **設定**: 目標歩数、デフォルト食べ物、通知設定
-- **お気に入り**: よく見る食べ物リスト
+- このアプリは iOS の HealthKit 権限を使用します。
+- 天気、カレンダー、写真、カメラ、位置情報は機能ごとに権限説明を `app.json` で管理しています。
+- Pro 購入処理は RevenueCat の offerings / packages を参照します。
+- Web では歩数計測や一部ネイティブ機能は利用できません。
 
-### データエクスポート
-
-設定画面から過去30日分のデータをCSV形式でエクスポート可能
-
-## 🎯 使い方
-
-### 初回設定
-
-1. アプリを起動
-2. 「設定」タブで身長・体重・歩幅を入力
-3. 1日の目標歩数を設定（デフォルト: 10,000歩）
-
-### 日常的な使用
-
-1. アプリを起動するだけで自動的に歩数を計測
-2. ホーム画面で現在の歩数と食べ物換算を確認
-3. 横スクロールで様々な食べ物での換算を表示
-4. 履歴タブで過去の記録を確認
-
-### 歩数の計算方法
-
- - **カロリー**: 体重[kg] × 歩数 × 0.00055 kcal（簡易MET法）
-- **距離**: 歩数 × 歩幅（cm）÷ 100,000 = km
-- **標準歩幅**: 身長（cm）× 0.45
-
-## 🔧 開発
-
-### デバッグ
-
-歩数計センサーはシミュレータでは動作しません。実機でテストしてください。
-
-### ビルド
-
-```bash
-# Android APKビルド
-expo build:android
-
-# iOS IPAビルド（macOSのみ）
-expo build:ios
-```
-
-## 📝 今後の予定
-
-- [ ] Widget対応（ホーム画面表示）
-- [ ] Apple Health / Google Fit連携
-- [ ] カスタム食べ物の追加機能
-- [ ] 通知機能（目標達成時）
-- [ ] データ同期（クラウド）
-- [ ] SNSシェア機能
-
-## 🐛 既知の問題
-
-- Pedometer APIはiOS実機とAndroid実機でのみ動作します
-- Webブラウザでは歩数計測機能は利用できません
-
-## 📄 ライセンス
+## License
 
 MIT License
-
-## 👨‍💻 開発者
-
-Claude Code で開発されました
-
-## 🙏 謝辞
-
-このアプリは「歩数を食べ物で可視化する」というユニークなアイデアに基づいて開発されました。
-
----
-
-**楽しく歩いて、美味しい気分を味わおう！** 🎉
