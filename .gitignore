@@ -1,1 +1,34 @@
-nul
+# macOS
+.DS_Store
+
+# dependencies
+node_modules/
+
+# Expo / React Native
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+
+# native generated output
+ios/build/
+android/build/
+Pods/
+
+# logs
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# local backups
+*.backup*.js
+
+# environment
+.env
+.env.*
+!.env.example
+
+# local editor / tool state
+.claude/settings.local.json
