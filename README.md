@@ -40,7 +40,3 @@ walkn-gain/
 ```
 
 詳細な実装メモは [aruite-meshi/README.md](./aruite-meshi/README.md) にまとめています。
-
-## Purpose
-
-個人のプロダクト開発力を示すため、企画、UI、ヘルスケア連携、課金導線、データ可視化、アプリ構成を一つのモバイルアプリとして実装しています。
